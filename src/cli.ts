@@ -55,6 +55,7 @@ const COMMANDS: Record<string, () => Promise<{ run: (args: Args) => Promise<numb
   task: () => import('./commands/task.js'),
   judge: () => import('./commands/judge.js'),
   verify: () => import('./commands/verify.js'),
+  check: () => import('./commands/check.js'),
   adapters: () => import('./commands/adapters.js'),
   eval: () => import('./commands/eval.js'),
   finalize: () => import('./commands/finalize.js'),
@@ -115,6 +116,9 @@ Judge
   task <url|path|text>        Link a task to the current session; freeze acceptance criteria
   task --show                 The Task Contract: goal, criteria, constraints, verification, unknowns, status, revisions
   verify [session] [--json|--ci|--deep]   What Tally can prove: VERIFIED / SUPPORTED / UNVERIFIED / UNMET per criterion, with the evidence
+  check [--task <issue|file.md|text>] [--base <ref>] [--require no-unmet|sufficient|verified] [--json] [--no-comment] [--no-tests]
+                              The pull-request check: judge base..HEAD of this checkout with no session (tests run here, mutation check,
+                              criteria, scope); CI step summary and one PR comment; exit 1 when the repo policy's bar is not met
   judge [session] [--post]    Produce the receipt (judge.json + report.md); --post comments on issue/PR
   judge <session> --explain <c1|all>   The evidence behind a status: diff hunks, test output, transcript moments
   dispute <session> <c#> --status s --reason ".."   Contest a criterion; the receipt keeps both and is re-scored

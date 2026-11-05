@@ -27,7 +27,7 @@ import { runLooksConclusive } from '../judge/checks.js';
 
 export type AssuranceStatus = 'VERIFIED' | 'SUPPORTED' | 'UNVERIFIED' | 'UNMET';
 
-export type EvidenceKind = 'file_check' | 'file_changed' | 'diff_hunk' | 'test_added' | 'test_modified' | 'test_names_it' | 'independent_run' | 'without_change_run' | 'agent_test_run' | 'command' | 'model_judgment' | 'dispute';
+export type EvidenceKind = 'file_check' | 'file_changed' | 'diff_hunk' | 'test_added' | 'test_modified' | 'test_names_it' | 'independent_run' | 'without_change_run' | 'agent_test_run' | 'command' | 'model_judgment' | 'rule' | 'dispute';
 
 export interface EvidenceItem {
   kind: EvidenceKind;
@@ -306,6 +306,8 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
     if (!alreadyHasRun && provenance.independent.ran && (aboutTests || testHunkNamesIt || /\b(unchanged|regression|still|existing|passes|suite)\b/i.test(c.text))) items.push({ kind: 'independent_run', strength: 'deterministic', summary: `independent run of \`${provenance.independent.command}\` ${provenance.independent.passed ? (runInconclusive ? 'exited 0 but reported no test count (inconclusive)' : 'passed') : failText}${provenance.independent.total_passed !== null ? ` (${provenance.independent.total_passed} passed)` : ''}`, ref: provenance.independent.command, ok: runInconclusive || notAttributable ? undefined : provenance.independent.passed });
     /* interpreted: the model's reading */
     if (c.resolved_by === 'tier1' || c.resolved_by === 'tier2') items.push({ kind: 'model_judgment', strength: 'interpreted', summary: c.evidence, confidence: c.confidence });
+    /* a rule's decision (no model in this run, a regression claim no suite can prove) is on the map, so the reader sees why */
+    if (c.resolved_by === 'rule' && c.evidence) items.push({ kind: 'rule', strength: 'deterministic', summary: c.evidence });
     if (c.override) items.push({ kind: 'dispute', strength: 'interpreted', summary: `${c.override.by}: ${c.override.status} (was ${c.override.original}): ${c.override.reason}` });
 
     /* a criterion about tests cannot rest on a model's word: when no test file was added, modified or names the behaviour,
@@ -354,6 +356,11 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
     } else if (eff === 'unmet') {
       status = 'UNMET';
       basis = c.resolved_by === 'tier0' ? 'deterministic' : detPositive.length ? 'deterministic+model' : 'model';
+    } else if (anchoredByTest && anchorIsAgentTest && wc?.passed === false) {
+      /* nobody read the evidence (no model in this run), but a test that names the behaviour passes and fails without
+         the change: supported on deterministic grounds alone. Not VERIFIED: a keyword match is not a reading. */
+      status = 'SUPPORTED';
+      basis = 'deterministic';
     } else {
       status = 'UNVERIFIED';
       basis = items.length ? (det.length ? 'deterministic+model' : 'model') : 'none';
@@ -392,6 +399,41 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
     summary,
     experimental: { verdict: j.verdict.verdict, completion_pct: j.completion_pct, quality: j.quality.score, roi: j.value.roi_multiple, note: 'model-assisted figures: verdict, quality and ROI rest on an estimated human value and a model quality score; read the evidence first' },
   };
+}
+
+/* The pull-request comment and the CI step summary: the same four statuses as a Markdown table, the evidence one line
+   each, no code and no prompts. `range` names the commits the check ran against. */
+export const MARKDOWN_MARKER = '<!-- tally-check -->';
+export function renderVerifyMarkdown(a: Assurance, opts: { range?: string; required?: string; passed?: boolean; noModel?: boolean } = {}): string {
+  const icon: Record<AssuranceStatus, string> = { VERIFIED: '✅', SUPPORTED: '🟡', UNVERIFIED: '❔', UNMET: '❌' };
+  const s = a.summary;
+  const L: string[] = [MARKDOWN_MARKER];
+  L.push(`### Tally check ${opts.passed === undefined ? '' : opts.passed ? '— passed' : '— failed'}`);
+  L.push('');
+  L.push(`**${a.task.goal}**${a.task.status === 'needs_confirmation' ? ' _(contract inferred, not confirmed)_' : a.task.status === 'linked' ? ` _(contract from ${a.task.source}${a.task.url ? `: ${a.task.url}` : ''})_` : ''}`);
+  L.push('');
+  L.push(`${s.sufficient}/${s.total} criteria have sufficient evidence (${s.verified} verified, ${s.supported} supported${s.unverified ? `, ${s.unverified} unverified` : ''}${s.unmet ? `, ${s.unmet} unmet` : ''})${opts.required ? ` · required: ${opts.required}` : ''}`);
+  L.push('');
+  L.push('| | Criterion | Evidence |');
+  L.push('|---|---|---|');
+  for (const c of a.criteria) {
+    const best = c.evidence.filter((e) => e.ok !== false && e.strength === 'deterministic')[0] ?? c.evidence.find((e) => e.ok === false) ?? c.evidence[0];
+    const neg = c.evidence.filter((e) => e.ok === false).map((e) => e.summary);
+    const ev = [best?.summary, ...neg.filter((n) => n !== best?.summary)].filter(Boolean).slice(0, 2).join('; ') || 'no evidence found';
+    L.push(`| ${icon[c.status]} ${c.status} | ${c.text.replace(/\|/g, '\\|')} | ${ev.replace(/\|/g, '\\|').replace(/\n/g, ' ').slice(0, 220)} |`);
+  }
+  L.push('');
+  const v = a.verification;
+  const runLine = v.independent.ran ? `${v.independent.passed ? '✅' : v.independent.attributable === false ? '❔' : '❌'} Independent run: \`${v.independent.command}\` ${v.independent.passed ? 'passed' : 'failed'}${v.independent.total_passed !== null ? ` (${v.independent.total_passed} passed)` : ''}${v.independent.fails_at_base ? '; the base commit fails it too' : ''}` : `❔ Independent run not made (${v.independent.reason ?? 'unknown'})`;
+  L.push(runLine);
+  if (v.independent.discriminating === true) L.push(`✅ Mutation check: the agent's tests fail without the change (they test the work)`);
+  else if (v.independent.discriminating === false) L.push(`❌ Mutation check: the agent's tests pass without the change (they do not test the work)`);
+  L.push(`${v.agent_created.added_files.length} test file(s) added, ${v.agent_created.modified_files.length} modified, ${v.agent_created.cases_added} case(s) added${v.preexisting_files !== null ? `; ${v.preexisting_files} pre-existing` : ''}`);
+  if (a.scope.unnamed_areas.length) L.push(`🟡 Changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')}`);
+  L.push('');
+  if (opts.noModel) L.push('_No model in this run: mechanical checks and tests only; criteria that need a reading are unverified. Set `TALLY_LLM_API_KEY` to judge them._');
+  L.push(`<sub>Generated by Tally${opts.range ? ` for ${opts.range}` : ''}. Contains no code or prompts. Evidence first; the model-assisted verdict (${a.experimental.verdict}) is experimental.</sub>`);
+  return L.join('\n');
 }
 
 /* The same mapping from a stored receipt alone (no git), for old receipts and quick rendering. */

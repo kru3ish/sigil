@@ -1,0 +1,65 @@
+name: 'Tally check'
+description: 'An independent verification receipt for a pull request: acceptance criteria against evidence, the tests run in the clean checkout, the mutation check, scope. Fails the check per the repo policy.'
+author: 'kru3ish'
+branding:
+  icon: 'check-square'
+  color: 'green'
+
+inputs:
+  task:
+    description: 'Issue URL, a tasks/*.md path, or text. Default: taken from the PR body (a .md it names, "#12" / "fixes #12", or an issue URL), else the PR title and body.'
+    default: ''
+  require:
+    description: 'no-unmet | sufficient | verified. Default: verification.required in tally.json, else no-unmet.'
+    default: ''
+  comment:
+    description: 'Post one receipt comment on the PR and keep it updated.'
+    default: 'true'
+  base:
+    description: 'Base commit or branch. Default: the merge-base with the PR base branch (needs actions/checkout fetch-depth: 0).'
+    default: ''
+  version:
+    description: 'The @kru3ish/tally version to install.'
+    default: 'latest'
+  node-version:
+    description: 'Node.js version for the runner.'
+    default: '20'
+
+outputs:
+  passed:
+    description: 'true when the receipt meets the required bar.'
+    value: ${{ steps.check.outputs.passed }}
+  verified:
+    description: 'Criteria VERIFIED.'
+    value: ${{ steps.check.outputs.verified }}
+  unmet:
+    description: 'Criteria UNMET.'
+    value: ${{ steps.check.outputs.unmet }}
+  total:
+    description: 'Criteria in the contract.'
+    value: ${{ steps.check.outputs.total }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - shell: bash
+      run: npm install -g "@kru3ish/tally@${{ inputs.version }}"
+    - id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TALLY_TELEMETRY: '0'
+        TALLY_INPUT_TASK: ${{ inputs.task }}
+        TALLY_INPUT_REQUIRE: ${{ inputs.require }}
+        TALLY_INPUT_BASE: ${{ inputs.base }}
+        TALLY_INPUT_COMMENT: ${{ inputs.comment }}
+      run: |
+        args=()
+        [ -n "$TALLY_INPUT_TASK" ] && args+=(--task "$TALLY_INPUT_TASK")
+        [ -n "$TALLY_INPUT_REQUIRE" ] && args+=(--require "$TALLY_INPUT_REQUIRE")
+        [ -n "$TALLY_INPUT_BASE" ] && args+=(--base "$TALLY_INPUT_BASE")
+        [ "$TALLY_INPUT_COMMENT" = "true" ] || args+=(--no-comment)
+        tally check "${args[@]}"

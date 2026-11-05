@@ -143,6 +143,28 @@ export function listedCriteria(body: string): string[] {
   return listedSection(body, /acceptance criteria|acceptance|criteria|definition of done|done when/i);
 }
 
+/* A mechanical check written into a criterion line, so a CI run can resolve it with no model:
+     "README documents the limit — check: file_contains README.md Limit"
+     "The migration file exists (check: file_exists migrations/0007_limit.sql)"
+     "Tests pass `check: tests_pass`"
+   Kinds: tests_pass, file_exists <path>, file_changed <path>, file_contains <path> <pattern>, diff_contains <pattern>,
+   command <command>. Quoted arguments keep their spaces. */
+export function splitInlineCheck(line: string): { text: string; check?: ReturnType<typeof parseCheck> } {
+  const m = /^(.*?)\s*(?:[—–-]\s*|\(\s*)?`?check:\s*([a-z_]+)((?:\s+(?:"[^"]*"|'[^']*'|[^\s`)]+))*)\s*`?\)?\s*$/i.exec(line);
+  if (!m) return { text: line };
+  const args = [...(m[3] ?? '').matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((a) => a[1] ?? a[2] ?? a[3] ?? '');
+  const kind = m[2]!.toLowerCase();
+  const raw =
+    kind === 'tests_pass' ? { kind }
+    : kind === 'file_exists' || kind === 'file_changed' ? { kind, path: args[0] }
+    : kind === 'file_contains' ? { kind, path: args[0], pattern: args.slice(1).join(' ') }
+    : kind === 'diff_contains' ? { kind, pattern: args.join(' ') }
+    : kind === 'command' ? { kind, command: args.join(' ') }
+    : null;
+  const check = raw ? parseCheck(raw) : null;
+  return check ? { text: m[1]!.trim(), check } : { text: line };
+}
+
 const norm = (s: string) => s.toLowerCase().replace(/[`*_"'.;:,()!?]/g, '').replace(/\s+/g, ' ').trim();
 function sameLine(a: string, b: string): boolean {
   const x = norm(a);
@@ -228,6 +250,11 @@ export async function intake(opts: {
     out = cachedOut.out;
     model = cachedOut.model;
     cached = true;
+  } else if (opts.llm.noModel) {
+    /* no model (CI without a key): the ticket's own list is the contract, checks come from the ticket or the policy */
+    const n = listedCriteria(fetched.body).length;
+    out = { title: fetched.title, criteria: [], spec_quality: { score: n ? 6 : 3, missing: n ? [] : ['acceptance criteria'], questions: [] }, estimate_hours: 0, rationale: 'no model in this run', constraints: [] } as unknown as IntakeOut;
+    model = 'none';
   } else {
     const r = await opts.llm.complete<IntakeOut>({ kind: 'intake', model: opts.cfg.models.intake, system: INTAKE_SYSTEM, prompt, schema: INTAKE_SCHEMA as unknown as Record<string, unknown> });
     out = r.data;
@@ -245,7 +272,11 @@ export async function intake(opts: {
   const listed = listedCriteria(fetched.body);
   if (listed.length && listed.length <= MAX_CRITERIA) {
     const modelExplicit = raw.filter((c) => c.source === 'explicit');
-    kept = listed.map((text, i) => ({ text, source: 'explicit', check: modelExplicit.length === listed.length ? modelExplicit[i]?.check : undefined }));
+    /* a check written into the ticket line itself ("— check: file_contains README.md Limit") outranks the model's guess */
+    kept = listed.map((line, i) => {
+      const inline = splitInlineCheck(line);
+      return { text: inline.text, source: 'explicit', check: inline.check ?? (modelExplicit.length === listed.length ? modelExplicit[i]?.check : undefined) };
+    });
   }
   const criteria: Task['criteria'] = kept.map((c, i) => {
     const check = sanitiseCheck(parseCheck(c.check));

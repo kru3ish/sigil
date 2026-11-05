@@ -21,6 +21,15 @@ export const PolicySchema = z.object({
   /* the command the Judge runs for independent verification when `npm test` (or the detected runner) is not the right
      one for this repo: a pretest step that needs network, a monorepo, a suite that only works in CI */
   test_command: z.string().min(1).optional(),
+  /* the pull-request check (`tally check`, the GitHub Action): what the receipt must show before the check passes.
+     no-unmet: nothing UNMET; sufficient: every criterion VERIFIED or SUPPORTED; verified: every criterion VERIFIED. */
+  verification: z
+    .object({
+      required: z.enum(['no-unmet', 'sufficient', 'verified']).default('no-unmet'),
+      comment: z.boolean().default(true),
+      run_tests: z.boolean().default(true),
+    })
+    .default({}),
   note: z.string().optional(),
 });
 export type Policy = z.infer<typeof PolicySchema>;

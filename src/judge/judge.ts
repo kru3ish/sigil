@@ -299,6 +299,14 @@ export async function judgeSession(opts: {
   let proseTier: 'mechanical' | 'tier1' | 'tier2' = 'mechanical';
   let tier1: Tier1Result[] = [];
   let decision = selectTiers({ judgmentIds, sessionCostUsd: t.cost, deep: !!opts.deep, deepThreshold: opts.cfg.judge.deepThreshold, confidenceFloor: opts.cfg.judge.tier1_confidence_floor });
+  /* no model in this run (CI without a key): what needs a reading stays unverifiable and says so; nothing is asked */
+  if (opts.llm.noModel) {
+    for (const id of judgmentIds) {
+      const c = task.criteria.find((x) => x.id === id)!;
+      resolved.set(id, { id, text: c.text, status: 'unverifiable', evidence: 'no model in this run: this criterion needs a reading of the evidence (give it a mechanical check, or set TALLY_LLM_API_KEY)', files: [], resolved_by: 'rule' });
+    }
+    decision = { ...decision, run_tier1: false, run_tier2: false, tier2_criteria: [] };
+  }
 
   const applyModel = (data: JudgeOut, ids: string[], tier: 'tier1' | 'tier2') => {
     const byId = new Map((data.criteria ?? []).map((c) => [c.id, c]));
@@ -386,7 +394,7 @@ export async function judgeSession(opts: {
   const quality = Math.max(0, Math.min(10, Number(out.quality_score ?? 0)));
   /* maintainer review: reads the diff for layer, blast radius and untested surface; can only cap */
   let review: Review | undefined;
-  if (shouldReview(opts.cfg.judge.maintainer_review, opts.cwd, ev)) {
+  if (!opts.llm.noModel && shouldReview(opts.cfg.judge.maintainer_review, opts.cwd, ev)) {
     review = await maintainerReview({ task, ev, ver, cwd: opts.cwd, llm: opts.llm, model: opts.cfg.models.judge, tokenBudget: opts.cfg.judge.review_tokens });
     if (review.ran && review.cost_usd) tierCosts.push({ tier: 'tier2', model: review.model ?? opts.cfg.models.judge, cost_usd: round(review.cost_usd), criteria: [], prompt_tokens: 0 });
   }

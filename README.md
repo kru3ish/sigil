@@ -186,6 +186,10 @@ Result
 
 `tally verify --json` emits the same as a `tally.verify.v1` document for CI and tools; `tally verify --ci` exits non-zero on any UNMET criterion. Verdicts, a 0–10 quality score and ROI still exist on the receipt, labelled experimental and placed after the evidence: they rest on an estimated human value and a model's opinion.
 
+**The mutation check.** After a green run, the test files the agent added or changed are run once more at the base commit, with nothing else from the work applied. A test that passes there too tests nothing about the change, so it cannot anchor a VERIFIED criterion; one that fails there is recorded as evidence that it does. This is the check a self-review loop cannot make: it is adversarial to the agent's own tests.
+
+**At the merge gate.** `tally check` produces the same receipt in CI from a clean checkout, with no session and no hooks: the task from the PR body or `--task`, the tests run there, the mutation check, scope, one PR comment kept updated, and a failing check when the repo's bar is not met (`verification.required` in `tally.json`: `no-unmet`, `sufficient` or `verified`). `uses: kru3ish/tally@main` in a `pull_request` workflow, then make it a required check; details in [`docs/CI.md`](docs/CI.md). A check can be written into the ticket's own criterion line (`— check: file_contains README.md Limit`), so the run needs no model at all.
+
 The recording above is the real output of `tally demo` (timing compressed; also in [`docs/demo.cast`](docs/demo.cast) for `asciinema play`). The demo replays a recorded session through the real hooks with a stubbed model, in a throwaway directory, and never touches your `~/.claude`.
 
 ## Install
@@ -471,9 +475,13 @@ Verified against each agent's hook documentation on 2026-09-26 (`docs/PLATFORM_N
 | Question | how much did I spend? | how do I work, what friction recurs? | what is loaded and used? | was this task done, at what cost, and was it worth it? |
 | Ties spend to acceptance criteria | no | no | no | yes, frozen at intake |
 | Independent verification | no | no | no | re-runs your tests |
+| Mutation check (do the new tests fail without the change?) | no | no | no | yes |
+| A required check on the pull request | no | no | no | `tally check` |
 | Post-merge outcome | no | no | no | merged / reverted / reopened / review churn |
 | Live coaching | no | no | no | yes, one-key actions |
 | Skill / MCP value | `/usage` attributes tokens | flags unused ones | "Not used recently" | dollars per session, plus controlled experiments |
+
+Claude Code's own `/verify` has the agent build and run the app and look at the result, `/goal` keeps it working until a small model agrees the condition holds, `/usage` breaks spend down by skill, plugin and MCP server, and Code Review has several agents read the PR. All of them run on the agent's side of the table. Tally's receipt is made by a separate process from a contract frozen before the work, its tests run in a scrubbed environment and run again without the change, and `tally check` turns the result into a required check on the pull request, which nothing inside a session can switch off.
 
 Where a built-in already does the job, Tally points you to it: `/insights` for the retrospective, `/fewer-permission-prompts` for the allowlist, `/cost` and `/usage` for totals, `/plugin` Stats for what is loaded.
 
@@ -492,7 +500,7 @@ Where a built-in already does the job, Tally points you to it: `/insights` for t
 
 ## Roadmap
 
-The plan to v1.0 is in [`docs/ROADMAP_RELIABILITY_LAYER.md`](docs/ROADMAP_RELIABILITY_LAYER.md): v0.6 became the evaluation release (this document is its evidence); ship readiness and scope and risk analysis (v0.7), repository and mistake memory that survives switching agents (v0.8), a stable adapter SDK and comparison views with sample sizes (v0.9), mutation verification in an isolated worktree (v1.0). Architecture in [`ARCHITECTURE.md`](ARCHITECTURE.md); adding an agent in [`docs/ADAPTER_SDK.md`](docs/ADAPTER_SDK.md); how the numbers are measured in [`docs/EVALUATION.md`](docs/EVALUATION.md); how to help in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+The plan to v1.0 is in [`docs/ROADMAP_RELIABILITY_LAYER.md`](docs/ROADMAP_RELIABILITY_LAYER.md): v0.6 became the evaluation release (this document is its evidence); ship readiness and scope and risk analysis (v0.7), repository and mistake memory that survives switching agents (v0.8), a stable adapter SDK and comparison views with sample sizes (v0.9), mutation verification in an isolated worktree (shipped early, as the mutation check). Architecture in [`ARCHITECTURE.md`](ARCHITECTURE.md); adding an agent in [`docs/ADAPTER_SDK.md`](docs/ADAPTER_SDK.md); how the numbers are measured in [`docs/EVALUATION.md`](docs/EVALUATION.md); how to help in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Evaluation
 

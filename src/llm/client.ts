@@ -27,6 +27,17 @@ export interface LlmResult<T> {
 
 export interface LlmClient {
   complete<T>(req: LlmRequest): Promise<LlmResult<T>>;
+  /* true for the client that has no model behind it: callers take their deterministic path instead of asking */
+  readonly noModel?: boolean;
+}
+
+/* No model at all (CI without an API key, `TALLY_LLM=none`): intake keeps the ticket's listed criteria verbatim, the
+   judge resolves mechanical checks and runs the tests, and everything that needs a reading stays unverifiable. */
+export class NoModelLlm implements LlmClient {
+  readonly noModel = true;
+  async complete<T>(req: LlmRequest): Promise<LlmResult<T>> {
+    throw new Error(`no model in this run (${req.kind}): set TALLY_LLM_API_KEY, or use mechanical checks`);
+  }
 }
 
 export function tallySpendFile(): string {
@@ -226,6 +237,7 @@ export function runProcess(bin: string, args: string[], opts: { cwd?: string; ti
 
 export function makeLlm(opts: { session?: string; stub?: Partial<Record<LlmRequest['kind'], StubResponder>> } = {}): LlmClient {
   if (opts.stub || process.env.TALLY_LLM === 'stub') return new StubLlm(opts.stub ?? defaultStubs(), opts.session);
+  if (process.env.TALLY_LLM === 'none') return new NoModelLlm();
   const models = loadConfig().models;
   if (models.provider === 'openai-compatible') return new OpenAICompatible({ baseUrl: models.base_url, apiKey: process.env[models.api_key_env], session: opts.session, usdPerMillionInput: models.usd_per_million_input, usdPerMillionOutput: models.usd_per_million_output });
   return new ClaudeCli({ session: opts.session });

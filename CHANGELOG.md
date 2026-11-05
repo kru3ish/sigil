@@ -2,6 +2,18 @@
 
 All notable changes to Tally. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
 
+## [Unreleased]
+
+### Changed
+
+- **Coach flags reach you at the end of the turn.** What autopilot left for a human (an unused MCP server, a missing CLAUDE.md, a consent) is shown once, as a numbered card in the terminal when Claude stops, most money first, each line with what it saves. The status line shows the top flag's title and saving instead of a count. `/tally:coach` lists the same items under "Waiting for you" with the one-line consequence of saying yes; `/tally:coach apply <n>`, `tally coach --apply <n>`, or telling Claude "tally apply 2" act on one, and the number means the same flag on every surface.
+
+### Fixed
+
+- **The done gate no longer blocks the first turn of a session whose task it guessed.** It has standing only for a confirmed or linked Task Contract, and only once the session has edited or written a file. A month of the maintainer's own sessions showed 37 first-turn blocks on inferred contracts for prompts that were never coding tasks.
+- A Coach tick or `--apply` rewriting `coach-flags.json` kept the list of flags already shown, so the card is not repeated every turn.
+- From a live verification on Windows (2026-09-29): every command resolves a short session id the same way (a unique prefix; an unknown or ambiguous id is an error, never an empty status); `tally verify <id>` runs in the session's own repo; a cached receipt is invalidated by a contract revision and by uncommitted working-tree changes, not only by a new HEAD; acceptance criteria listed in a task file are kept verbatim and constraints the model inferred are labelled; a task linked from a file or ticket has status `linked`; `file_contains` on a directory searches it; a test failure that also fails at the base commit is attributed, and stays UNMET with both runs on the evidence line.
+
 ## [0.11.0] - 2026-10-18
 
 ### Changed

@@ -1,10 +1,11 @@
 ---
-description: Show pending Tally Coach suggestions for this session without opening the terminal pane
+description: What Tally Coach is waiting on you for in this session, numbered; `/tally:coach apply 2` acts on one
+argument-hint: [apply <n> | inject <n>]
 allowed-tools: Bash(node *)
 ---
 
 ```!
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.js" coach --once --plain --plugin
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.js" coach --once --plain --plugin --from-args "$ARGUMENTS"
 ```
 
-Relay the suggestions above to the user, including the one-line hint about the CLI if it was printed.
+Show the "Waiting for you" items above to the user as a short numbered list: the title, what it saves, and the one-line "if you say yes" consequence. Do not paste the raw output. If the user answers with a number or "apply <n>", run `node "${CLAUDE_PLUGIN_ROOT}/dist/cli.js" coach --apply <n>` and report the one-line result. Everything listed is the user's decision; never apply without their answer.

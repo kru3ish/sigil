@@ -27,7 +27,14 @@ export interface CoachFlags {
   pending: Array<{ rule: string; key: string; title: string; usd_saved: number; ts?: string; label?: string }>;
   /* flag keys already handed to Claude as context, so a flag is announced once */
   announced?: string[];
+  /* flag keys the Stop hook has already shown the person at the terminal */
+  notified?: string[];
   updated?: string;
+}
+
+/* one ordering for the Stop notice, the status line and /tally:coach: most money first, so "apply 2" means one thing */
+export function orderedFlags<T extends { usd_saved?: number }>(pending: T[]): T[] {
+  return [...pending].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
 }
 
 export function flagsFile(session: string): string {
@@ -101,7 +108,12 @@ export function renderStatusLine(input: StatusInput, color = true): string {
   }
   if (typeof ctx === 'number') parts.push(ctx >= 85 ? paint(C.red, `ctx ${Math.round(ctx)}%`) : ctx >= 70 ? paint(C.yellow, `ctx ${Math.round(ctx)}%`) : `ctx ${Math.round(ctx)}%`);
   /* the slash command only exists with the plugin; CLI installs get the CLI command */
-  if (flags) parts.push(paint(C.cyan, `${flags} coach flag${flags === 1 ? '' : 's'} (${enabledPluginIds().length ? '/tally:coach' : 'tally coach'})`));
+  if (flags && session) {
+    /* the top flag by money, not just a count: the person sees what is waiting without leaving the session */
+    const top = orderedFlags(readFlags(session).pending)[0]!;
+    const title = top.title.length > 44 ? top.title.slice(0, 43) + '…' : top.title;
+    parts.push(paint(C.cyan, `⚑ ${flags} · ${title}${top.usd_saved ? ` (~$${top.usd_saved.toFixed(2)})` : ''} · ${enabledPluginIds().length ? '/tally:coach' : 'tally coach'}`));
+  }
   if (session && fs.existsSync(path.join(sessionDir(session), 'hard-stop.json'))) parts.push(paint(C.red, 'HARD STOP: over the repo budget · tally budget approve'));
   if (judge) parts.push(paint(judge.verdict.verdict === 'worth it' ? C.green : judge.verdict.verdict === 'not worth it' ? C.red : C.yellow, `receipt: ${judge.completion_pct}% · ${judge.verdict.verdict}`));
   return parts.join(paint(C.dim, ' · '));

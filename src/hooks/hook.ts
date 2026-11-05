@@ -250,11 +250,14 @@ function flagNotice(session: string): string | undefined {
   const file = path.join(sessionDir(session), 'coach-flags.json');
   const flags = readJson<FlagsFile>(file, {});
   const notified = new Set(flags.notified ?? []);
-  const fresh = (flags.pending ?? []).filter((f) => !notified.has(f.key)).slice(0, 3);
+  /* the same order everywhere (notice, status line, /tally:coach): most money first, so "apply 2" means the same thing */
+  const ordered = [...(flags.pending ?? [])].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
+  const fresh = ordered.filter((f) => !notified.has(f.key));
   if (!fresh.length) return undefined;
-  const lines = fresh.map((f) => `${f.title}${f.usd_saved ? ` (~$${f.usd_saved.toFixed(2)})` : ''} → tally coach --apply ${f.rule} --session ${session.slice(0, 8)}`);
+  const width = Math.max(...ordered.map((f) => f.title.length), 20);
+  const rows = ordered.map((f, i) => `  ${i + 1}  ${f.title.padEnd(Math.min(width, 56))}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ''}${notified.has(f.key) ? '' : '  new'}`);
   writeJson(file, { ...flags, notified: [...notified, ...fresh.map((f) => f.key)].filter((k) => (flags.pending ?? []).some((f) => f.key === k)) });
-  return `Tally Coach: ${lines.join(' · ')}`;
+  return [`Tally Coach · ${ordered.length} waiting for you`, ...rows, `  Act: tell Claude "tally apply 1" (it runs tally coach --apply 1), or /tally:coach for details`].join('\n');
 }
 
 function autopilotEnabled(): boolean {

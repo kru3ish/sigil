@@ -15038,12 +15038,16 @@ var init_quickcheck = __esm({
 var statusline_exports = {};
 __export(statusline_exports, {
   flagsFile: () => flagsFile,
+  orderedFlags: () => orderedFlags,
   readFlags: () => readFlags,
   renderStatusLine: () => renderStatusLine,
   run: () => run18
 });
 import fs53 from "node:fs";
 import path59 from "node:path";
+function orderedFlags(pending) {
+  return [...pending].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
+}
 function flagsFile(session) {
   return path59.join(sessionDir(session), "coach-flags.json");
 }
@@ -15105,7 +15109,11 @@ function renderStatusLine(input, color = true) {
     }
   }
   if (typeof ctx === "number") parts.push(ctx >= 85 ? paint2(C2.red, `ctx ${Math.round(ctx)}%`) : ctx >= 70 ? paint2(C2.yellow, `ctx ${Math.round(ctx)}%`) : `ctx ${Math.round(ctx)}%`);
-  if (flags) parts.push(paint2(C2.cyan, `${flags} coach flag${flags === 1 ? "" : "s"} (${enabledPluginIds().length ? "/tally:coach" : "tally coach"})`));
+  if (flags && session) {
+    const top = orderedFlags(readFlags(session).pending)[0];
+    const title = top.title.length > 44 ? top.title.slice(0, 43) + "\u2026" : top.title;
+    parts.push(paint2(C2.cyan, `\u2691 ${flags} \xB7 ${title}${top.usd_saved ? ` (~$${top.usd_saved.toFixed(2)})` : ""} \xB7 ${enabledPluginIds().length ? "/tally:coach" : "tally coach"}`));
+  }
   if (session && fs53.existsSync(path59.join(sessionDir(session), "hard-stop.json"))) parts.push(paint2(C2.red, "HARD STOP: over the repo budget \xB7 tally budget approve"));
   if (judge) parts.push(paint2(judge.verdict.verdict === "worth it" ? C2.green : judge.verdict.verdict === "not worth it" ? C2.red : C2.yellow, `receipt: ${judge.completion_pct}% \xB7 ${judge.verdict.verdict}`));
   return parts.join(paint2(C2.dim, " \xB7 "));
@@ -15229,6 +15237,7 @@ var init_budget = __esm({
 // src/commands/coach.ts
 var coach_exports = {};
 __export(coach_exports, {
+  parseCoachArgs: () => parseCoachArgs,
   run: () => run20
 });
 import fs55 from "node:fs";
@@ -15286,18 +15295,23 @@ async function run20(args) {
       enqueueInject(session, `Tally observed ${fresh.length} Coach flag${fresh.length === 1 ? "" : "s"} waiting for a decision from the user: ${lines.join("; ")}. Each is the user's call; Tally records the answer when the command runs.`, "autopilot:flags", cwd);
       for (const f of fresh) announced.add(f.key);
     }
-    writeJson(flagsFile(session), { pending: flags.pending, announced: [...announced].filter((k) => flags.pending.some((f) => f.key === k)), updated: (/* @__PURE__ */ new Date()).toISOString() });
+    const stillPending = (k) => flags.pending.some((f) => f.key === k);
+    writeJson(flagsFile(session), { pending: flags.pending, announced: [...announced].filter(stillPending), notified: (flags.notified ?? []).filter(stillPending), updated: (/* @__PURE__ */ new Date()).toISOString() });
     saveState(session, engine.state);
     if (!has(args, "auto")) process.stdout.write(`autopilot: ${shown.length} suggestion(s), ${injected} queued for Claude's next turn, ${flags.pending.length} flag(s) on the status line
 `);
     return;
   }
   const all = engine.evaluate(ctx);
-  const applyIdx = flag(args, "apply");
-  const injectIdx = flag(args, "inject");
+  const fromArgs = flag(args, "from-args");
+  const parsed = fromArgs !== void 0 ? parseCoachArgs(fromArgs) : null;
+  const applyIdx = parsed?.verb === "apply" ? parsed.target : flag(args, "apply");
+  const injectIdx = parsed?.verb === "inject" ? parsed.target : flag(args, "inject");
   if (applyIdx !== void 0 || injectIdx !== void 0) {
     const target = String(applyIdx ?? injectIdx);
-    const s = /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((x) => x.rule === target || x.key === target);
+    const waiting2 = orderedFlags(readFlags(session).pending);
+    const byFlag = /^\d+$/.test(target) ? waiting2[Number(target) - 1] : void 0;
+    const s = byFlag ? all.find((x) => x.key === byFlag.key) ?? all.find((x) => x.rule === byFlag.rule) : /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((x) => x.rule === target || x.key === target);
     if (!s) {
       process.stderr.write(`No suggestion ${/^\d+$/.test(target) ? "#" + target : `for ${target}`}. Run \`tally coach --once\` to list them.
 `);
@@ -15306,31 +15320,50 @@ async function run20(args) {
     const r = applyIdx !== void 0 ? applySuggestion(s, { session, cwd, cfg, mode: "ask" }) : injectSuggestion(s, { session, cwd });
     if (r.ok) {
       const flags = readFlags(session);
-      writeJson(flagsFile(session), { pending: flags.pending.filter((f) => f.key !== s.key), updated: (/* @__PURE__ */ new Date()).toISOString() });
+      const keep = (k) => k !== s.key;
+      writeJson(flagsFile(session), { pending: flags.pending.filter((f) => keep(f.key)), announced: (flags.announced ?? []).filter(keep), notified: (flags.notified ?? []).filter(keep), updated: (/* @__PURE__ */ new Date()).toISOString() });
     }
     process.stdout.write(`${r.ok ? "ok" : "failed"}: ${r.detail}
 `);
     return r.ok ? 0 : 1;
   }
   process.stdout.write(renderHeader(ctx, color) + "\n\n");
-  if (!all.length && !readFlags(session).pending.length) {
+  const waiting = orderedFlags(readFlags(session).pending);
+  if (!all.length && !waiting.length) {
     process.stdout.write("No suggestions right now.\n");
     return;
   }
-  const result = engine.tick(ctx, all);
-  const list = has(args, "all") ? all : [...result.show, ...result.held];
-  list.forEach((s, i) => process.stdout.write(renderSuggestion(s, color, i + 1) + "\n\n"));
-  if (!has(args, "all")) saveState(session, engine.state);
-  const flagged = readFlags(session).pending.map((f) => ({ ...f, idx: all.findIndex((s) => s.key === f.key) + 1 }));
-  if (flagged.length) {
-    process.stdout.write(`Waiting for you (${flagged.length} flag${flagged.length === 1 ? "" : "s"} from autopilot):
+  if (waiting.length) {
+    process.stdout.write(`Waiting for you (${waiting.length}):
 `);
-    for (const f of flagged) process.stdout.write(`  ${f.idx > 0 ? `#${f.idx}` : " \xB7"}  ${f.title}${f.label ? `  \u2192  ${f.label}` : ""}${f.idx > 0 ? `   (tally coach --apply ${f.idx})` : "   (no longer applicable; cleared on the next tick)"}
+    const width = Math.min(Math.max(...waiting.map((f) => f.title.length), 20), 60);
+    waiting.forEach((f, i) => {
+      const s = all.find((x) => x.key === f.key);
+      process.stdout.write(`  ${i + 1}  ${f.title.padEnd(width)}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ""}${s?.message ? `
+     ${s.message.split("\n")[0].slice(0, 110)}` : ""}${s?.action.label ? `
+     if you say yes: ${s.action.label}` : ""}
 `);
-    process.stdout.write("\n");
+    });
+    process.stdout.write(`
+  Act: tally coach --apply <n>   (plugin: /tally:coach apply <n>; or just tell Claude "tally apply <n>")
+
+`);
   }
-  process.stdout.write(`Act on one: tally coach --apply <#> | --inject <#>   (or run \`tally watch\` for the live pane)
+  const result = engine.tick(ctx, all);
+  const list = (has(args, "all") ? all : [...result.show, ...result.held]).filter((s) => !waiting.some((f) => f.key === s.key));
+  if (list.length) {
+    process.stdout.write("Observations:\n");
+    list.forEach((s, i) => process.stdout.write(renderSuggestion(s, color, waiting.length + i + 1) + "\n\n"));
+  }
+  if (!has(args, "all")) saveState(session, engine.state);
+  process.stdout.write(`Live pane: tally watch   \xB7   quiet a rule for this repo: tally config mutes
 `);
+}
+function parseCoachArgs(text2) {
+  const m = /^\s*(?:(apply|inject|yes|do)\s+)?(?:#)?([\w:.-]+)\s*$/i.exec(text2);
+  if (!m) return null;
+  const verb = m[1]?.toLowerCase() === "inject" ? "inject" : "apply";
+  return { verb, target: m[2] };
 }
 var init_coach = __esm({
   "src/commands/coach.ts"() {

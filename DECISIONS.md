@@ -230,3 +230,13 @@ eadme-windows.md` from the wrong directory fell through to text intake and froze
 - C10: Third-party MCP servers are suggested only with the install command their own docs give, and are never installed by Tally; subagents and skills are files Tally can write and undo.
 - C11: OTEL_* is never read from a repo's project or local settings and TALLY_OTEL_* is ignored when the repo's settings set it, matching Claude Code's rule that a checked-out repository must not choose where telemetry goes.
 - C12: Existing tools before generated ones. The catalog uses official marketplaces and curated awesome lists, not the open MCP registry (no quality signal; vendor-specific servers outranked Context7 for "documentation"). Ranking is term fit + official tier + log(stars), with per-pattern terms, `minBoost` so one generic word ("tokens") is not enough, avoid-patterns for known false friends ("design tokens", usage dashboards), language servers only for the repo's languages, and curated tools under 50 stars dropped once their stars are known. Stars come from `gh` when logged in, else the public API, for the shortlist only.
+
+## Coach surfaces (2026-11-05)
+
+A month of the maintainer's own sessions: 37 first-turn blocks from the definition-of-done gate on contracts the intake model had inferred from prompts that were never coding tasks; Coach flags (an unused MCP server, a missing CLAUDE.md) that reached Claude and a status-line count, never the person.
+
+- V1: The done gate has standing only for a real contract and real work: a confirmed or linked task (never an inferred, unconfirmed one), and at least one Edit/Write in the session. A guessed check on a guessed contract is not a reason to stop anyone.
+- V2: Flags reach the person at the terminal through the Stop hook's `systemMessage`, as a numbered card shown once per flag (`notified` in `coach-flags.json`). The model still gets its one-time note (`announced`); the two lists are separate because the two readers are.
+- V3: One order everywhere: most money first, in the card, the status line and `/tally:coach`, so "apply 2" names the same flag on every surface. `/tally:coach apply <n>` and a plain "tally apply 2" said to Claude both resolve the number against that list.
+- V4: The status line shows the top flag's title and saving, not a count. A count is a fact; a title is a decision the person can take.
+- V5: Every writer of `coach-flags.json` (the tick, `--apply`) preserves all three lists; dropping `notified` would re-show the card every turn, which is how the first version behaved on real data.

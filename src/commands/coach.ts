@@ -7,7 +7,7 @@ import { renderHeader, renderSuggestion } from '../coach/ui.js';
 import { applySuggestion, injectSuggestion } from '../coach/actions.js';
 import { llmCoach } from '../coach/llm-coach.js';
 import { makeLlm } from '../llm/client.js';
-import { readFlags, flagsFile } from './statusline.js';
+import { readFlags, flagsFile, orderedFlags } from './statusline.js';
 import { writeJson, builtCliPath } from '../paths.js';
 import { enqueueInject } from '../coach/inject.js';
 import { loadPolicy } from '../policy.js';
@@ -81,18 +81,26 @@ export async function run(args: Args): Promise<number | void> {
       enqueueInject(session, `Tally observed ${fresh.length} Coach flag${fresh.length === 1 ? '' : 's'} waiting for a decision from the user: ${lines.join('; ')}. Each is the user's call; Tally records the answer when the command runs.`, 'autopilot:flags', cwd);
       for (const f of fresh) announced.add(f.key);
     }
-    writeJson(flagsFile(session), { pending: flags.pending, announced: [...announced].filter((k) => flags.pending.some((f) => f.key === k)), updated: new Date().toISOString() });
+    /* `notified` is the Stop hook's record of what the person has already seen; dropping it would re-show the card every turn */
+    const stillPending = (k: string) => flags.pending.some((f) => f.key === k);
+    writeJson(flagsFile(session), { pending: flags.pending, announced: [...announced].filter(stillPending), notified: (flags.notified ?? []).filter(stillPending), updated: new Date().toISOString() });
     saveState(session, engine.state);
     if (!has(args, 'auto')) process.stdout.write(`autopilot: ${shown.length} suggestion(s), ${injected} queued for Claude's next turn, ${flags.pending.length} flag(s) on the status line\n`);
     return;
   }
   const all = engine.evaluate(ctx);
-  const applyIdx = flag(args, 'apply');
-  const injectIdx = flag(args, 'inject');
+  /* the plugin passes one string: "apply 2", "inject 1", "apply claude-md" */
+  const fromArgs = flag(args, 'from-args');
+  const parsed = fromArgs !== undefined ? parseCoachArgs(fromArgs) : null;
+  const applyIdx = parsed?.verb === 'apply' ? parsed.target : flag(args, 'apply');
+  const injectIdx = parsed?.verb === 'inject' ? parsed.target : flag(args, 'inject');
   if (applyIdx !== undefined || injectIdx !== undefined) {
-    /* a number is the index in the list; anything else is a rule id or key, which is what the injected flag note uses */
+    /* a number is the position in the "waiting for you" list (most money first, the order every surface shows);
+       anything else is a rule id or key, which is what the injected flag note uses */
     const target = String(applyIdx ?? injectIdx);
-    const s = /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((x) => x.rule === target || x.key === target);
+    const waiting = orderedFlags(readFlags(session).pending);
+    const byFlag = /^\d+$/.test(target) ? waiting[Number(target) - 1] : undefined;
+    const s = byFlag ? all.find((x) => x.key === byFlag.key) ?? all.find((x) => x.rule === byFlag.rule) : /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((x) => x.rule === target || x.key === target);
     if (!s) {
       process.stderr.write(`No suggestion ${/^\d+$/.test(target) ? '#' + target : `for ${target}`}. Run \`tally coach --once\` to list them.\n`);
       return 1;
@@ -100,26 +108,42 @@ export async function run(args: Args): Promise<number | void> {
     const r = applyIdx !== undefined ? applySuggestion(s, { session, cwd, cfg, mode: 'ask' }) : injectSuggestion(s, { session, cwd });
     if (r.ok) {
       const flags = readFlags(session);
-      writeJson(flagsFile(session), { pending: flags.pending.filter((f) => f.key !== s.key), updated: new Date().toISOString() });
+      const keep = (k: string) => k !== s.key;
+      writeJson(flagsFile(session), { pending: flags.pending.filter((f) => keep(f.key)), announced: (flags.announced ?? []).filter(keep), notified: (flags.notified ?? []).filter(keep), updated: new Date().toISOString() });
     }
     process.stdout.write(`${r.ok ? 'ok' : 'failed'}: ${r.detail}\n`);
     return r.ok ? 0 : 1;
   }
   process.stdout.write(renderHeader(ctx, color) + '\n\n');
-  if (!all.length && !readFlags(session).pending.length) {
+  const waiting = orderedFlags(readFlags(session).pending);
+  if (!all.length && !waiting.length) {
     process.stdout.write('No suggestions right now.\n');
     return;
   }
-  const result = engine.tick(ctx, all);
-  const list = has(args, 'all') ? all : [...result.show, ...result.held];
-  list.forEach((s, i) => process.stdout.write(renderSuggestion(s, color, i + 1) + '\n\n'));
-  if (!has(args, 'all')) saveState(session, engine.state);
-  /* flags: what autopilot left for a human, with the index that --apply / --inject take */
-  const flagged = readFlags(session).pending.map((f) => ({ ...f, idx: all.findIndex((s) => s.key === f.key) + 1 }));
-  if (flagged.length) {
-    process.stdout.write(`Waiting for you (${flagged.length} flag${flagged.length === 1 ? '' : 's'} from autopilot):\n`);
-    for (const f of flagged) process.stdout.write(`  ${f.idx > 0 ? `#${f.idx}` : ' ·'}  ${f.title}${f.label ? `  →  ${f.label}` : ''}${f.idx > 0 ? `   (tally coach --apply ${f.idx})` : '   (no longer applicable; cleared on the next tick)'}\n`);
-    process.stdout.write('\n');
+  /* what autopilot left for a human, first and numbered the way the Stop notice and the status line number it */
+  if (waiting.length) {
+    process.stdout.write(`Waiting for you (${waiting.length}):\n`);
+    const width = Math.min(Math.max(...waiting.map((f) => f.title.length), 20), 60);
+    waiting.forEach((f, i) => {
+      const s = all.find((x) => x.key === f.key);
+      process.stdout.write(`  ${i + 1}  ${f.title.padEnd(width)}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ''}${s?.message ? `\n     ${s.message.split('\n')[0]!.slice(0, 110)}` : ''}${s?.action.label ? `\n     if you say yes: ${s.action.label}` : ''}\n`);
+    });
+    process.stdout.write(`\n  Act: tally coach --apply <n>   (plugin: /tally:coach apply <n>; or just tell Claude "tally apply <n>")\n\n`);
   }
-  process.stdout.write(`Act on one: tally coach --apply <#> | --inject <#>   (or run \`tally watch\` for the live pane)\n`);
+  const result = engine.tick(ctx, all);
+  const list = (has(args, 'all') ? all : [...result.show, ...result.held]).filter((s) => !waiting.some((f) => f.key === s.key));
+  if (list.length) {
+    process.stdout.write('Observations:\n');
+    list.forEach((s, i) => process.stdout.write(renderSuggestion(s, color, waiting.length + i + 1) + '\n\n'));
+  }
+  if (!has(args, 'all')) saveState(session, engine.state);
+  process.stdout.write(`Live pane: tally watch   ·   quiet a rule for this repo: tally config mutes\n`);
+}
+
+/* "apply 2", "inject claude-md", "2" (apply by default) */
+export function parseCoachArgs(text: string): { verb: 'apply' | 'inject'; target: string } | null {
+  const m = /^\s*(?:(apply|inject|yes|do)\s+)?(?:#)?([\w:.-]+)\s*$/i.exec(text);
+  if (!m) return null;
+  const verb = m[1]?.toLowerCase() === 'inject' ? 'inject' : 'apply';
+  return { verb, target: m[2]! };
 }

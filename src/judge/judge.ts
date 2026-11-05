@@ -16,7 +16,8 @@ import { maintainerReview, reviewCaps, shouldReview, type Review } from './revie
 import { buildAssurance, changedTestFiles } from '../assurance/index.js';
 import { redactDeep } from '../redact.js';
 import { otelCostForSession } from '../cost/otel.js';
-import { testRerunConsent } from '../config.js';
+import { testRerunConsent, loadConfig } from '../config.js';
+import { recordVerification } from '../estimate/ledger.js';
 import { resolveCheck, runLooksConclusive } from './checks.js';
 import { scanSecurity } from '../coach/rules/security-watch.js';
 import { selectTiers, buildTier1Prompt, TIER1_SYSTEM, ESCALATION_SYSTEM, TIER_SCHEMA, approxTokens, mechanicalSummary, guardedConfidence, verdictSensitive, type Tier1Result, type Status } from './tiers.js';
@@ -523,6 +524,16 @@ export function persistJudge(judge: Judge, task: Task | null): void {
   writeJson(file, judge);
   fs.writeFileSync(path.join(dir, 'report.md'), renderReport(judge));
   appendEvent({ ts: new Date().toISOString(), type: 'judge', session: judge.session, cwd: judge.cwd, data: { verdict: judge.verdict.verdict, completion_pct: judge.completion_pct, cost_usd: judge.cost.total_usd, reason: judge.reason } });
+  /* the team ledger carries the receipt's summary, so a repository's verified-completion rate and its cost per verified
+     story can be read from the file it already commits. A CI check judges a checkout nobody commits from, so it is left out. */
+  const a = judge.assurance;
+  if (a && judge.cwd && !judge.session.startsWith('ci-') && loadConfig().cost.ledger) {
+    try {
+      recordVerification(judge.cwd, judge.session, { ...a.summary, discriminating: a.verification.independent.discriminating, contract: a.task.status, verdict: judge.verdict.verdict }, { story: judge.task.title, agent: a.agent.product, model: judge.cost.models[0] ?? judge.judge_model });
+    } catch (err) {
+      log(`judge: ledger verification record failed: ${String(err)}`);
+    }
+  }
   const entry = {
     ts: judge.judged_at,
     session: judge.session,
@@ -595,15 +606,18 @@ export function currentHead(cwd: string): string | undefined {
 /* a fingerprint of the uncommitted work: the diff against HEAD plus the untracked files; a receipt made before an edit
    must not be reused after it */
 export function workingTreeHash(cwd: string): string | undefined {
-  const diff = spawnSync('git', ['diff', 'HEAD', '--no-color'], { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 50 * 1024 * 1024 });
+  /* Tally's own files in the repository (.tally/ledger.jsonl) are not the person's work: writing a receipt summary must
+     not make the receipt look stale */
+  const diff = spawnSync('git', ['diff', 'HEAD', '--no-color', '--', '.', ':(exclude).tally'], { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 50 * 1024 * 1024 });
   if (diff.status !== 0) return undefined;
   const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd, encoding: 'utf8', windowsHide: true });
-  return createHash('sha1')
-    .update(diff.stdout)
-    .update('\n--\n')
-    .update(untracked.status === 0 ? untracked.stdout : '')
-    .digest('hex')
-    .slice(0, 16);
+  const untrackedList = untracked.status === 0 ? untracked.stdout.split('\n').filter((f) => f && !isTallyPath(f)).join('\n') : '';
+  return createHash('sha1').update(diff.stdout).update('\n--\n').update(untrackedList).digest('hex').slice(0, 16);
+}
+
+/* .tally/ in a repository holds the team ledger; it is Tally's, never evidence of the work */
+export function isTallyPath(file: string): boolean {
+  return /^\.tally[\\/]/.test(file.trim());
 }
 
 /* A stored receipt is current only when nothing it depends on has moved: the commit, the uncommitted work, and the

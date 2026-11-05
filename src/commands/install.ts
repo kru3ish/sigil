@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { type Args, flag, has } from '../cli.js';
 import { agent, AGENT_IDS, type AgentId } from '../agents/index.js';
-import { install, uninstall, isInstalled, PluginConflictError, backup, hookScriptPath } from '../install/install.js';
+import { install, uninstall, isInstalled, PluginConflictError, backup, hookScriptPath, settingsPath } from '../install/install.js';
 import { ensureDir, tallyHome, pricingFile } from '../paths.js';
 import fs from 'node:fs';
 import { bundledPricingPath } from '../cost/pricing.js';
@@ -38,7 +38,7 @@ export function uninstallAgent(id: string): { file: string; removed: boolean } {
 }
 
 export async function run(args: Args): Promise<number | void> {
-  const scope = has(args, 'project') ? 'project' : 'user';
+  const scope = has(args, 'managed') ? ('managed' as const) : has(args, 'project') ? ('project' as const) : ('user' as const);
   ensureDir(tallyHome());
   const agentId = flag(args, 'agent');
   if (agentId && agentId !== 'claude-code') {
@@ -70,9 +70,15 @@ Remove with: tally uninstall --agent ${agentId}
       process.stderr.write(`${err.message}\n`);
       return 1;
     }
+    const code = (err as NodeJS.ErrnoException).code;
+    if (scope === 'managed' && (code === 'EACCES' || code === 'EPERM')) {
+      process.stderr.write(`Writing the managed settings file needs administrator rights: ${settingsPath('managed')}\nRun the terminal as administrator (Windows) or with sudo (macOS, Linux), then \`tally install --managed\` again.\n`);
+      return 1;
+    }
     throw err;
   }
   process.stdout.write(`Installed ${r.added} hook group(s) into ${r.file}${r.statusline ? ' and the Tally status line' : ''}\n`);
+  if (scope === 'managed') process.stdout.write('Managed settings apply to every user of this machine and cannot be removed from user or project settings; roll the file out with your device management to make it the fleet default.\n');
   process.stdout.write('MCP server: run `tally mcp --install` so Claude can ask tally_unmet before saying a task is done.\n');
   try {
     const { buildOnboard, renderOnboard } = await import('./onboard.js');
@@ -86,7 +92,7 @@ Remove with: tally uninstall --agent ${agentId}
 }
 
 export async function runUninstall(args: Args): Promise<void> {
-  const scope = has(args, 'project') ? 'project' : 'user';
+  const scope = has(args, 'managed') ? ('managed' as const) : has(args, 'project') ? ('project' as const) : ('user' as const);
   const agentId = flag(args, 'agent');
   if (agentId && agentId !== 'claude-code') {
     const r = uninstallAgent(agentId);

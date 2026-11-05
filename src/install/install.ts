@@ -85,7 +85,19 @@ export function uninstallStatusLine(): { removed: boolean } {
   return { removed: true };
 }
 
-export function settingsPath(scope: 'user' | 'project', cwd = process.cwd()): string {
+export type Scope = 'user' | 'project' | 'managed';
+
+/* Claude Code's managed settings: written by an administrator, read before user and project settings, and not
+   something a person or an agent can edit away. TALLY_MANAGED_SETTINGS overrides the path (tests, unusual installs). */
+export function managedSettingsPath(platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
+  if (env.TALLY_MANAGED_SETTINGS) return env.TALLY_MANAGED_SETTINGS;
+  if (platform === 'win32') return path.join(env.ProgramData ?? env.PROGRAMDATA ?? 'C:\\ProgramData', 'ClaudeCode', 'managed-settings.json');
+  if (platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-settings.json';
+  return '/etc/claude-code/managed-settings.json';
+}
+
+export function settingsPath(scope: Scope, cwd = process.cwd()): string {
+  if (scope === 'managed') return managedSettingsPath();
   return scope === 'user' ? path.join(claudeHome(), 'settings.json') : path.join(cwd, '.claude', 'settings.json');
 }
 
@@ -120,7 +132,7 @@ function originalMarker(file: string): string {
   return path.join(backupDir(), 'original-' + Buffer.from(file).toString('base64url') + '.json');
 }
 
-export function install(opts: { scope: 'user' | 'project'; cwd?: string; scriptPath?: string; force?: boolean; statusline?: boolean }): { file: string; added: number; backup: string | null; statusline: boolean } {
+export function install(opts: { scope: Scope; cwd?: string; scriptPath?: string; force?: boolean; statusline?: boolean }): { file: string; added: number; backup: string | null; statusline: boolean } {
   const plugin = enabledPluginIds(opts.cwd);
   if (plugin.length && !opts.force) throw new PluginConflictError(plugin);
   const file = settingsPath(opts.scope, opts.cwd);
@@ -163,7 +175,7 @@ export function install(opts: { scope: 'user' | 'project'; cwd?: string; scriptP
   return { file, added, backup: bk, statusline };
 }
 
-export function uninstall(opts: { scope: 'user' | 'project'; cwd?: string }): { file: string; removed: number; restoredOriginal: boolean } {
+export function uninstall(opts: { scope: Scope; cwd?: string }): { file: string; removed: number; restoredOriginal: boolean } {
   const file = settingsPath(opts.scope, opts.cwd);
   const marker = originalMarker(file);
   if (!fs.existsSync(file)) {
@@ -219,7 +231,7 @@ function cleanupMarker(marker: string): void {
   for (const f of [marker, marker + '.missing']) if (fs.existsSync(f)) fs.unlinkSync(f);
 }
 
-export function isInstalled(scope: 'user' | 'project', cwd?: string): boolean {
+export function isInstalled(scope: Scope, cwd?: string): boolean {
   const file = settingsPath(scope, cwd);
   if (!fs.existsSync(file)) return false;
   try {

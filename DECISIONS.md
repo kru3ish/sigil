@@ -255,3 +255,11 @@ A month of the maintainer's own sessions: 37 first-turn blocks from the definiti
 - P4: The bar is the repo's. `verification.required` has three settings and `no-unmet` is the floor; the Action's input can only name one of the three. There is no setting that passes an UNMET criterion.
 - P5: One comment per pull request, found by a marker and updated in place; the gh token the Action already has is enough. Nothing in the comment is code or a prompt.
 - P6: A model in CI is an OpenAI-compatible endpoint named by environment, not Tally's local config: runners have no `~/.tally`, and the endpoint choice is the repository owner's.
+
+## The team layer (2026-11-05)
+
+- T1: The enterprise number is not spend; it is whether the work was done, and what done cost. `/usage` and the Analytics API already report cost, lines and merges per person. Tally's ledger line now carries the receipt summary, so a platform team can read verified-completion rate and cost per verified story from a file the repository already commits, with no server.
+- T2: "Verified" on the organisation view is the strict reading: no criterion UNMET or UNVERIFIED. A looser rate (nothing unmet) sits next to it. Both show their counts, because a repository with four judged stories has a noisy rate and the reader should see that.
+- T3: The receipt reaches the ledger from the judge, not from finalize's cost step, because the judge runs after the cost line is written and can run again (a dispute, a re-judge); the ledger line is rewritten in place and a session with no cost line gets a minimal one. A CI check is left out: it judges a checkout nobody commits from.
+- T4: The audit trail is a view, not a new store. Every decision it lists was already recorded as a session event or marker; a second copy would drift. `--json` is the export; the OpenTelemetry path remains for metrics.
+- T5: Managed settings are the enterprise install. User and project settings are the person's and the repository's; a platform team that wants the hooks on every machine writes the managed file through device management, and `tally install --managed` produces exactly that file. Tally never escalates privileges itself; it says what rights the write needs.

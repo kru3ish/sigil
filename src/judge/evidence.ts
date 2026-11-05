@@ -61,9 +61,11 @@ export function collectGit(cwd: string, baseHead: string | undefined, exec: Exec
   const stat = exec('git', ['diff', '--stat', ...range], cwd);
   out.diff_stat = stat.stdout.trim();
   const names = exec('git', ['diff', '--name-only', ...range], cwd);
-  const files = new Set(names.stdout.split('\n').map((s) => s.trim()).filter(Boolean));
+  /* .tally/ holds the team ledger Tally writes itself; it is never part of the work being judged */
+  const notTally = (f: string) => !/^\.tally[\\/]/.test(f);
+  const files = new Set(names.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notTally));
   const untracked = exec('git', ['ls-files', '--others', '--exclude-standard'], cwd);
-  for (const f of untracked.stdout.split('\n').map((s) => s.trim()).filter(Boolean)) files.add(f);
+  for (const f of untracked.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notTally)) files.add(f);
   out.files_changed = [...files].sort();
   const numstat = exec('git', ['diff', '--numstat', ...range], cwd);
   for (const line of numstat.stdout.split('\n')) {

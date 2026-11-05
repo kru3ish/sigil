@@ -65,6 +65,13 @@ export async function run(args: Args): Promise<number | void> {
       process.stdout.write('No evaluation runs recorded yet (eval/results/ledger.jsonl). Run `tally eval run`.\n');
       return;
     }
+    if (has(args, 'markdown')) {
+      /* the published benchmark table: classes stay separate, false VERIFIED is its own column, costs are the agent's */
+      process.stdout.write(`| class | Tally | runs | criteria | exact agreement | false VERIFIED | false UNMET | verdict agreement | agent spend |\n|---|---|---|---|---|---|---|---|---|\n`);
+      for (const a of agg) process.stdout.write(`| ${a.class} | ${a.version} | ${a.runs} | ${a.criteria} | ${a.exact}/${a.criteria} (${a.criteria ? Math.round((a.exact / a.criteria) * 100) : 0}%) | ${a.false_verified} | ${a.false_unmet} | ${a.verdict_n ? `${a.verdict_agreement}/${a.verdict_n}` : '–'} | $${a.cost_usd.toFixed(2)} |\n`);
+      process.stdout.write(`\n${lines.length} runs. False VERIFIED: Tally said VERIFIED, the blind grader said partial or unmet (a release defect). False UNMET: Tally said UNMET, the grader said met.\n`);
+      return;
+    }
     process.stdout.write(`Evaluation ledger: ${lines.length} run(s). Classes are reported separately on purpose; never one headline number.\n\n`);
     process.stdout.write(`${'class'.padEnd(11)}${'tally'.padEnd(8)}${'runs'.padStart(5)}${'criteria'.padStart(9)}${'exact'.padStart(7)}${'falseVER'.padStart(9)}${'falseUNMET'.padStart(11)}${'verdict'.padStart(9)}${'agent $'.padStart(9)}\n`);
     for (const a of agg) process.stdout.write(`${a.class.padEnd(11)}${a.version.padEnd(8)}${String(a.runs).padStart(5)}${String(a.criteria).padStart(9)}${`${a.exact}/${a.criteria}`.padStart(7)}${String(a.false_verified).padStart(9)}${String(a.false_unmet).padStart(11)}${(a.verdict_n ? `${a.verdict_agreement}/${a.verdict_n}` : '-').padStart(9)}${a.cost_usd.toFixed(2).padStart(9)}\n`);

@@ -29,6 +29,27 @@ export interface LedgerEntry {
   savable_usd: number;
   drivers: Array<{ id: string; usd: number; fix?: string; group?: 'waste' | 'add' }>;
   fixes_applied?: string[];
+  /* the receipt's summary, added when the session is judged: the counts behind a team's verified-completion rate */
+  verification?: LedgerVerification;
+}
+
+export interface LedgerVerification {
+  verified: number;
+  supported: number;
+  unverified: number;
+  unmet: number;
+  total: number;
+  /* the mutation check: true when the agent's tests fail without the change; absent when not run */
+  discriminating?: boolean;
+  contract: 'confirmed' | 'linked' | 'needs_confirmation' | 'none';
+  verdict?: string;
+}
+
+/* a story counts as verified when every criterion is VERIFIED or SUPPORTED and none is UNMET or UNVERIFIED */
+export function isVerifiedStory(e: LedgerEntry): boolean | undefined {
+  const v = e.verification;
+  if (!v || !v.total) return undefined;
+  return v.unmet === 0 && v.unverified === 0;
 }
 
 export function repoRoot(cwd: string): string | undefined {
@@ -91,6 +112,35 @@ export function entryFromCheck(c: CostCheck, extra: { agent?: string; key?: stri
     drivers: c.drivers.map((d) => ({ id: d.id, usd: d.usd, ...(d.fix ? { fix: d.fix.id } : {}), ...(d.group === 'add' ? { group: 'add' as const } : {}) })),
     ...(extra.fixes_applied?.length ? { fixes_applied: extra.fixes_applied } : {}),
   };
+}
+
+/* the receipt's summary onto the story's ledger line (the cost line is written first, at session end; the judge runs
+   after it). A story with no cost line yet (no dollars known, ledger written by another machine) gets a minimal one. */
+export function recordVerification(cwd: string, session: string, v: LedgerVerification, fallback: { story: string; agent: string; model: string; now?: Date }): string | undefined {
+  const root = repoRoot(cwd);
+  if (!root) return undefined;
+  const f = ledgerFile(root);
+  const lines = fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.trim()) : [];
+  let found = false;
+  const out = lines.map((l) => {
+    if (!l.includes(`"session":${JSON.stringify(session)}`)) return l;
+    try {
+      const e = JSON.parse(l) as LedgerEntry;
+      if (e.session !== session) return l;
+      found = true;
+      return JSON.stringify({ ...e, verification: v });
+    } catch {
+      return l;
+    }
+  });
+  if (!found) {
+    const minimal: LedgerEntry = { v: 1, ts: (fallback.now ?? new Date()).toISOString(), session, story: fallback.story.split('\n')[0]!.slice(0, 140), agent: fallback.agent, model: fallback.model, actual_usd: 0, status: 'no_estimate', savable_usd: 0, drivers: [], verification: v };
+    const author = gitUser(root);
+    out.push(JSON.stringify(author ? { ...minimal, author } : minimal));
+  }
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, out.join('\n') + '\n');
+  return f;
 }
 
 /* appends the story; a session already in the ledger is replaced by rewriting the file without its old line */

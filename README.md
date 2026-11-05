@@ -122,8 +122,16 @@ tally fix --list                                      # the fixes for this sessi
 
 **OpenTelemetry for the dashboards a company already has.** If an OTLP endpoint is set (`OTEL_EXPORTER_OTLP_ENDPOINT`, `TALLY_OTEL_ENDPOINT`, or `tally config cost.otel_endpoint`), each finished story is sent as OTLP/HTTP JSON gauges: `tally.story.cost`, `tally.story.estimate`, `tally.story.overage`, `tally.story.avoidable` and `tally.story.driver.cost`, labelled with repo, ticket key, model, status, author and `OTEL_RESOURCE_ATTRIBUTES` (team, cost centre). Claude Code removes `OTEL_*` variables from the environment hooks run in, so Tally reads them from Claude Code's settings files instead (managed, user, project, local): an organisation that already rolled out Claude Code's own OpenTelemetry through managed settings gets Tally's story metrics at the same collector without touching anyone's machine. `TALLY_OTEL_ENDPOINT` (and `_HEADERS`, `_RESOURCE_ATTRIBUTES`) override it, also from settings `env`; a gRPC-only collector needs `TALLY_OTEL_ENDPOINT` pointing at its OTLP/HTTP port. Verified end to end with Claude Code 2.1.302 and a local collector. Claude Code's own metrics answer "how much did we spend"; these answer "which stories went over, by how much, and what would fix it".
 
+**The number a platform team asks for.** When a session is judged, the receipt summary is written onto the story's ledger line next to its cost: criteria verified, supported, unverified and unmet, the mutation check, whether the contract was confirmed, linked or inferred. `tally dashboard --org <root>` reads every repository's ledger under a root and answers, by repository, agent and model: how many stories ended **verified** (every criterion verified or supported, none unmet or unverified), and what a verified story cost. Claude Code's `/usage` and the Analytics API report spend, lines and merges per person; nobody else reports whether the work was done. Terminal table, a self-contained HTML page, `--json`.
+
+**The audit trail.** `tally audit [--since 30d] [--repo <path>] [--json]` lists every decision Tally recorded on the machine: receipts, pull-request checks, disputes (who overrode which criterion), budget approvals, hard stops and done-gate blocks. It reads the session records already on disk and writes nothing; `--json` is the export for a SIEM.
+
+**The fleet install.** `tally install --managed` writes the hooks into Claude Code's managed settings (the file an administrator controls and no user or project setting can override), so a platform team can roll Tally out through device management and know every session on every machine is recorded. `tally uninstall --managed` restores the file byte for byte.
+
 ```bash
 tally dashboard                    # the team page from .tally/ledger.jsonl
+tally dashboard --org ~/work       # every repo under a root: verified completion, cost per verified story
+tally audit --since 7d             # receipts, checks, disputes, approvals, blocks this week
 tally cost --record                # record this story now instead of at session end
 tally config cost.otel_endpoint http://collector:4318   # or OTEL_EXPORTER_OTLP_ENDPOINT in Claude Code's settings env
 ```

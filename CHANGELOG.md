@@ -2,7 +2,7 @@
 
 All notable changes to Tally. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
 
-## [Unreleased]
+## [0.12.0] - 2026-11-05
 
 ### Added
 - **The mutation check.** After a green independent run, the judge runs the agent's own test files once more at the base commit, with nothing else from the work applied. A test that passes with and without the change tests nothing about it, so it no longer anchors a VERIFIED criterion (capped at SUPPORTED, with the run on the evidence line); a test that fails there is recorded as evidence that it tests the work. `tally verify` shows the result under Verification. Off with `judge.mutation_check: false`. This is the check `/verify`, `/goal` and self-review loops cannot do: it is adversarial to the agent's own tests.

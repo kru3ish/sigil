@@ -4,6 +4,9 @@ All notable changes to Tally. The format follows [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Added
+- **The mutation check.** After a green independent run, the judge runs the agent's own test files once more at the base commit, with nothing else from the work applied. A test that passes with and without the change tests nothing about it, so it no longer anchors a VERIFIED criterion (capped at SUPPORTED, with the run on the evidence line); a test that fails there is recorded as evidence that it tests the work. `tally verify` shows the result under Verification. Off with `judge.mutation_check: false`. This is the check `/verify`, `/goal` and self-review loops cannot do: it is adversarial to the agent's own tests.
+
 ### Changed
 
 - **Coach flags reach you at the end of the turn.** What autopilot left for a human (an unused MCP server, a missing CLAUDE.md, a consent) is shown once, as a numbered card in the terminal when Claude stops, most money first, each line with what it saves. The status line shows the top flag's title and saving instead of a count. `/tally:coach` lists the same items under "Waiting for you" with the one-line consequence of saying yes; `/tally:coach apply <n>`, `tally coach --apply <n>`, or telling Claude "tally apply 2" act on one, and the number means the same flag on every surface.

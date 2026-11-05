@@ -240,3 +240,9 @@ A month of the maintainer's own sessions: 37 first-turn blocks from the definiti
 - V3: One order everywhere: most money first, in the card, the status line and `/tally:coach`, so "apply 2" names the same flag on every surface. `/tally:coach apply <n>` and a plain "tally apply 2" said to Claude both resolve the number against that list.
 - V4: The status line shows the top flag's title and saving, not a count. A count is a fact; a title is a decision the person can take.
 - V5: Every writer of `coach-flags.json` (the tick, `--apply`) preserves all three lists; dropping `notified` would re-show the card every turn, which is how the first version behaved on real data.
+
+## Mutation check (2026-11-05)
+
+- M1: A test written by the agent anchors a criterion only if it fails without the change. The judge re-runs the agent's test files at the base commit with only those files applied (a detached worktree, dependencies shared, the working tree untouched) and records `verification.without_change`. Pass there means the test is vacuous: the criterion is capped at SUPPORTED. The demo's self-agreeing test was the first case; a green suite is not evidence until it is shown to be able to fail.
+- M2: Only the agent's own test files are checked. A pre-existing test that names the behaviour is judged by the existing rule; running it at base would tell nothing new for a feature and would be wrong for a bug fix whose pre-existing test was red.
+- M3: Any non-zero exit at base counts as "fails without the change", including an import error from a module the work added. That is weaker than an assertion failure, and the receipt says how many tests failed when the runner reports it, but a test that cannot even load without the change is still not vacuous.

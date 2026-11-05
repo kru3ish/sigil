@@ -67,6 +67,7 @@ export const JudgeSchema = z.object({
     tests_green: z.boolean().optional(),
     at_base: z.object({ ran: z.boolean(), passed: z.boolean().optional(), exit_code: z.number().nullable().optional(), summary: z.object({ passed: z.number().nullable(), failed: z.number().nullable() }).optional(), reason: z.string().optional(), duration_ms: z.number().optional() }).optional(),
     failure_attributable: z.boolean().optional(),
+    without_change: z.object({ ran: z.boolean(), passed: z.boolean().optional(), exit_code: z.number().nullable().optional(), summary: z.object({ passed: z.number().nullable(), failed: z.number().nullable() }).optional(), reason: z.string().optional(), duration_ms: z.number().optional(), test_files: z.array(z.string()) }).optional(),
   }),
   evidence: z.object({
     files_changed: z.array(z.string()),

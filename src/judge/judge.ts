@@ -13,7 +13,7 @@ import { collectEvidence, type Evidence, type Exec } from './evidence.js';
 import { runVerification, NO_CONSENT_REASON, type VerificationResult } from './verify.js';
 import { loadPolicy } from '../policy.js';
 import { maintainerReview, reviewCaps, shouldReview, type Review } from './review.js';
-import { buildAssurance } from '../assurance/index.js';
+import { buildAssurance, changedTestFiles } from '../assurance/index.js';
 import { redactDeep } from '../redact.js';
 import { otelCostForSession } from '../cost/otel.js';
 import { testRerunConsent } from '../config.js';
@@ -248,7 +248,9 @@ export async function judgeSession(opts: {
   if (!task) task = implicitTask(opts.session, opts.cwd, t, opts.cfg);
   const ev = collectEvidence({ cwd: opts.cwd, transcript: t, events, exec: opts.exec, skipGit: opts.skipGit });
   const consent = opts.consent ?? testRerunConsent(opts.cfg, opts.cwd);
-  const ver = opts.verification ?? (await runVerification(opts.cwd, { timeoutMs: opts.cfg.judge.test_timeout_ms, enabled: opts.cfg.judge.run_tests, consent, command: loadPolicy(opts.cwd).policy.test_command, baseHead: ev.git.base_head }));
+  /* the mutation check needs the test files the work touched; without a base commit there is nothing to run them against */
+  const agentTests = ev.git.base_head && !opts.skipGit ? changedTestFiles(opts.cwd, ev.git.base_head) : { added: [], modified: [] };
+  const ver = opts.verification ?? (await runVerification(opts.cwd, { timeoutMs: opts.cfg.judge.test_timeout_ms, enabled: opts.cfg.judge.run_tests, consent, command: loadPolicy(opts.cwd).policy.test_command, baseHead: ev.git.base_head, testFiles: [...agentTests.added, ...agentTests.modified], mutationCheck: opts.cfg.judge.mutation_check }));
   const waste = computeWaste(t, { baselineTokens: opts.cfg.baseline_context_tokens });
   const humanValue = task.estimate.hours * task.hourly_rate;
 

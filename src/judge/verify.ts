@@ -62,6 +62,9 @@ export interface VerificationResult {
   at_base?: { ran: boolean; passed?: boolean; exit_code?: number | null; summary?: { passed: number | null; failed: number | null }; reason?: string; duration_ms?: number };
   /* false when the failure is explained by tests_green or by the base commit failing the same way; undefined when passed */
   failure_attributable?: boolean;
+  /* the mutation check: the suite passed, so the agent's own test files were run again at the base commit, without the
+     change. passed === true means those tests pass with and without the work, so they test nothing about it. */
+  without_change?: { ran: boolean; passed?: boolean; exit_code?: number | null; summary?: { passed: number | null; failed: number | null }; reason?: string; duration_ms?: number; test_files: string[] };
 }
 
 /* The runner's own summary, when it prints one. Null fields mean "not stated", not zero. */
@@ -100,13 +103,22 @@ export function failureAttributable(v: VerificationResult): boolean | undefined 
 
 /* Run the same command at the base commit in a detached worktree (dependencies shared through a junction to the
    session's node_modules when present), then remove the worktree. Never touches the session's tree. */
-export async function runAtBase(cwd: string, base: string, command: string, timeoutMs: number): Promise<NonNullable<VerificationResult['at_base']>> {
+export async function runAtBase(cwd: string, base: string, command: string, timeoutMs: number, overlay: string[] = []): Promise<NonNullable<VerificationResult['at_base']>> {
   const started = Date.now();
   const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-base-'));
   const dir = path.join(wt, 'repo');
   try {
     const add = await runProcess('git', ['worktree', 'add', '--detach', dir, base], { cwd, timeoutMs: 120000 });
     if (add.code !== 0) return { ran: false, reason: `could not check out the base commit: ${(add.stderr || add.stdout).trim().slice(-200)}` };
+    /* the mutation check: the work's test files on top of the base commit, nothing else from the work */
+    for (const rel of overlay) {
+      const src = path.join(cwd, rel);
+      const dst = path.join(dir, rel);
+      if (!path.resolve(dst).startsWith(path.resolve(dir) + path.sep)) continue;
+      if (!fs.existsSync(src)) continue;
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.copyFileSync(src, dst);
+    }
     const mods = path.join(cwd, 'node_modules');
     if (fs.existsSync(mods) && !fs.existsSync(path.join(dir, 'node_modules'))) {
       try {
@@ -150,7 +162,7 @@ export function scrubEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
   return out;
 }
 
-export async function runVerification(cwd: string, opts: { timeoutMs: number; command?: string; enabled?: boolean; consent?: boolean; baseHead?: string }): Promise<VerificationResult> {
+export async function runVerification(cwd: string, opts: { timeoutMs: number; command?: string; enabled?: boolean; consent?: boolean; baseHead?: string; testFiles?: string[]; mutationCheck?: boolean }): Promise<VerificationResult> {
   if (opts.enabled === false) return { ran: false, reason: 'disabled in config (judge.run_tests=false)' };
   if (opts.consent !== true) return { ran: false, reason: NO_CONSENT_REASON, consent: opts.consent };
   const detected = opts.command ? { command: opts.command, basis: 'configured' } : detectTestCommand(cwd);
@@ -180,5 +192,12 @@ export async function runVerification(cwd: string, opts: { timeoutMs: number; co
     result.at_base = await runAtBase(cwd, opts.baseHead, detected.command, opts.timeoutMs);
   }
   result.failure_attributable = failureAttributable(result);
+  /* the post-run passed and the agent wrote or changed tests: run those tests without the change. A test that passes
+     either way is not evidence that the change does what the criterion says. */
+  const testFiles = (opts.testFiles ?? []).filter((f) => fs.existsSync(path.join(cwd, f)));
+  if (passed && opts.baseHead && testFiles.length && opts.mutationCheck !== false) {
+    const r2 = await runAtBase(cwd, opts.baseHead, detected.command, opts.timeoutMs, testFiles);
+    result.without_change = { ...r2, test_files: testFiles };
+  }
   return result;
 }

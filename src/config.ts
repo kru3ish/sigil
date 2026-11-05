@@ -44,6 +44,8 @@ export const ConfigSchema = z.object({
       /* how long session-end judging waits for a task intake that is still running */
       intake_wait_ms: z.number().int().nonnegative().default(180000),
       run_tests: z.boolean().default(true),
+      /* after a green run, re-run the agent's own test files at the base commit; tests that pass without the change anchor nothing */
+      mutation_check: z.boolean().default(true),
       deepThreshold: z.number().nonnegative().default(3),
       /* the maintainer-review tier: 'auto' runs on library-shaped repos (non-private package with an entry point, crate,
          Python package) when source files changed; 'on' always; 'off' never. It can only cap a verdict, never raise it. */

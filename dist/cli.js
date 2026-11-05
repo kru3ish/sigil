@@ -4812,6 +4812,8 @@ var init_config = __esm({
         /* how long session-end judging waits for a task intake that is still running */
         intake_wait_ms: external_exports.number().int().nonnegative().default(18e4),
         run_tests: external_exports.boolean().default(true),
+        /* after a green run, re-run the agent's own test files at the base commit; tests that pass without the change anchor nothing */
+        mutation_check: external_exports.boolean().default(true),
         deepThreshold: external_exports.number().nonnegative().default(3),
         /* the maintainer-review tier: 'auto' runs on library-shaped repos (non-private package with an entry point, crate,
            Python package) when source files changed; 'on' always; 'off' never. It can only cap a verdict, never raise it. */
@@ -6630,13 +6632,21 @@ function failureAttributable(v) {
   }
   return true;
 }
-async function runAtBase(cwd, base, command, timeoutMs) {
+async function runAtBase(cwd, base, command, timeoutMs, overlay = []) {
   const started = Date.now();
   const wt = fs14.mkdtempSync(path14.join(os4.tmpdir(), "tally-base-"));
   const dir = path14.join(wt, "repo");
   try {
     const add = await runProcess("git", ["worktree", "add", "--detach", dir, base], { cwd, timeoutMs: 12e4 });
     if (add.code !== 0) return { ran: false, reason: `could not check out the base commit: ${(add.stderr || add.stdout).trim().slice(-200)}` };
+    for (const rel3 of overlay) {
+      const src = path14.join(cwd, rel3);
+      const dst = path14.join(dir, rel3);
+      if (!path14.resolve(dst).startsWith(path14.resolve(dir) + path14.sep)) continue;
+      if (!fs14.existsSync(src)) continue;
+      fs14.mkdirSync(path14.dirname(dst), { recursive: true });
+      fs14.copyFileSync(src, dst);
+    }
     const mods = path14.join(cwd, "node_modules");
     if (fs14.existsSync(mods) && !fs14.existsSync(path14.join(dir, "node_modules"))) {
       try {
@@ -6699,6 +6709,11 @@ async function runVerification(cwd, opts) {
     result.at_base = await runAtBase(cwd, opts.baseHead, detected.command, opts.timeoutMs);
   }
   result.failure_attributable = failureAttributable(result);
+  const testFiles = (opts.testFiles ?? []).filter((f) => fs14.existsSync(path14.join(cwd, f)));
+  if (passed && opts.baseHead && testFiles.length && opts.mutationCheck !== false) {
+    const r2 = await runAtBase(cwd, opts.baseHead, detected.command, opts.timeoutMs, testFiles);
+    result.without_change = { ...r2, test_files: testFiles };
+  }
   return result;
 }
 var NO_CONSENT_REASON, ENV_KEEP, SECRET_LIKE;
@@ -10108,27 +10123,36 @@ function matchingHunks(diff, keywords) {
   flush2();
   return hits2.slice(0, 6);
 }
+function changedTestFiles(cwd, baseHead2) {
+  const added = [];
+  const modified = [];
+  const status2 = git(cwd, ["diff", "--name-status", baseHead2, "--"]);
+  if (status2 !== null) {
+    for (const line of status2.split("\n")) {
+      const [st, ...rest] = line.split("	");
+      const f = rest[rest.length - 1] ?? "";
+      if (!f || !TEST_PATH_RE.test(f)) continue;
+      if (st?.startsWith("A")) added.push(f);
+      else if (st?.startsWith("M") || st?.startsWith("R")) modified.push(f);
+    }
+  }
+  const untracked = (git(cwd, ["ls-files", "--others", "--exclude-standard"]) ?? "").split("\n").filter(Boolean);
+  for (const f of untracked) if (TEST_PATH_RE.test(f) && !added.includes(f)) added.push(f);
+  return { added, modified, untracked };
+}
 function testProvenance(opts) {
   const { cwd, baseHead: baseHead2, judge } = opts;
   let preexisting = null;
-  const added = [];
-  const modified = [];
+  let added = [];
+  let modified = [];
   let casesAdded = 0;
   if (baseHead2) {
     const tree = git(cwd, ["ls-tree", "-r", "--name-only", baseHead2]);
     if (tree !== null) preexisting = tree.split("\n").filter((f) => f && TEST_PATH_RE.test(f)).length;
-    const status2 = git(cwd, ["diff", "--name-status", baseHead2, "--"]);
-    if (status2 !== null) {
-      for (const line of status2.split("\n")) {
-        const [st, ...rest] = line.split("	");
-        const f = rest[rest.length - 1] ?? "";
-        if (!f || !TEST_PATH_RE.test(f)) continue;
-        if (st?.startsWith("A")) added.push(f);
-        else if (st?.startsWith("M") || st?.startsWith("R")) modified.push(f);
-      }
-    }
-    const untrackedList = (git(cwd, ["ls-files", "--others", "--exclude-standard"]) ?? "").split("\n").filter(Boolean);
-    for (const f of untrackedList) if (TEST_PATH_RE.test(f) && !added.includes(f)) added.push(f);
+    const changedTests = changedTestFiles(cwd, baseHead2);
+    added = changedTests.added;
+    modified = changedTests.modified;
+    const untrackedList = changedTests.untracked;
     const diff = opts.diff ?? git(cwd, ["diff", baseHead2, "--"]) ?? "";
     let inTestFile = false;
     for (const line of diff.split("\n")) {
@@ -10151,7 +10175,11 @@ function testProvenance(opts) {
   if (v.ran && totalPassed === null) notes.push("the runner output did not state a passed count");
   if (!v.ran) notes.push(`independent run not made: ${v.reason ?? "unknown"}`);
   if (added.length || modified.length) notes.push("a green test written by the same agent that wrote the code is weaker evidence than a pre-existing one");
-  return { preexisting_files: preexisting, agent_created: { added_files: added, modified_files: modified, cases_added: casesAdded }, independent: { ran: v.ran, command: v.command, passed: v.passed, total_passed: totalPassed, reason: v.reason, tests_green: v.tests_green, fails_at_base: v.at_base?.ran ? v.at_base.passed === false : void 0, attributable: v.failure_attributable }, agent_runs: agentRuns, note: notes.join("; ") };
+  const wc = v.without_change;
+  const discriminating = wc?.ran ? wc.passed === false : void 0;
+  if (wc?.ran && wc.passed === true) notes.push(`the agent's test files (${wc.test_files.join(", ")}) also pass at the base commit without the change: they do not test it`);
+  if (wc && !wc.ran) notes.push(`mutation check not run: ${wc.reason ?? "unknown"}`);
+  return { preexisting_files: preexisting, agent_created: { added_files: added, modified_files: modified, cases_added: casesAdded }, independent: { ran: v.ran, command: v.command, passed: v.passed, total_passed: totalPassed, reason: v.reason, tests_green: v.tests_green, fails_at_base: v.at_base?.ran ? v.at_base.passed === false : void 0, attributable: v.failure_attributable, discriminating }, agent_runs: agentRuns, note: notes.join("; ") };
 }
 function parsePassedCount(output) {
   const pats = [/(\d+)\s+passing/, /ℹ pass\s+(\d+)/, /#\s*pass\s+(\d+)/, /Tests:\s+(\d+) passed/, /(\d+) passed/, /ok\s+\d+\s+\S+\s+[\d.]+s/];
@@ -10235,7 +10263,17 @@ function buildAssurance(opts) {
     if (testClaimWithoutTest) items.push({ kind: "test_names_it", strength: "deterministic", summary: "no test file was added, modified or names what this criterion is about", ok: false });
     const det = items.filter((i) => i.strength === "deterministic");
     const detPositive = det.filter((i) => i.ok !== false && i.kind !== "file_check");
-    const anchoredByTest = testHunkNamesIt && det.some((i) => (i.kind === "independent_run" || i.kind === "file_check" && /independent run/.test(i.summary)) && i.ok === true) && !runInconclusive;
+    let anchoredByTest = testHunkNamesIt && det.some((i) => (i.kind === "independent_run" || i.kind === "file_check" && /independent run/.test(i.summary)) && i.ok === true) && !runInconclusive;
+    const wc = j.verification.without_change;
+    const anchorIsAgentTest = hunks.some((h) => TEST_PATH_RE.test(h.file) && testFilesTouched.includes(h.file)) || items.some((i) => i.kind === "test_added" || i.kind === "test_modified");
+    if (anchoredByTest && anchorIsAgentTest && wc?.ran) {
+      if (wc.passed === true) {
+        items.push({ kind: "without_change_run", strength: "deterministic", summary: `the agent's tests also pass at the base commit without the change (${wc.test_files.join(", ")}): they do not test it`, ref: wc.test_files[0], ok: false });
+        anchoredByTest = false;
+      } else if (wc.passed === false) {
+        items.push({ kind: "without_change_run", strength: "deterministic", summary: `the agent's tests fail at the base commit without the change${wc.summary?.failed != null ? ` (${wc.summary.failed} failing)` : ""}: they test it`, ref: wc.test_files[0], ok: true });
+      }
+    }
     let status2;
     let basis;
     if (testClaimWithoutTest) {
@@ -10329,6 +10367,8 @@ function renderVerify(a, opts = {}) {
   const v = a.verification;
   if (v.independent.ran) L.push(`${c(v.independent.passed ? "32" : v.independent.attributable === false ? "33" : "31", v.independent.passed ? "\u2713" : v.independent.attributable === false ? "?" : "\u2717")} ${v.independent.command}  ${c("90", `independent run${v.independent.total_passed !== null ? `, ${v.independent.total_passed} passed` : ""}${v.independent.passed ? "" : v.independent.tests_green ? "; exited non-zero after a green test summary (a later stage failed, not the tests)" : v.independent.fails_at_base ? "; the base commit fails it too" : ""}`)}`);
   else L.push(`${c("90", "?")} independent run not made ${c("90", `(${v.independent.reason ?? "unknown"})`)}`);
+  if (v.independent.discriminating === true) L.push(`${c("32", "\u2713")} the agent's tests fail without the change  ${c("90", "(run at the base commit with only the test files applied: they test the work)")}`);
+  else if (v.independent.discriminating === false) L.push(`${c("31", "\u2717")} the agent's tests pass without the change  ${c("90", "(run at the base commit with only the test files applied: they do not test the work)")}`);
   L.push(`  pre-existing tests: ${v.preexisting_files === null ? c("90", "unknown (no base tree)") : `${v.preexisting_files} file(s) at session start`}`);
   L.push(`  agent-created tests: ${v.agent_created.added_files.length} file(s) added, ${v.agent_created.modified_files.length} modified, ${v.agent_created.cases_added} case(s) added`);
   if (v.agent_runs.length) L.push(`  agent's own runs: ${v.agent_runs.length} (${v.agent_runs.filter((r) => r.passed).length} green)  ${c("90", "claims, not evidence")}`);
@@ -10614,7 +10654,8 @@ var init_schema = __esm({
         summary: external_exports.object({ passed: external_exports.number().nullable(), failed: external_exports.number().nullable() }).optional(),
         tests_green: external_exports.boolean().optional(),
         at_base: external_exports.object({ ran: external_exports.boolean(), passed: external_exports.boolean().optional(), exit_code: external_exports.number().nullable().optional(), summary: external_exports.object({ passed: external_exports.number().nullable(), failed: external_exports.number().nullable() }).optional(), reason: external_exports.string().optional(), duration_ms: external_exports.number().optional() }).optional(),
-        failure_attributable: external_exports.boolean().optional()
+        failure_attributable: external_exports.boolean().optional(),
+        without_change: external_exports.object({ ran: external_exports.boolean(), passed: external_exports.boolean().optional(), exit_code: external_exports.number().nullable().optional(), summary: external_exports.object({ passed: external_exports.number().nullable(), failed: external_exports.number().nullable() }).optional(), reason: external_exports.string().optional(), duration_ms: external_exports.number().optional(), test_files: external_exports.array(external_exports.string()) }).optional()
       }),
       evidence: external_exports.object({
         files_changed: external_exports.array(external_exports.string()),
@@ -11066,7 +11107,8 @@ async function judgeSession(opts) {
   if (!task) task = implicitTask(opts.session, opts.cwd, t, opts.cfg);
   const ev = collectEvidence({ cwd: opts.cwd, transcript: t, events, exec: opts.exec, skipGit: opts.skipGit });
   const consent = opts.consent ?? testRerunConsent(opts.cfg, opts.cwd);
-  const ver = opts.verification ?? await runVerification(opts.cwd, { timeoutMs: opts.cfg.judge.test_timeout_ms, enabled: opts.cfg.judge.run_tests, consent, command: loadPolicy(opts.cwd).policy.test_command, baseHead: ev.git.base_head });
+  const agentTests = ev.git.base_head && !opts.skipGit ? changedTestFiles(opts.cwd, ev.git.base_head) : { added: [], modified: [] };
+  const ver = opts.verification ?? await runVerification(opts.cwd, { timeoutMs: opts.cfg.judge.test_timeout_ms, enabled: opts.cfg.judge.run_tests, consent, command: loadPolicy(opts.cwd).policy.test_command, baseHead: ev.git.base_head, testFiles: [...agentTests.added, ...agentTests.modified], mutationCheck: opts.cfg.judge.mutation_check });
   const waste = computeWaste(t, { baselineTokens: opts.cfg.baseline_context_tokens });
   const humanValue = task.estimate.hours * task.hourly_rate;
   const numbers = { cost: t.cost, waste: waste.total_usd, value: humanValue, budget: task.budget_usd };

@@ -27,7 +27,7 @@ import { runLooksConclusive } from '../judge/checks.js';
 
 export type AssuranceStatus = 'VERIFIED' | 'SUPPORTED' | 'UNVERIFIED' | 'UNMET';
 
-export type EvidenceKind = 'file_check' | 'file_changed' | 'diff_hunk' | 'test_added' | 'test_modified' | 'test_names_it' | 'independent_run' | 'agent_test_run' | 'command' | 'model_judgment' | 'dispute';
+export type EvidenceKind = 'file_check' | 'file_changed' | 'diff_hunk' | 'test_added' | 'test_modified' | 'test_names_it' | 'independent_run' | 'without_change_run' | 'agent_test_run' | 'command' | 'model_judgment' | 'dispute';
 
 export interface EvidenceItem {
   kind: EvidenceKind;
@@ -60,7 +60,7 @@ export interface TestProvenance {
   /* test files the agent added or modified (git diff base..HEAD), and test cases it added (added `it(`/`test(`/`def test_` lines) */
   agent_created: { added_files: string[]; modified_files: string[]; cases_added: number };
   /* the run Tally made itself */
-  independent: { ran: boolean; command?: string; passed?: boolean; total_passed: number | null; reason?: string; tests_green?: boolean; fails_at_base?: boolean; attributable?: boolean };
+  independent: { ran: boolean; command?: string; passed?: boolean; total_passed: number | null; reason?: string; tests_green?: boolean; fails_at_base?: boolean; attributable?: boolean; /* true: the agent's tests fail without the change; false: they pass without it; undefined: not checked */ discriminating?: boolean };
   /* test commands the agent ran during the session, from the event stream */
   agent_runs: Array<{ command: string; passed: boolean }>;
   note: string;
@@ -141,28 +141,42 @@ function matchingHunks(diff: string, keywords: string[]): Array<{ file: string; 
   return hits.slice(0, 6);
 }
 
+export function isTestPath(file: string): boolean {
+  return TEST_PATH_RE.test(file.replace(/\\/g, '/'));
+}
+
+/* Test files the work added or modified: base → working tree, so uncommitted work counts; untracked new files too. */
+export function changedTestFiles(cwd: string, baseHead: string): { added: string[]; modified: string[]; untracked: string[] } {
+  const added: string[] = [];
+  const modified: string[] = [];
+  const status = git(cwd, ['diff', '--name-status', baseHead, '--']);
+  if (status !== null) {
+    for (const line of status.split('\n')) {
+      const [st, ...rest] = line.split('\t');
+      const f = rest[rest.length - 1] ?? '';
+      if (!f || !TEST_PATH_RE.test(f)) continue;
+      if (st?.startsWith('A')) added.push(f);
+      else if (st?.startsWith('M') || st?.startsWith('R')) modified.push(f);
+    }
+  }
+  const untracked = (git(cwd, ['ls-files', '--others', '--exclude-standard']) ?? '').split('\n').filter(Boolean);
+  for (const f of untracked) if (TEST_PATH_RE.test(f) && !added.includes(f)) added.push(f);
+  return { added, modified, untracked };
+}
+
 export function testProvenance(opts: { cwd: string; baseHead?: string; judge: Judge; diff?: string }): TestProvenance {
   const { cwd, baseHead, judge } = opts;
   let preexisting: number | null = null;
-  const added: string[] = [];
-  const modified: string[] = [];
+  let added: string[] = [];
+  let modified: string[] = [];
   let casesAdded = 0;
   if (baseHead) {
     const tree = git(cwd, ['ls-tree', '-r', '--name-only', baseHead]);
     if (tree !== null) preexisting = tree.split('\n').filter((f) => f && TEST_PATH_RE.test(f)).length;
-    /* base → working tree, so uncommitted work counts; untracked new test files too */
-    const status = git(cwd, ['diff', '--name-status', baseHead, '--']);
-    if (status !== null) {
-      for (const line of status.split('\n')) {
-        const [st, ...rest] = line.split('\t');
-        const f = rest[rest.length - 1] ?? '';
-        if (!f || !TEST_PATH_RE.test(f)) continue;
-        if (st?.startsWith('A')) added.push(f);
-        else if (st?.startsWith('M') || st?.startsWith('R')) modified.push(f);
-      }
-    }
-    const untrackedList = (git(cwd, ['ls-files', '--others', '--exclude-standard']) ?? '').split('\n').filter(Boolean);
-    for (const f of untrackedList) if (TEST_PATH_RE.test(f) && !added.includes(f)) added.push(f);
+    const changedTests = changedTestFiles(cwd, baseHead);
+    added = changedTests.added;
+    modified = changedTests.modified;
+    const untrackedList = changedTests.untracked;
     const diff = opts.diff ?? git(cwd, ['diff', baseHead, '--']) ?? '';
     /* count added test cases only inside test files */
     let inTestFile = false;
@@ -187,7 +201,12 @@ export function testProvenance(opts: { cwd: string; baseHead?: string; judge: Ju
   if (v.ran && totalPassed === null) notes.push('the runner output did not state a passed count');
   if (!v.ran) notes.push(`independent run not made: ${v.reason ?? 'unknown'}`);
   if (added.length || modified.length) notes.push('a green test written by the same agent that wrote the code is weaker evidence than a pre-existing one');
-  return { preexisting_files: preexisting, agent_created: { added_files: added, modified_files: modified, cases_added: casesAdded }, independent: { ran: v.ran, command: v.command, passed: v.passed, total_passed: totalPassed, reason: v.reason, tests_green: v.tests_green, fails_at_base: v.at_base?.ran ? v.at_base.passed === false : undefined, attributable: v.failure_attributable }, agent_runs: agentRuns, note: notes.join('; ') };
+  /* the mutation check: the agent's test files run at the base commit, without the change */
+  const wc = v.without_change;
+  const discriminating = wc?.ran ? wc.passed === false : undefined;
+  if (wc?.ran && wc.passed === true) notes.push(`the agent's test files (${wc.test_files.join(', ')}) also pass at the base commit without the change: they do not test it`);
+  if (wc && !wc.ran) notes.push(`mutation check not run: ${wc.reason ?? 'unknown'}`);
+  return { preexisting_files: preexisting, agent_created: { added_files: added, modified_files: modified, cases_added: casesAdded }, independent: { ran: v.ran, command: v.command, passed: v.passed, total_passed: totalPassed, reason: v.reason, tests_green: v.tests_green, fails_at_base: v.at_base?.ran ? v.at_base.passed === false : undefined, attributable: v.failure_attributable, discriminating }, agent_runs: agentRuns, note: notes.join('; ') };
 }
 
 export function parsePassedCount(output: string): number | null {
@@ -300,7 +319,19 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
        about) plus a green independent run: proof that a test about this ran. A test file the agent merely touched is
        provenance, not an anchor: the logger-vague eval run showed a modified test file plus a green suite lifting a
        criterion with nothing nameable ("enhanced for production use") to VERIFIED, which the blind grader called partial. */
-    const anchoredByTest = testHunkNamesIt && det.some((i) => (i.kind === 'independent_run' || (i.kind === 'file_check' && /independent run/.test(i.summary))) && i.ok === true) && !runInconclusive;
+    let anchoredByTest = testHunkNamesIt && det.some((i) => (i.kind === 'independent_run' || (i.kind === 'file_check' && /independent run/.test(i.summary))) && i.ok === true) && !runInconclusive;
+    /* the mutation check: when the anchoring test is one the agent wrote or changed, it only counts if it fails without
+       the change. A test that passes at the base commit too, with just the test files applied, tests nothing about it. */
+    const wc = j.verification.without_change;
+    const anchorIsAgentTest = hunks.some((h) => TEST_PATH_RE.test(h.file) && testFilesTouched.includes(h.file)) || items.some((i) => i.kind === 'test_added' || i.kind === 'test_modified');
+    if (anchoredByTest && anchorIsAgentTest && wc?.ran) {
+      if (wc.passed === true) {
+        items.push({ kind: 'without_change_run', strength: 'deterministic', summary: `the agent's tests also pass at the base commit without the change (${wc.test_files.join(', ')}): they do not test it`, ref: wc.test_files[0], ok: false });
+        anchoredByTest = false;
+      } else if (wc.passed === false) {
+        items.push({ kind: 'without_change_run', strength: 'deterministic', summary: `the agent's tests fail at the base commit without the change${wc.summary?.failed != null ? ` (${wc.summary.failed} failing)` : ''}: they test it`, ref: wc.test_files[0], ok: true });
+      }
+    }
     let status: AssuranceStatus;
     let basis: CriterionAssurance['basis'];
     if (testClaimWithoutTest) {
@@ -404,6 +435,8 @@ export function renderVerify(a: Assurance, opts: { color?: boolean; evidence?: b
   const v = a.verification;
   if (v.independent.ran) L.push(`${c(v.independent.passed ? '32' : v.independent.attributable === false ? '33' : '31', v.independent.passed ? '✓' : v.independent.attributable === false ? '?' : '✗')} ${v.independent.command}  ${c('90', `independent run${v.independent.total_passed !== null ? `, ${v.independent.total_passed} passed` : ''}${v.independent.passed ? '' : v.independent.tests_green ? '; exited non-zero after a green test summary (a later stage failed, not the tests)' : v.independent.fails_at_base ? '; the base commit fails it too' : ''}`)}`);
   else L.push(`${c('90', '?')} independent run not made ${c('90', `(${v.independent.reason ?? 'unknown'})`)}`);
+  if (v.independent.discriminating === true) L.push(`${c('32', '✓')} the agent's tests fail without the change  ${c('90', '(run at the base commit with only the test files applied: they test the work)')}`);
+  else if (v.independent.discriminating === false) L.push(`${c('31', '✗')} the agent's tests pass without the change  ${c('90', '(run at the base commit with only the test files applied: they do not test the work)')}`);
   L.push(`  pre-existing tests: ${v.preexisting_files === null ? c('90', 'unknown (no base tree)') : `${v.preexisting_files} file(s) at session start`}`);
   L.push(`  agent-created tests: ${v.agent_created.added_files.length} file(s) added, ${v.agent_created.modified_files.length} modified, ${v.agent_created.cases_added} case(s) added`);
   if (v.agent_runs.length) L.push(`  agent's own runs: ${v.agent_runs.length} (${v.agent_runs.filter((r) => r.passed).length} green)  ${c('90', 'claims, not evidence')}`);

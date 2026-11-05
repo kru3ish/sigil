@@ -3,7 +3,7 @@ import { createRequire as __tallyCreateRequire } from "node:module";
 const require = __tallyCreateRequire(import.meta.url);
 
 // src/hooks/hook.ts
-import fs3 from "node:fs";
+import fs4 from "node:fs";
 
 // src/agents/index.ts
 import os from "node:os";
@@ -222,7 +222,7 @@ function agentFromArgv(argv) {
 }
 
 // src/hooks/hook.ts
-import path4 from "node:path";
+import path5 from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -278,6 +278,28 @@ function repoKey(cwd) {
   return cwd.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
+// src/store/events.ts
+import fs2 from "node:fs";
+import path3 from "node:path";
+function eventsFile(sessionId) {
+  return path3.join(sessionDir(sessionId), "events.jsonl");
+}
+function readEvents(sessionId) {
+  return readEventsFile(eventsFile(sessionId));
+}
+function readEventsFile(file) {
+  if (!fs2.existsSync(file)) return [];
+  const out = [];
+  for (const line of fs2.readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      out.push(JSON.parse(line));
+    } catch {
+    }
+  }
+  return out;
+}
+
 // src/redact.ts
 var PATTERNS = [
   [/sk-ant-[A-Za-z0-9_-]{10,}/g, "sk-ant-***"],
@@ -309,8 +331,8 @@ function redactDeep(value) {
 }
 
 // src/judge/quickcheck.ts
-import fs2 from "node:fs";
-import path3 from "node:path";
+import fs3 from "node:fs";
+import path4 from "node:path";
 import { spawnSync } from "node:child_process";
 function safeRegex(p) {
   try {
@@ -320,9 +342,9 @@ function safeRegex(p) {
   }
 }
 function baseHead(session) {
-  const f = path3.join(sessionDir(session), "events.jsonl");
-  if (!fs2.existsSync(f)) return void 0;
-  for (const line of fs2.readFileSync(f, "utf8").split("\n")) {
+  const f = path4.join(sessionDir(session), "events.jsonl");
+  if (!fs3.existsSync(f)) return void 0;
+  for (const line of fs3.readFileSync(f, "utf8").split("\n")) {
     if (!line.includes('"session_start"')) continue;
     try {
       const e = JSON.parse(line);
@@ -333,7 +355,7 @@ function baseHead(session) {
   return void 0;
 }
 function gitDiff(cwd, base) {
-  if (!fs2.existsSync(path3.join(cwd, ".git"))) return { files: [], text: "" };
+  if (!fs3.existsSync(path4.join(cwd, ".git"))) return { files: [], text: "" };
   const range = base ? [base] : ["HEAD"];
   const names = spawnSync("git", ["diff", "--name-only", ...range], { cwd, encoding: "utf8", windowsHide: true, timeout: 3e3 });
   const untracked = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], { cwd, encoding: "utf8", windowsHide: true, timeout: 3e3 });
@@ -343,7 +365,7 @@ function gitDiff(cwd, base) {
 }
 var norm = (p) => p.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
 function quickChecks(session, cwd) {
-  const task = readJson(path3.join(sessionDir(session), "task.json"), null);
+  const task = readJson(path4.join(sessionDir(session), "task.json"), null);
   const criteria = task?.criteria ?? [];
   const items = [];
   let diff = null;
@@ -355,15 +377,15 @@ function quickChecks(session, cwd) {
       continue;
     }
     if (ch.kind === "file_exists" && ch.path && cwd) {
-      const ok = fs2.existsSync(path3.join(cwd, ch.path));
+      const ok = fs3.existsSync(path4.join(cwd, ch.path));
       items.push({ id: c.id, text: c.text, kind: ch.kind, status: ok ? "met" : "unmet", why: `${ch.path} ${ok ? "exists" : "does not exist"}` });
     } else if (ch.kind === "file_contains" && ch.path && ch.pattern && cwd) {
-      const p = path3.join(cwd, ch.path);
+      const p = path4.join(cwd, ch.path);
       const re = safeRegex(ch.pattern);
-      if (!fs2.existsSync(p)) items.push({ id: c.id, text: c.text, kind: ch.kind, status: fs2.existsSync(path3.dirname(p)) ? "unmet" : "unknown", why: `${ch.path} does not exist${fs2.existsSync(path3.dirname(p)) ? "" : " (nor its directory; the path may be a guess)"}` });
+      if (!fs3.existsSync(p)) items.push({ id: c.id, text: c.text, kind: ch.kind, status: fs3.existsSync(path4.dirname(p)) ? "unmet" : "unknown", why: `${ch.path} does not exist${fs3.existsSync(path4.dirname(p)) ? "" : " (nor its directory; the path may be a guess)"}` });
       else if (!re) items.push({ id: c.id, text: c.text, kind: ch.kind, status: "unknown", why: "invalid pattern" });
       else {
-        const ok = re.test(fs2.readFileSync(p, "utf8"));
+        const ok = re.test(fs3.readFileSync(p, "utf8"));
         items.push({ id: c.id, text: c.text, kind: ch.kind, status: ok ? "met" : "unmet", why: `${ch.path} ${ok ? "matches" : "does not match"} /${ch.pattern}/` });
       }
     } else if (ch.kind === "file_changed" && ch.path) {
@@ -383,22 +405,22 @@ function quickChecks(session, cwd) {
   const checked = items.filter((i) => i.status !== "unknown").length;
   const progress = { ts: (/* @__PURE__ */ new Date()).toISOString(), met: items.filter((i) => i.status === "met").length, checked, total: items.length, items };
   try {
-    writeJson(path3.join(sessionDir(session), "progress.json"), progress);
+    writeJson(path4.join(sessionDir(session), "progress.json"), progress);
   } catch {
   }
   return progress;
 }
 
 // src/hooks/hook.ts
-var here = path4.dirname(fileURLToPath(import.meta.url));
-var CLI = process.env.TALLY_HOOK_CLI || [path4.join(here, "cli.js"), path4.join(here, "..", "cli.js")].find((p) => fs3.existsSync(p)) || path4.join(here, "cli.js");
+var here = path5.dirname(fileURLToPath(import.meta.url));
+var CLI = process.env.TALLY_HOOK_CLI || [path5.join(here, "cli.js"), path5.join(here, "..", "cli.js")].find((p) => fs4.existsSync(p)) || path5.join(here, "cli.js");
 var SHIP_RE = /\bgit\s+push\b|\bgh\s+pr\s+(create|merge)\b|\bnpm\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/;
 var TASK_URL_RE = /https?:\/\/(github\.com\/[^\s/]+\/[^\s/]+\/(issues|pull)\/\d+|[^\s]+\.atlassian\.net\/browse\/[A-Z][A-Z0-9]+-\d+|linear\.app\/[^\s]+\/issue\/[A-Z0-9]+-\d+[^\s]*)/;
 var TASK_MD_RE = /(?:^|[\s`"'(])((?:[A-Za-z]:)?[^\s"'`]+?\.md)(?=[\s.,;:!?)"'`]|$)/;
 var MAX_FIELD = 2e3;
 function readStdin() {
   try {
-    return fs3.readFileSync(0, "utf8");
+    return fs4.readFileSync(0, "utf8");
   } catch {
     return "";
   }
@@ -412,23 +434,23 @@ function nowIso() {
 }
 function record(session, type, cwd, data) {
   const ev = { ts: nowIso(), type, session, cwd, data: redactDeep(data) };
-  appendLine(path4.join(sessionDir(session), "events.jsonl"), JSON.stringify(ev));
+  appendLine(path5.join(sessionDir(session), "events.jsonl"), JSON.stringify(ev));
 }
 function alreadySeen(session, event, toolUseId) {
   if (!toolUseId) return false;
-  const file = path4.join(sessionDir(session), "seen.txt");
+  const file = path5.join(sessionDir(session), "seen.txt");
   const key = `${event}:${toolUseId}
 `;
   try {
-    if (fs3.existsSync(file) && fs3.readFileSync(file, "utf8").includes(key)) return true;
-    fs3.appendFileSync(file, key);
+    if (fs4.existsSync(file) && fs4.readFileSync(file, "utf8").includes(key)) return true;
+    fs4.appendFileSync(file, key);
   } catch {
   }
   return false;
 }
 function spawnDetached(args) {
   if (process.env.TALLY_NO_SPAWN) {
-    appendLine(path4.join(tallyHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
+    appendLine(path5.join(tallyHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
     return;
   }
   try {
@@ -442,29 +464,29 @@ function gitHead(cwd) {
   try {
     let dir = cwd;
     for (let i = 0; i < 6; i++) {
-      const gitPath = path4.join(dir, ".git");
-      if (fs3.existsSync(gitPath)) {
+      const gitPath = path5.join(dir, ".git");
+      if (fs4.existsSync(gitPath)) {
         let gitDir = gitPath;
-        if (fs3.statSync(gitPath).isFile()) {
-          const m = /gitdir:\s*(.+)/.exec(fs3.readFileSync(gitPath, "utf8"));
+        if (fs4.statSync(gitPath).isFile()) {
+          const m = /gitdir:\s*(.+)/.exec(fs4.readFileSync(gitPath, "utf8"));
           if (!m) return void 0;
-          gitDir = path4.resolve(dir, m[1].trim());
+          gitDir = path5.resolve(dir, m[1].trim());
         }
-        const head = fs3.readFileSync(path4.join(gitDir, "HEAD"), "utf8").trim();
+        const head = fs4.readFileSync(path5.join(gitDir, "HEAD"), "utf8").trim();
         const ref = /^ref:\s*(.+)$/.exec(head);
         if (!ref) return head;
-        const refFile = path4.join(gitDir, ref[1]);
-        if (fs3.existsSync(refFile)) return fs3.readFileSync(refFile, "utf8").trim();
-        const packed = path4.join(gitDir, "packed-refs");
-        if (fs3.existsSync(packed)) {
-          for (const line of fs3.readFileSync(packed, "utf8").split("\n")) {
+        const refFile = path5.join(gitDir, ref[1]);
+        if (fs4.existsSync(refFile)) return fs4.readFileSync(refFile, "utf8").trim();
+        const packed = path5.join(gitDir, "packed-refs");
+        if (fs4.existsSync(packed)) {
+          for (const line of fs4.readFileSync(packed, "utf8").split("\n")) {
             const [sha, name] = line.split(" ");
             if (name === ref[1]) return sha;
           }
         }
         return void 0;
       }
-      const parent = path4.dirname(dir);
+      const parent = path5.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -478,19 +500,19 @@ function loadedInventory(cwd) {
   const plugins = /* @__PURE__ */ new Set();
   try {
     const home2 = claudeHome();
-    const global = readJson(path4.join(path4.dirname(home2), ".claude.json"), {});
+    const global = readJson(path5.join(path5.dirname(home2), ".claude.json"), {});
     for (const k of Object.keys(global.mcpServers ?? {})) mcp.add(k);
     if (cwd) for (const k of Object.keys(global.projects?.[cwd]?.mcpServers ?? {})) mcp.add(k);
     if (cwd) {
-      const proj = readJson(path4.join(cwd, ".mcp.json"), {});
+      const proj = readJson(path5.join(cwd, ".mcp.json"), {});
       for (const k of Object.keys(proj.mcpServers ?? {})) mcp.add(k);
     }
-    const settings = readJson(path4.join(home2, "settings.json"), {});
+    const settings = readJson(path5.join(home2, "settings.json"), {});
     for (const [k, v] of Object.entries(settings.enabledPlugins ?? {})) if (v) plugins.add(k.split("@")[0]);
-    const skillDirs = [path4.join(home2, "skills"), cwd ? path4.join(cwd, ".claude", "skills") : ""].filter(Boolean);
+    const skillDirs = [path5.join(home2, "skills"), cwd ? path5.join(cwd, ".claude", "skills") : ""].filter(Boolean);
     for (const d of skillDirs) {
-      if (!fs3.existsSync(d)) continue;
-      for (const s of fs3.readdirSync(d)) if (fs3.existsSync(path4.join(d, s, "SKILL.md"))) skills.add(s);
+      if (!fs4.existsSync(d)) continue;
+      for (const s of fs4.readdirSync(d)) if (fs4.existsSync(path5.join(d, s, "SKILL.md"))) skills.add(s);
     }
   } catch {
   }
@@ -506,11 +528,15 @@ function updateActive(session, patch, remove = false) {
   writeJson(file, active);
 }
 function dodGate(session, cwd, stopHookActive) {
-  if (stopHookActive || !fs3.existsSync(path4.join(sessionDir(session), "task.json"))) return void 0;
+  if (stopHookActive || !fs4.existsSync(path5.join(sessionDir(session), "task.json"))) return void 0;
   const cfg = readJson(configFile(), {});
   if (cfg.coach?.dod_gate !== true) return void 0;
+  const task = readJson(path5.join(sessionDir(session), "task.json"), {});
+  if (task.inferred && !task.confirmed) return void 0;
+  if (task.needs_clarification && !task.confirmed) return void 0;
+  if (!readEvents(session).some((e) => e.type === "pre_tool" && ["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(String(e.data.tool_name)))) return void 0;
   const max = cfg.coach?.dod_max_blocks ?? 1;
-  const marker = path4.join(sessionDir(session), "dod-gate.json");
+  const marker = path5.join(sessionDir(session), "dod-gate.json");
   const state = readJson(marker, { blocks: 0 });
   const progress = quickChecks(session, cwd);
   const unmet = progress.items.filter((i) => i.status === "unmet");
@@ -522,15 +548,15 @@ function dodGate(session, cwd, stopHookActive) {
 }
 function costNotice(session) {
   const dir = sessionDir(session);
-  const est = readJson(path4.join(dir, "estimate.json"), null);
+  const est = readJson(path5.join(dir, "estimate.json"), null);
   if (!est || !est.usd || est.basis !== "similar" && est.basis !== "points" && est.basis !== "repo") return void 0;
-  const check = readJson(path4.join(dir, "cost-check.json"), null);
-  const live = readJson(path4.join(dir, "spend.json"), null);
+  const check = readJson(path5.join(dir, "cost-check.json"), null);
+  const live = readJson(path5.join(dir, "spend.json"), null);
   const spend = Math.max(live?.usd ?? 0, check?.actual_usd ?? 0);
-  const stateFile = path4.join(dir, "cost-notice.json");
+  const stateFile = path5.join(dir, "cost-notice.json");
   const state = readJson(stateFile, { shown: [] });
   const money = (n) => `$${n.toFixed(2)}`;
-  const shipped = fs3.existsSync(path4.join(dir, "events.jsonl")) && fs3.readFileSync(path4.join(dir, "events.jsonl"), "utf8").includes('"type":"ship"');
+  const shipped = fs4.existsSync(path5.join(dir, "events.jsonl")) && fs4.readFileSync(path5.join(dir, "events.jsonl"), "utf8").includes('"type":"ship"');
   const top = (check?.drivers ?? []).find((d) => d.fix && d.fix.apply.kind !== "advice");
   const fixCmd = (id) => process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`;
   const lever = top ? ` Biggest lever: ${top.title.toLowerCase()} (~${money(top.usd)}) \u2192 ${fixCmd(top.fix.id)}.` : "";
@@ -560,17 +586,27 @@ function costNotice(session) {
   record(session, "cost_notice", void 0, { key, spend_usd: spend, estimate_usd: est.usd });
   return text;
 }
+function flagNotice(session) {
+  const file = path5.join(sessionDir(session), "coach-flags.json");
+  const flags = readJson(file, {});
+  const notified = new Set(flags.notified ?? []);
+  const fresh = (flags.pending ?? []).filter((f) => !notified.has(f.key)).slice(0, 3);
+  if (!fresh.length) return void 0;
+  const lines = fresh.map((f) => `${f.title}${f.usd_saved ? ` (~$${f.usd_saved.toFixed(2)})` : ""} \u2192 tally coach --apply ${f.rule} --session ${session.slice(0, 8)}`);
+  writeJson(file, { ...flags, notified: [...notified, ...fresh.map((f) => f.key)].filter((k) => (flags.pending ?? []).some((f) => f.key === k)) });
+  return `Tally Coach: ${lines.join(" \xB7 ")}`;
+}
 function autopilotEnabled() {
   const cfg = readJson(configFile(), {});
   return cfg.coach?.autopilot !== false;
 }
 function handoffNote(cwd) {
   if (!cwd) return "";
-  const f = path4.join(cwd, "HANDOFF.md");
-  if (!fs3.existsSync(f)) return "";
-  const age = Date.now() - fs3.statSync(f).mtimeMs;
+  const f = path5.join(cwd, "HANDOFF.md");
+  if (!fs4.existsSync(f)) return "";
+  const age = Date.now() - fs4.statSync(f).mtimeMs;
   if (age > 24 * 3600 * 1e3) return "";
-  const body = fs3.readFileSync(f, "utf8").split("\n").slice(0, 25).join("\n").slice(0, 1800);
+  const body = fs4.readFileSync(f, "utf8").split("\n").slice(0, 25).join("\n").slice(0, 1800);
   return `Tally: HANDOFF.md in this repo was written ${Math.round(age / 6e4)} min ago and holds the state to resume from:
 ${body}`;
 }
@@ -578,8 +614,8 @@ function lastReceipt(cwd) {
   if (!cwd) return "";
   const key = repoKey(cwd);
   const file = historyFile();
-  if (!fs3.existsSync(file)) return "";
-  const lines = fs3.readFileSync(file, "utf8").trim().split("\n").slice(-300);
+  if (!fs4.existsSync(file)) return "";
+  const lines = fs4.readFileSync(file, "utf8").trim().split("\n").slice(-300);
   for (const line of lines.reverse()) {
     try {
       const h = JSON.parse(line);
@@ -595,8 +631,8 @@ function historyLessons(cwd) {
   if (!cwd) return "";
   const key = repoKey(cwd);
   const file = historyFile();
-  if (!fs3.existsSync(file)) return "";
-  const lines = fs3.readFileSync(file, "utf8").trim().split("\n").slice(-200);
+  if (!fs4.existsSync(file)) return "";
+  const lines = fs4.readFileSync(file, "utf8").trim().split("\n").slice(-200);
   const lessons = [];
   for (const line of lines.reverse()) {
     try {
@@ -615,9 +651,9 @@ function historyLessons(cwd) {
 - ${lessons.join("\n- ")}` : "";
 }
 function deliverInjects(session) {
-  const file = path4.join(sessionDir(session), "inject.jsonl");
-  if (!fs3.existsSync(file)) return "";
-  const lines = fs3.readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
+  const file = path5.join(sessionDir(session), "inject.jsonl");
+  if (!fs4.existsSync(file)) return "";
+  const lines = fs4.readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
   const pending = [];
   const kept = [];
   for (const line of lines) {
@@ -632,11 +668,11 @@ function deliverInjects(session) {
     }
   }
   if (!pending.length) return "";
-  fs3.writeFileSync(file, kept.join("\n") + "\n");
+  fs4.writeFileSync(file, kept.join("\n") + "\n");
   return pending.map((n) => `Tally: ${n}`).join("\n");
 }
 function followupDue() {
-  const state = readJson(path4.join(tallyHome(), "followup-state.json"), {});
+  const state = readJson(path5.join(tallyHome(), "followup-state.json"), {});
   const last = state.last_run ? Date.parse(state.last_run) : 0;
   return Date.now() - last > 24 * 3600 * 1e3;
 }
@@ -677,18 +713,18 @@ function main() {
     }
     case "UserPromptSubmit": {
       const prompt = String(input.prompt ?? "");
-      const isFirst = !fs3.existsSync(path4.join(sessionDir(session), "task.json")) && !fs3.existsSync(path4.join(sessionDir(session), "task.pending"));
+      const isFirst = !fs4.existsSync(path5.join(sessionDir(session), "task.json")) && !fs4.existsSync(path5.join(sessionDir(session), "task.pending"));
       record(session, "prompt", cwd, { prompt: truncate(prompt), chars: prompt.length });
       updateActive(session, { cwd, transcript_path: input.transcript_path });
       if (isFirst) {
         const url = TASK_URL_RE.exec(prompt)?.[0];
         const md = !url ? TASK_MD_RE.exec(prompt)?.[1] : void 0;
-        const ref = url ?? (md && cwd && fs3.existsSync(path4.resolve(cwd, md)) ? path4.resolve(cwd, md) : void 0);
+        const ref = url ?? (md && cwd && fs4.existsSync(path5.resolve(cwd, md)) ? path5.resolve(cwd, md) : void 0);
         if (ref) {
-          fs3.writeFileSync(path4.join(sessionDir(session), "task.pending"), ref);
+          fs4.writeFileSync(path5.join(sessionDir(session), "task.pending"), ref);
           spawnDetached(["task", ref, "--session", session, "--cwd", cwd ?? "", "--auto"]);
         } else if (prompt.trim().length > 0) {
-          fs3.writeFileSync(path4.join(sessionDir(session), "task.pending"), "text");
+          fs4.writeFileSync(path5.join(sessionDir(session), "task.pending"), "text");
           spawnDetached(["task", "--text", truncate(prompt, 4e3), "--session", session, "--cwd", cwd ?? "", "--auto"]);
         }
       }
@@ -698,9 +734,9 @@ function main() {
     }
     case "PreToolUse": {
       if (alreadySeen(session, event, input.tool_use_id)) break;
-      const stopFile = path4.join(sessionDir(session), "hard-stop.json");
+      const stopFile = path5.join(sessionDir(session), "hard-stop.json");
       const cmd0 = typeof input.tool_input?.command === "string" ? input.tool_input.command : "";
-      if (fs3.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
+      if (fs4.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
         const stop = readJson(stopFile, {});
         out = { kind: "deny", reason: `Tally: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: tally budget approve --note "<why>"` };
         record(session, "hard_stop_denied", cwd, { tool_name: input.tool_name, tool_use_id: input.tool_use_id });
@@ -744,8 +780,8 @@ function main() {
       const gate = dodGate(session, cwd, input.stop_hook_active === true);
       if (gate) out = { kind: "block", reason: String(gate.reason ?? "") };
       else if (input.stop_hook_active !== true) {
-        const notice = costNotice(session);
-        if (notice) out = { kind: "notice", text: notice };
+        const notices = [costNotice(session), flagNotice(session)].filter((n) => !!n);
+        if (notices.length) out = { kind: "notice", text: notices.join("\n") };
       }
       if (autopilotEnabled()) spawnDetached(["coach", "--tick", "--session", session, "--cwd", cwd ?? "", "--auto"]);
       break;

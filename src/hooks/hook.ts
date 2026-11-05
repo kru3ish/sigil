@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { activeFile, appendLine, ensureDir, historyFile, readJson, repoKey, sessionDir, tallyHome, writeJson, claudeHome, configFile } from '../paths.js';
+import { readEvents } from '../store/events.js';
 import { redact, redactDeep } from '../redact.js';
 import { quickChecks } from '../judge/quickcheck.js';
 
@@ -171,6 +172,13 @@ function dodGate(session: string, cwd: string | undefined, stopHookActive: boole
   const cfg = readJson<{ coach?: { dod_gate?: boolean; dod_max_blocks?: number } }>(configFile(), {});
   /* opt-in: the Stop hook was async until 0.7, so this gate never reached Claude; it stays off unless asked for */
   if (cfg.coach?.dod_gate !== true) return undefined;
+  /* standing: a contract a person confirmed or linked from a source (not one inferred from the first prompt and never
+     confirmed), a spec that did not need clarification, and at least one file edit in the session. Thirty-seven of the
+     maintainer's own sessions were blocked on their first Stop by checks guessed for prompts that were never coding tasks. */
+  const task = readJson<{ inferred?: boolean; confirmed?: boolean; needs_clarification?: boolean }>(path.join(sessionDir(session), 'task.json'), {});
+  if (task.inferred && !task.confirmed) return undefined;
+  if (task.needs_clarification && !task.confirmed) return undefined;
+  if (!readEvents(session).some((e) => e.type === 'pre_tool' && ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(String(e.data.tool_name)))) return undefined;
   const max = cfg.coach?.dod_max_blocks ?? 1;
   const marker = path.join(sessionDir(session), 'dod-gate.json');
   const state = readJson<{ blocks: number }>(marker, { blocks: 0 });
@@ -228,6 +236,25 @@ function costNotice(session: string): string | undefined {
   writeJson(stateFile, state);
   record(session, 'cost_notice', undefined, { key, spend_usd: spend, estimate_usd: est.usd });
   return text;
+}
+
+interface FlagsFile {
+  pending?: Array<{ rule: string; key: string; title: string; label?: string; usd_saved?: number }>;
+  announced?: string[];
+  /* keys already shown to the person at the terminal */
+  notified?: string[];
+}
+
+/* one short line per Coach flag not yet shown to the user, with the exact command; marks them shown */
+function flagNotice(session: string): string | undefined {
+  const file = path.join(sessionDir(session), 'coach-flags.json');
+  const flags = readJson<FlagsFile>(file, {});
+  const notified = new Set(flags.notified ?? []);
+  const fresh = (flags.pending ?? []).filter((f) => !notified.has(f.key)).slice(0, 3);
+  if (!fresh.length) return undefined;
+  const lines = fresh.map((f) => `${f.title}${f.usd_saved ? ` (~$${f.usd_saved.toFixed(2)})` : ''} → tally coach --apply ${f.rule} --session ${session.slice(0, 8)}`);
+  writeJson(file, { ...flags, notified: [...notified, ...fresh.map((f) => f.key)].filter((k) => (flags.pending ?? []).some((f) => f.key === k)) });
+  return `Tally Coach: ${lines.join(' · ')}`;
 }
 
 function autopilotEnabled(): boolean {
@@ -433,8 +460,10 @@ function main(): void {
       const gate = dodGate(session, cwd, input.stop_hook_active === true);
       if (gate) out = { kind: 'block', reason: String(gate.reason ?? '') };
       else if (input.stop_hook_active !== true) {
-        const notice = costNotice(session);
-        if (notice) out = { kind: 'notice', text: notice };
+        /* the cost line, and any Coach flag waiting for a human (an unused MCP server, an unconfirmed task) that the
+           person at the terminal has not seen yet; flags used to reach only the model and the status line */
+        const notices = [costNotice(session), flagNotice(session)].filter((n): n is string => !!n);
+        if (notices.length) out = { kind: 'notice', text: notices.join('\n') };
       }
       /* autopilot: the Coach runs in a detached process and queues its observations for the next prompt */
       if (autopilotEnabled()) spawnDetached(['coach', '--tick', '--session', session, '--cwd', cwd ?? '', '--auto']);

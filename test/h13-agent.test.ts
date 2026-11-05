@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { isolate, tmpDir, root } from './helpers.js';
 import { loadConfig, saveConfig } from '../src/config.js';
 import { StubLlm } from '../src/llm/client.js';
-import { intake } from '../src/task/intake.js';
+import { intake, confirmTask } from '../src/task/intake.js';
 import { quickChecks, readProgress } from '../src/judge/quickcheck.js';
 import { callTool } from '../src/mcp/server.js';
 import { renderStatusLine } from '../src/commands/statusline.js';
@@ -83,6 +83,9 @@ describe('definition-of-done gate', () => {
     await intake({ session, cwd, text: 'rate limit login', cfg: loadConfig(), llm });
     /* opt-in since 0.7 */
     saveConfig({ coach: { dod_gate: true } });
+    /* the gate has standing only for a confirmed (or source-linked) contract after an edit in the session */
+    confirmTask(session);
+    appendEvent({ ts: new Date().toISOString(), type: 'pre_tool', session, cwd, data: { tool_name: 'Edit', tool_input: { file_path: 'src.js' }, tool_use_id: 'gate-edit' } });
     const stop = (extra: Record<string, unknown> = {}) => spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd, last_assistant_message: 'Done.', ...extra }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
     const first = stop();
     expect(first.status).toBe(0);

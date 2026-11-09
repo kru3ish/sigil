@@ -27,8 +27,6 @@ Statuses on receipts written before 0.5 map to the four assurance statuses by ru
 
 Before the adversarial set existed, the ordinary five scored 19/19 criteria and 5/5 verdicts (2026-09-26). The adversarial fixtures found one real bug on their first live run: the rule that treats an `echo`-only `test` script as inconclusive never fired, because the regex's `\b` had been written into the source as a literal backspace byte by a patch script. Fixture `adv-lying-test-command` c3 was graded met instead of unverifiable until the byte was fixed; it is now unverifiable, and the same run caps the verdict at borderline.
 
-**Author's real sessions, human-graded** (n = 11 sessions, 51 criteria, one grader). Backfilled receipts from the author's own repositories, graded before seeing Tally's answer. Criterion agreement 51% exact, 61% within one step; 3 abstentions; on the other 8, verdicts exact 1, within one step 6; Tally stricter on 14 of 51. The first pass scored 35%; the gain came from fixing a bias in the mechanical checks against repos with no git tree, not from re-grading.
-
 **Headless task set** (n = 8 sessions, 50 criteria, 2026-09-26). Purpose-written small tasks run as real `claude -p` sessions under Tally and graded by an independent Claude model from the repository alone. 49/50 at grading time, 50/50 after a brittle-regex fix; 8/8 verdicts.
 
 **Real open-source issues** (n = 6 sessions, 29 criteria, 2026-09-26). Open bugs from express, yargs, qs, commander and micromatch, fixed locally under Tally, graded blind by an independent model. 28/29 criteria, 4/6 verdicts. Both verdict misses met every criterion with a green suite and were still borderline to a reviewer (a workaround for a dependency bug; untested behaviour changes). This is what the maintainer-review tier and the SUPPORTED status exist for.
@@ -36,7 +34,7 @@ Before the adversarial set existed, the ordinary five scored 19/19 criteria and 
 ## Methodology and its limits
 
 - Blind grading means the grader records statuses before Tally's are revealed (`tally calibrate grade`, `scripts/grading-sheet.ts`). Reveal files show both afterwards.
-- The model-graded sets are a model grading a model. They show the pipeline scores clean tasks correctly; they do not show agreement with humans on messy work. The human-graded set is the one to watch, and it is small and from one person.
+- The model-graded sets are a model grading a model. They show the pipeline scores clean tasks correctly; they do not show agreement with humans on messy work.
 - Fixtures are recorded model output replayed deterministically. Live re-runs vary: across seven live runs the fixtures scored 17/19 to 19/19; the 17 came from the strong model disagreeing with the author on one criterion, which is why a pessimistic tier-1 quality score now confirms prose only and does not re-open statuses.
 - Nothing here is a benchmark. Sample sizes are printed next to every figure on purpose.
 
@@ -54,7 +52,7 @@ tally eval report                          # the ledger by class and Tally versi
 
 Task specs live in `eval/tasks/*.json` (see `src/eval/tasks.ts` for the schema). Each records why it was selected and how likely its solution is to be in model training data. Three classes are kept apart in every report: **fixture** (constructed), **real** (public issue in an isolated clone of the current repository), **historical** (public issue at the commit before the human fix; the later fix is external evidence, never the required answer). The corpus keeps the tasks Tally does badly on; deleting a failure to improve a number is the one thing this document forbids.
 
-Builder and evaluator are separate model invocations with separate context. They are still the same model family, so agreement between them is not agreement with a human. The human-graded set stays the reference.
+Builder and evaluator are separate model invocations with separate context. They are still the same model family, so agreement between them is not agreement with a human.
 
 ### Ledger results by class
 

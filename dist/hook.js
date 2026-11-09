@@ -117,7 +117,7 @@ var gemini = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || h.name === "tally" || isSigil(h.command))));
       kept.push({ matcher: "*", hooks: [{ name: "sigil", type: "command", command: command(this.event(ev)), timeout: 5e3 }] });
       hooks[ev] = kept;
     }
@@ -128,7 +128,7 @@ var gemini = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || h.name === "tally" || isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -265,9 +265,20 @@ function configFile() {
 function activeFile() {
   return path2.join(sigilHome(), "active.json");
 }
+function parseJson(text) {
+  const v = JSON.parse(text);
+  return text.includes('"tally_') ? modernizeKeys(v) : v;
+}
+function modernizeKeys(v) {
+  if (Array.isArray(v)) return v.map(modernizeKeys);
+  if (!v || typeof v !== "object") return v;
+  const out = {};
+  for (const [k, val] of Object.entries(v)) out[k.startsWith("tally_") ? `sigil_${k.slice(6)}` : k] = modernizeKeys(val);
+  return out;
+}
 function readJson(file, fallback) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return parseJson(fs.readFileSync(file, "utf8"));
   } catch {
     return fallback;
   }
@@ -301,7 +312,7 @@ function readEventsFile(file) {
   for (const line of fs2.readFileSync(file, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      out.push(JSON.parse(line));
+      out.push(parseJson(line));
     } catch {
     }
   }

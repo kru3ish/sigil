@@ -6,9 +6,12 @@ import { fileURLToPath } from 'node:url';
 /* Internal (Sigil-initiated) headless runs execute from a temp dir with this prefix; with
    --no-session-persistence they write no transcript, but anything under such a cwd is excluded from stats. */
 export const INTERNAL_CWD_MARKER = 'sigil-llm-';
+const LEGACY_INTERNAL_CWD_MARKER = 'tally-llm-';
 
 export function isInternalCwd(cwd: string | undefined): boolean {
-  return !!cwd && cwd.replace(/\\/g, '/').toLowerCase().includes(INTERNAL_CWD_MARKER);
+  if (!cwd) return false;
+  const c = cwd.replace(/\\/g, '/').toLowerCase();
+  return c.includes(INTERNAL_CWD_MARKER) || c.includes(LEGACY_INTERNAL_CWD_MARKER);
 }
 
 /* one release of compatibility with the old name: a SIGIL_* variable that is unset takes the TALLY_* value */
@@ -91,9 +94,24 @@ export function projectTranscriptsDir(cwd: string): string {
   return path.join(claudeHome(), 'projects', encodeProjectDir(cwd));
 }
 
+/* Data written before 0.14 carries `tally_*` field names; they are read as `sigil_*` for one release. Only keys
+   change, never values, and only when the text has such a key (the common case stays a plain JSON.parse). */
+export function parseJson<T>(text: string): T {
+  const v = JSON.parse(text) as T;
+  return text.includes('"tally_') ? (modernizeKeys(v) as T) : v;
+}
+
+export function modernizeKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(modernizeKeys);
+  if (!v || typeof v !== 'object') return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k.startsWith('tally_') ? `sigil_${k.slice(6)}` : k] = modernizeKeys(val);
+  return out;
+}
+
 export function readJson<T>(file: string, fallback: T): T {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+    return parseJson<T>(fs.readFileSync(file, 'utf8'));
   } catch {
     return fallback;
   }

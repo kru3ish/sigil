@@ -382,7 +382,7 @@ export function parseTranscript(lines: RawLine[], pricing: Pricing = loadPricing
     t.contextTokensNow = lastMainMessage.usage.input + lastMainMessage.usage.cache_read + lastMainMessage.usage.cache_write;
   }
   t.finalAssistantText = lastAssistantText;
-  t.internal = isInternalCwd(t.cwd) || t.entrypoint === 'sigil';
+  t.internal = isInternalCwd(t.cwd) || t.entrypoint === 'sigil' || t.entrypoint === 'tally';
   t.format.version = t.version;
   t.format.known = isKnownFormatVersion(t.version);
   t.format.unknown_types = [...unknownTypes].sort();

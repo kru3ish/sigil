@@ -2,6 +2,11 @@
 
 All notable changes to Sigil (Tally until 0.13). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
 
+## [0.14.1] - 2026-11-09
+
+### Fixed
+- **Receipts, history and ledgers written before the rename load again.** 0.14.0 renamed the stored field names (`tally_own_usd`, `tally_share_pct`, `tally_cost_usd`, `tally_usd`, `tally_version`, `tally_spend_usd`) along with everything else, so every receipt, history line and ledger entry from 0.13 and earlier failed to parse: `sigil verify <id>` on a stored receipt said "no receipt and no transcript", and the Coach's history was empty. Stored data is now read with `tally_*` keys taken as `sigil_*` (keys only, never values; a plain parse when no old key is present). Transcripts of pre-rename internal runs (`tally-llm-*` directories, `entrypoint: tally`) are excluded from stats as before, and hook entries named `tally` in Gemini and Cursor settings are still recognised. Covered by `test/h27-rename-compat.test.ts`; the compatibility goes with the rest in 0.15.
+
 ## [0.14.0] - 2026-11-09
 
 Tally is now Sigil. A sigil is the seal pressed into wax so the reader can trust the document without trusting the courier; that is what the receipt is for. The old name was shared with four other AI coding analytics tools, one of them a Claude Code plugin, so anyone who searched for it found someone else.

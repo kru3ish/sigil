@@ -1,6 +1,6 @@
 {
   "name": "sigil",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "description": "Know what a story will cost before the coding agent starts; when it is done, see what it cost, why, and the one-line config change that makes the next one cheaper. Claude Code, Codex, Gemini CLI, Cursor.",
   "type": "module",
   "bin": {

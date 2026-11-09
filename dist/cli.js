@@ -17,7 +17,9 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 function isInternalCwd(cwd) {
-  return !!cwd && cwd.replace(/\\/g, "/").toLowerCase().includes(INTERNAL_CWD_MARKER);
+  if (!cwd) return false;
+  const c = cwd.replace(/\\/g, "/").toLowerCase();
+  return c.includes(INTERNAL_CWD_MARKER) || c.includes(LEGACY_INTERNAL_CWD_MARKER);
 }
 function sigilHome() {
   if (process.env.SIGIL_HOME) return process.env.SIGIL_HOME;
@@ -74,9 +76,20 @@ function encodeProjectDir(cwd) {
 function projectTranscriptsDir(cwd) {
   return path.join(claudeHome(), "projects", encodeProjectDir(cwd));
 }
+function parseJson(text2) {
+  const v = JSON.parse(text2);
+  return text2.includes('"tally_') ? modernizeKeys(v) : v;
+}
+function modernizeKeys(v) {
+  if (Array.isArray(v)) return v.map(modernizeKeys);
+  if (!v || typeof v !== "object") return v;
+  const out = {};
+  for (const [k, val] of Object.entries(v)) out[k.startsWith("tally_") ? `sigil_${k.slice(6)}` : k] = modernizeKeys(val);
+  return out;
+}
 function readJson(file, fallback) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    return parseJson(fs.readFileSync(file, "utf8"));
   } catch {
     return fallback;
   }
@@ -127,11 +140,12 @@ function builtHookPath() {
 function builtCliPath() {
   return path.join(packageRoot(), "dist", "cli.js");
 }
-var INTERNAL_CWD_MARKER, LEGACY_HOME_NAME, cachedRoot;
+var INTERNAL_CWD_MARKER, LEGACY_INTERNAL_CWD_MARKER, LEGACY_HOME_NAME, cachedRoot;
 var init_paths = __esm({
   "src/paths.ts"() {
     "use strict";
     INTERNAL_CWD_MARKER = "sigil-llm-";
+    LEGACY_INTERNAL_CWD_MARKER = "tally-llm-";
     for (const [k, v] of Object.entries(process.env)) {
       if (k.startsWith("TALLY_") && process.env[`SIGIL_${k.slice(6)}`] === void 0) process.env[`SIGIL_${k.slice(6)}`] = v;
     }
@@ -264,7 +278,7 @@ var init_agents = __esm({
         const hooks = asRecord(doc.hooks);
         for (const ev of this.subscribed) {
           const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-          const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
+          const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || h.name === "tally" || isSigil(h.command))));
           kept.push({ matcher: "*", hooks: [{ name: "sigil", type: "command", command: command(this.event(ev)), timeout: 5e3 }] });
           hooks[ev] = kept;
         }
@@ -275,7 +289,7 @@ var init_agents = __esm({
         const hooks = asRecord(doc.hooks);
         for (const ev of Object.keys(hooks)) {
           const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-          const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
+          const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || h.name === "tally" || isSigil(h.command))));
           if (kept.length) hooks[ev] = kept;
           else delete hooks[ev];
         }
@@ -5336,7 +5350,7 @@ function parseTranscript(lines, pricing = loadPricing(), counts = { unparseable:
     t.contextTokensNow = lastMainMessage.usage.input + lastMainMessage.usage.cache_read + lastMainMessage.usage.cache_write;
   }
   t.finalAssistantText = lastAssistantText;
-  t.internal = isInternalCwd(t.cwd) || t.entrypoint === "sigil";
+  t.internal = isInternalCwd(t.cwd) || t.entrypoint === "sigil" || t.entrypoint === "tally";
   t.format.version = t.version;
   t.format.known = isKnownFormatVersion(t.version);
   t.format.unknown_types = [...unknownTypes].sort();
@@ -6009,7 +6023,7 @@ function readLedger(cwd) {
   for (const line of fs10.readFileSync(f, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      const e = JSON.parse(line);
+      const e = parseJson(line);
       if (e && e.v === 1 && typeof e.actual_usd === "number" && e.session) bySession.set(e.session, e);
     } catch {
     }
@@ -6051,7 +6065,7 @@ function recordVerification(cwd, session, v, fallback) {
   const out = lines.map((l) => {
     if (!l.includes(`"session":${JSON.stringify(session)}`)) return l;
     try {
-      const e = JSON.parse(l);
+      const e = parseJson(l);
       if (e.session !== session) return l;
       found = true;
       return JSON.stringify({ ...e, verification: v });
@@ -6084,6 +6098,7 @@ function recordStory(cwd, entry) {
 var init_ledger = __esm({
   "src/estimate/ledger.ts"() {
     "use strict";
+    init_paths();
   }
 });
 
@@ -7205,7 +7220,7 @@ function readEventsFile(file) {
   for (const line of fs18.readFileSync(file, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      out.push(JSON.parse(line));
+      out.push(parseJson(line));
     } catch {
     }
   }
@@ -7242,7 +7257,7 @@ var init_events = __esm({
           for (const line of text2.slice(0, lastNl).split("\n")) {
             if (!line.trim()) continue;
             try {
-              out.push(JSON.parse(line));
+              out.push(parseJson(line));
             } catch {
             }
           }
@@ -14166,7 +14181,7 @@ var init_eval = __esm({
 
 // src/followup/followup.ts
 import path57 from "node:path";
-function parseJson(s) {
+function parseJson2(s) {
   try {
     return JSON.parse(s);
   } catch {
@@ -14214,7 +14229,7 @@ function followupSession(session, deps = realFollowupDeps) {
   }
   if (prUrl && gh2.ok) {
     const r = deps.exec("gh", ["pr", "view", prUrl, "--json", "state,mergedAt,createdAt,mergeCommit,reviews,comments,number,headRefName,closed"], cwd);
-    const pr = r.ok ? parseJson(r.stdout) : null;
+    const pr = r.ok ? parseJson2(r.stdout) : null;
     if (pr) {
       prNumber = pr.number;
       branch = pr.headRefName ?? branch;
@@ -14230,7 +14245,7 @@ function followupSession(session, deps = realFollowupDeps) {
       notes.push(`PR ${prUrl} is ${pr.state}${fu.merged ? " (merged)" : ""}; ${fu.review_comments} review comments, ${fu.change_requests} change requests.`);
       if (fu.merged && mergeSha) {
         const runs = deps.exec("gh", ["run", "list", "--commit", mergeSha, "--json", "conclusion,status,name", "--limit", "20"], cwd);
-        const list = runs.ok ? parseJson(runs.stdout) ?? [] : [];
+        const list = runs.ok ? parseJson2(runs.stdout) ?? [] : [];
         const failed = list.filter((x) => x.conclusion === "failure");
         fu.ci_failed_after_merge = failed.length > 0;
         if (list.length) notes.push(`CI on merge commit: ${failed.length ? `${failed.length} failed (${failed.map((f) => f.name).join(", ")})` : "green"}.`);
@@ -14245,10 +14260,10 @@ function followupSession(session, deps = realFollowupDeps) {
     const m = /github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/.exec(issueUrl2);
     if (m) {
       const r = deps.exec("gh", ["api", `repos/${m[1]}/${m[2]}/issues/${m[3]}/events`, "--jq", "[.[] | {event, created_at}]"], cwd);
-      const evs = r.ok ? parseJson(r.stdout) ?? [] : [];
+      const evs = r.ok ? parseJson2(r.stdout) ?? [] : [];
       fu.issue_reopened = evs.some((e) => e.event === "reopened" && e.created_at > judge.judged_at);
       const state = deps.exec("gh", ["issue", "view", issueUrl2, "--json", "state"], cwd);
-      const st = state.ok ? parseJson(state.stdout)?.state : void 0;
+      const st = state.ok ? parseJson2(state.stdout)?.state : void 0;
       notes.push(`Issue ${issueUrl2} is ${st ?? "unknown"}${fu.issue_reopened ? " and was reopened after the receipt" : ""}.`);
     }
   }
@@ -15303,7 +15318,7 @@ function loadHistory() {
   for (const line of fs53.readFileSync(f, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
-      const e = JSON.parse(line);
+      const e = parseJson(line);
       if (e.internal || isInternalCwd(e.repo)) continue;
       out.push(e);
     } catch {

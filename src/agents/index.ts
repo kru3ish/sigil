@@ -206,7 +206,7 @@ const gemini: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || isSigil(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || h.name === 'tally' || isSigil(h.command))));
       kept.push({ matcher: '*', hooks: [{ name: 'sigil', type: 'command', command: command(this.event(ev)), timeout: 5000 }] });
       hooks[ev] = kept;
     }
@@ -217,7 +217,7 @@ const gemini: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || isSigil(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || h.name === 'tally' || isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }

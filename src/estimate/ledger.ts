@@ -3,6 +3,7 @@
    numbers, the story's key and title, the model, the drivers and fixes by id, and the author's git name (already in
    the repo's own history). Never prompts, code, diffs or file paths. */
 import fs from 'node:fs';
+import { parseJson } from '../paths.js';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { CostCheck } from './variance.js';
@@ -79,7 +80,7 @@ export function readLedger(cwd: string): LedgerEntry[] {
   for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
-      const e = JSON.parse(line) as LedgerEntry;
+      const e = parseJson<LedgerEntry>(line);
       /* a re-recorded session replaces its earlier line; merges from two branches keep both until then */
       if (e && e.v === 1 && typeof e.actual_usd === 'number' && e.session) bySession.set(e.session, e);
     } catch {
@@ -128,7 +129,7 @@ export function recordVerification(cwd: string, session: string, v: LedgerVerifi
   const out = lines.map((l) => {
     if (!l.includes(`"session":${JSON.stringify(session)}`)) return l;
     try {
-      const e = JSON.parse(l) as LedgerEntry;
+      const e = parseJson<LedgerEntry>(l);
       if (e.session !== session) return l;
       found = true;
       return JSON.stringify({ ...e, verification: v });

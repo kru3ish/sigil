@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { sessionDir, sessionsDir, ensureDir, appendLine } from '../paths.js';
+import { sessionDir, sessionsDir, ensureDir, appendLine, parseJson } from '../paths.js';
 
 export type EventType =
   | 'session_start'
@@ -47,7 +47,7 @@ export function readEventsFile(file: string): SigilEvent[] {
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
-      out.push(JSON.parse(line) as SigilEvent);
+      out.push(parseJson<SigilEvent>(line));
     } catch {
       /* skip torn line */
     }
@@ -75,7 +75,7 @@ export class EventTail {
       for (const line of text.slice(0, lastNl).split('\n')) {
         if (!line.trim()) continue;
         try {
-          out.push(JSON.parse(line) as SigilEvent);
+          out.push(parseJson<SigilEvent>(line));
         } catch {
           /* skip */
         }

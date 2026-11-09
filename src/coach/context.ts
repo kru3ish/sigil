@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import type { Config } from '../config.js';
-import { historyFile, isInternalCwd } from '../paths.js';
+import { historyFile, isInternalCwd, parseJson } from '../paths.js';
 import { readEvents, type SigilEvent } from '../store/events.js';
 import { parseTranscriptFile, type Transcript } from '../transcript/parse.js';
 import { loadTask } from '../task/intake.js';
@@ -15,7 +15,7 @@ export function loadHistory(): HistoryEntry[] {
   for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
-      const e = JSON.parse(line) as HistoryEntry;
+      const e = parseJson<HistoryEntry>(line);
       /* entries from Sigil's own headless runs never count toward any stat */
       if (e.internal || isInternalCwd(e.repo)) continue;
       out.push(e);

@@ -132,6 +132,7 @@ Judge
   budget set <usd> [--note]   Cap this task when nothing comparable priced it (tell Claude "cap this at $40")
   budget approve [--note]     Lift a repo-policy hard stop (tally.json budget.hard_stop) after a human decision
   recall [query|<session>]    What past sessions in this repo already produced for a task like this (local, no model)
+  recall --backfill [--since 365d]   Write recall cards for the sessions already on this machine for this repo
   playbook [--all] [--write]  Recurring lessons across receipts, as a CLAUDE.md snippet
   mcp [--install]             MCP server: Claude asks tally_task / tally_unmet / tally_receipt / tally_flags mid-task
   export [--since 30d] [--out f.jsonl] [--titles]   Numbers-only receipts for a team store

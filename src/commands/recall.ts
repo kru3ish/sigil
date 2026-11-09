@@ -1,10 +1,15 @@
 /* `tally recall [query | <session-prefix>] [--json] [--all]`: what past sessions in this repository already produced.
    No argument lists the most recent cards; words rank the cards by similarity; a session prefix prints one card. */
-import { type Args, has } from '../cli.js';
-import { readCards, matchRecall, renderCard } from '../recall/index.js';
+import { type Args, flag, has } from '../cli.js';
+import { readCards, matchRecall, renderCard, backfillCards } from '../recall/index.js';
 
 export async function run(args: Args): Promise<number | void> {
   const cwd = process.cwd();
+  if (has(args, 'backfill')) {
+    const r = backfillCards(cwd, { since: flag(args, 'since'), force: has(args, 'force') });
+    process.stdout.write(`Recall cards for this repository: ${r.written} written from ${r.sessions} past sessions (${r.skipped} skipped: no changes, Tally's own runs, or already carded).\n`);
+    return;
+  }
   const cards = readCards(cwd);
   const ref = args._.join(' ').trim();
   if (!cards.length) {

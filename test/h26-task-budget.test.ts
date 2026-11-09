@@ -10,7 +10,7 @@ import { PolicySchema } from '../src/policy.js';
 import { sessionDir, writeJson, readJson, repoKey } from '../src/paths.js';
 import { renderStatusLine } from '../src/commands/statusline.js';
 import { parseTranscriptFile } from '../src/transcript/parse.js';
-import { buildCard, matchRecall, recallNote, readCards, recallDir, worthMatching, type RecallCard } from '../src/recall/index.js';
+import { backfillCards, buildCard, matchRecall, recallNote, readCards, recallDir, worthMatching, type RecallCard } from '../src/recall/index.js';
 import { spanOf, renderCheck, type CostCheck } from '../src/estimate/variance.js';
 import { rank } from '../src/text/similarity.js';
 import type { CostEstimate } from '../src/estimate/estimate.js';
@@ -117,6 +117,31 @@ describe('recall: the past task this prompt is asking for again', () => {
     expect(c!.cost_usd).toBeCloseTo(Math.round(t.cost * 100) / 100, 2);
     expect(c!.days).toBe(spanOf(t).days);
     expect(c!.repo).toBe(repoKey(basicFixture));
+  });
+
+  it('backfills cards from the sessions already on the machine for this repo, once', () => {
+    const cwd = tmpDir('tally-recall-bf-');
+    const projects = path.join(iso.claude, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'));
+    fs.mkdirSync(projects, { recursive: true });
+    const base = { cwd, sessionId: 'bf-0001', version: '2.1.268', entrypoint: 'cli', isSidechain: false, userType: 'external' };
+    const ts = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+    const lines = [
+      { ...base, type: 'user', uuid: 'u1', timestamp: ts(30), message: { role: 'user', content: 'Fix the Workday poller: page through every posting, not just the first 20' } },
+      { ...base, type: 'assistant', uuid: 'a1', timestamp: ts(29), message: { model: 'claude-opus-5', id: 'm1', role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Edit', input: { file_path: `${cwd}/src/sweep.py`, old_string: 'a', new_string: 'b' } }], usage: { input_tokens: 100, output_tokens: 400, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } },
+      { ...base, type: 'user', uuid: 'u2', timestamp: ts(28), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } },
+      { ...base, type: 'assistant', uuid: 'a2', timestamp: ts(27), message: { model: 'claude-opus-5', id: 'm2', role: 'assistant', content: [{ type: 'text', text: 'Done: the sweep reads the reported total and pages to it.' }], usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } },
+    ];
+    fs.writeFileSync(path.join(projects, 'bf-0001.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const r = backfillCards(cwd);
+    expect(r.sessions).toBe(1);
+    expect(r.written).toBe(1);
+    const cards = readCards(cwd);
+    expect(cards.length).toBe(1);
+    expect(cards[0]!.title).toContain('Workday poller');
+    expect(cards[0]!.outcome).toContain('pages to it');
+    expect(cards[0]!.files).toEqual(['src/sweep.py']);
+    expect(backfillCards(cwd)).toEqual({ written: 0, skipped: 1, sessions: 1 });
+    expect(matchRecall('the workday poller stops after the first page of postings', cards)[0]!.card.session).toBe('bf-0001');
   });
 
   it('the UserPromptSubmit hook offers the matching card once per session and records the event', () => {

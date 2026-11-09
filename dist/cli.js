@@ -16062,6 +16062,7 @@ var init_match = __esm({
 });
 
 // src/recall/index.ts
+import fs59 from "node:fs";
 import path66 from "node:path";
 function relative(cwd, f) {
   const r = path66.relative(cwd, f);
@@ -16109,6 +16110,35 @@ function writeCard(opts) {
   writeJson(f, card);
   return card;
 }
+function backfillCards(cwd, opts = {}) {
+  const pricing = opts.pricing ?? loadPricing();
+  const candidates = scanSessions({ since: opts.since ?? "365d", repo: cwd });
+  let written = 0;
+  let skipped = 0;
+  for (const c of candidates) {
+    if (!opts.force && fs59.existsSync(cardFile(cwd, c.session))) {
+      skipped += 1;
+      continue;
+    }
+    if (c.tool_calls === 0 || !fs59.existsSync(c.transcript)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const t = parseTranscriptFile(c.transcript, pricing);
+      if (t.internal) {
+        skipped += 1;
+        continue;
+      }
+      const card = writeCard({ session: c.session, cwd, transcript: t, task: loadTask(c.session) });
+      if (card) written += 1;
+      else skipped += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { written, skipped, sessions: candidates.length };
+}
 function renderCard(c) {
   const L = [`${c.title}`, `  session ${c.session.slice(0, 8)} \xB7 ${(c.started ?? c.updated).slice(0, 10)}${c.days > 1 ? ` \xB7 ${c.days} days` : ""} \xB7 $${c.cost_usd.toFixed(2)}${c.verdict ? ` \xB7 ${c.verdict}` : ""}`, ""];
   L.push("Asked for:", ...c.text.split("\n").slice(0, 12).map((l) => `  ${l}`), "");
@@ -16124,6 +16154,9 @@ var init_recall = __esm({
     init_paths();
     init_redact();
     init_parse();
+    init_intake();
+    init_scan();
+    init_pricing();
     init_estimate();
     init_variance();
     init_match();
@@ -16138,7 +16171,7 @@ __export(coach_exports, {
   parseCoachArgs: () => parseCoachArgs,
   run: () => run22
 });
-import fs59 from "node:fs";
+import fs60 from "node:fs";
 async function run22(args) {
   const cfg = loadConfig();
   const session = resolveSession(flag(args, "session"), process.cwd());
@@ -16177,8 +16210,8 @@ async function run22(args) {
     const pol = loadPolicy(cwd);
     if (ctx.task && pol.policy.budget.hard_stop && ctx.task.budget_usd > 0) {
       const over = ctx.spendUsd >= ctx.task.budget_usd;
-      if (over && !isApproved(session) && !fs59.existsSync(hardStopFile(session))) writeJson(hardStopFile(session), { ts: (/* @__PURE__ */ new Date()).toISOString(), spend_usd: ctx.spendUsd, budget_usd: ctx.task.budget_usd, policy_file: pol.file });
-      else if (!over && fs59.existsSync(hardStopFile(session))) fs59.unlinkSync(hardStopFile(session));
+      if (over && !isApproved(session) && !fs60.existsSync(hardStopFile(session))) writeJson(hardStopFile(session), { ts: (/* @__PURE__ */ new Date()).toISOString(), spend_usd: ctx.spendUsd, budget_usd: ctx.task.budget_usd, policy_file: pol.file });
+      else if (!over && fs60.existsSync(hardStopFile(session))) fs60.unlinkSync(hardStopFile(session));
     }
     const flags = readFlags(session);
     const live = new Set(engine.evaluate(ctx).map((s) => s.key));
@@ -16609,7 +16642,7 @@ __export(doctor_exports, {
   runChecks: () => runChecks,
   transcriptFormatCheck: () => transcriptFormatCheck
 });
-import fs60 from "node:fs";
+import fs61 from "node:fs";
 import os11 from "node:os";
 import path67 from "node:path";
 import { spawnSync as spawnSync19 } from "node:child_process";
@@ -16631,8 +16664,8 @@ function installChecks(opts) {
   let resolvesHere = null;
   if (first) {
     try {
-      const real = fs60.realpathSync(first);
-      const text2 = real.endsWith(".js") ? "" : fs60.readFileSync(first, "utf8");
+      const real = fs61.realpathSync(first);
+      const text2 = real.endsWith(".js") ? "" : fs61.readFileSync(first, "utf8");
       resolvesHere = real.startsWith(here3) || text2.includes(path67.basename(here3)) || text2.includes("@kru3ish/tally") || text2.includes("dist/cli.js") || text2.includes("dist\\cli.js");
     } catch {
       resolvesHere = null;
@@ -16665,8 +16698,8 @@ function agentChecks() {
     const a = agent(id);
     const hooksFile = a.hooksFile();
     const configDir = path67.dirname(hooksFile);
-    const binary = id === "claude-code" ? sh2("claude", ["--version"]).ok : id === "codex" ? sh2(process.platform === "win32" ? "where" : "which", ["codex"]).ok : id === "gemini" ? sh2(process.platform === "win32" ? "where" : "which", ["gemini"]).ok : sh2(process.platform === "win32" ? "where" : "which", ["cursor-agent"]).ok || fs60.existsSync(configDir);
-    const present = binary || fs60.existsSync(configDir);
+    const binary = id === "claude-code" ? sh2("claude", ["--version"]).ok : id === "codex" ? sh2(process.platform === "win32" ? "where" : "which", ["codex"]).ok : id === "gemini" ? sh2(process.platform === "win32" ? "where" : "which", ["gemini"]).ok : sh2(process.platform === "win32" ? "where" : "which", ["cursor-agent"]).ok || fs61.existsSync(configDir);
+    const present = binary || fs61.existsSync(configDir);
     if (!present) {
       absent.push(a.label);
       continue;
@@ -16676,9 +16709,9 @@ function agentChecks() {
     if (id === "claude-code") {
       const settings = readJson(hooksFile, {});
       installed = isInstalled("user") || Object.entries(settings.enabledPlugins ?? {}).some(([k, v]) => v && k.startsWith("tally"));
-    } else if (fs60.existsSync(hooksFile)) {
+    } else if (fs61.existsSync(hooksFile)) {
       try {
-        const text2 = fs60.readFileSync(hooksFile, "utf8");
+        const text2 = fs61.readFileSync(hooksFile, "utf8");
         installed = /--agent[ =]/.test(text2) && /hook\.js|tally/.test(text2);
       } catch {
         installed = false;
@@ -16690,8 +16723,8 @@ function agentChecks() {
     else {
       const readable = roots.filter((r) => {
         try {
-          fs60.accessSync(r, fs60.constants.R_OK);
-          return fs60.statSync(r).isDirectory();
+          fs61.accessSync(r, fs61.constants.R_OK);
+          return fs61.statSync(r).isDirectory();
         } catch {
           return false;
         }
@@ -16701,7 +16734,7 @@ function agentChecks() {
         try {
           const walk = (d, depth) => {
             if (depth > 4 || files > 5e3) return;
-            for (const e of fs60.readdirSync(d, { withFileTypes: true })) {
+            for (const e of fs61.readdirSync(d, { withFileTypes: true })) {
               if (e.isDirectory()) walk(path67.join(d, e.name), depth + 1);
               else if (e.name.endsWith(".jsonl")) files += 1;
             }
@@ -16745,22 +16778,22 @@ function runChecks(opts = {}) {
     const st = readJson(f, {});
     for (const groups of Object.values(st.hooks ?? {})) for (const g of groups) for (const h of g.hooks ?? []) if (isTallyHook(h)) referenced.push((h.args?.[0] ?? /"([^"]+hook\.js)"/.exec(h.command ?? "")?.[1] ?? "").replace(/^\$\{CLAUDE_PLUGIN_ROOT\}.*/, ""));
   }
-  const missing = [...new Set(referenced.filter((p) => p && !fs60.existsSync(p)))];
+  const missing = [...new Set(referenced.filter((p) => p && !fs61.existsSync(p)))];
   if (referenced.length) checks.push({ name: "hook script", ok: missing.length ? false : true, detail: missing.length ? `${missing.join(", ")} does not exist; every hook event is failing (non-blocking)` : `${[...new Set(referenced)].join(", ")} exists`, fix: missing.length ? `\`tally install\` repoints the hooks at ${builtHookPath()}` : void 0 });
   const hook = builtHookPath();
-  fs60.mkdirSync(tallyHome(), { recursive: true });
-  if (fs60.existsSync(hook)) {
+  fs61.mkdirSync(tallyHome(), { recursive: true });
+  if (fs61.existsSync(hook)) {
     const t0 = Date.now();
-    const r = spawnSync19(process.execPath, [hook, "Stop"], { input: "{}", encoding: "utf8", env: { ...process.env, TALLY_HOME: fs60.mkdtempSync(path67.join(tallyHome(), "doctor-")) } });
+    const r = spawnSync19(process.execPath, [hook, "Stop"], { input: "{}", encoding: "utf8", env: { ...process.env, TALLY_HOME: fs61.mkdtempSync(path67.join(tallyHome(), "doctor-")) } });
     const ms = Date.now() - t0;
     checks.push({ name: "hook runtime", ok: r.status === 0 && ms < 150 ? true : r.status === 0 ? "warn" : false, detail: `exit ${r.status}, ${ms} ms (limit 150)`, fix: r.status === 0 ? ms < 150 ? void 0 : "a slow disk or antivirus scan of node; run `tally doctor` again when the machine is idle" : `the hook crashed: run \`node "${hook}" Stop\` with input {} to see the error, then \`npm i -g @kru3ish/tally\` to reinstall` });
-    for (const d of fs60.readdirSync(tallyHome()).filter((x) => x.startsWith("doctor-"))) fs60.rmSync(path67.join(tallyHome(), d), { recursive: true, force: true });
+    for (const d of fs61.readdirSync(tallyHome()).filter((x) => x.startsWith("doctor-"))) fs61.rmSync(path67.join(tallyHome(), d), { recursive: true, force: true });
   } else {
     checks.push({ name: "hook runtime", ok: false, detail: "dist/hook.js missing", fix: "from a checkout: `npm run build`; from npm: `npm i -g @kru3ish/tally` again" });
   }
   try {
-    fs60.mkdirSync(tallyHome(), { recursive: true });
-    fs60.accessSync(tallyHome(), fs60.constants.W_OK);
+    fs61.mkdirSync(tallyHome(), { recursive: true });
+    fs61.accessSync(tallyHome(), fs61.constants.W_OK);
     checks.push({ name: "data dir", ok: true, detail: tallyHome() });
   } catch {
     checks.push({ name: "data dir", ok: false, detail: `${tallyHome()} not writable`, fix: `make it writable, or point TALLY_HOME at a directory you own` });
@@ -16771,14 +16804,14 @@ function runChecks(opts = {}) {
   checks.push({ name: "config", ok: cfgOk, detail: cfgOk ? `hourly_rate $${cfg.hourly_rate}, judge ${cfg.models.judge}, coach ${cfg.models.coach}, auto_apply ${cfg.auto_apply}, writeback ${cfg.writeback}` : `${configFile()} is invalid; defaults in use`, fix: cfgOk ? void 0 : `fix or delete ${configFile()}; \`tally config\` shows the valid keys` });
   const pricing = loadPricing();
   const age = (Date.now() - Date.parse(pricing.last_verified)) / 864e5;
-  checks.push({ name: "pricing", ok: age < 60 ? true : "warn", detail: `${fs60.existsSync(pricingFile()) ? pricingFile() : bundledPricingPath()} verified ${pricing.last_verified} (${Math.round(age)} days ago${age >= 60 ? "; re-check against the pricing page" : ""})` });
+  checks.push({ name: "pricing", ok: age < 60 ? true : "warn", detail: `${fs61.existsSync(pricingFile()) ? pricingFile() : bundledPricingPath()} verified ${pricing.last_verified} (${Math.round(age)} days ago${age >= 60 ? "; re-check against the pricing page" : ""})` });
   const jira = !!(cfg.jira.base_url && cfg.jira.email && cfg.jira.api_token);
   checks.push({ name: "jira", ok: jira ? true : "warn", detail: jira ? cfg.jira.base_url : "JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN not set (optional)" });
   checks.push({ name: "linear", ok: cfg.linear.api_key ? true : "warn", detail: cfg.linear.api_key ? "LINEAR_API_KEY set" : "LINEAR_API_KEY not set (optional)" });
   const tmux = sh2(process.platform === "win32" ? "where" : "which", ["tmux"]);
   checks.push({ name: "tmux", ok: tmux.ok ? true : "warn", detail: tmux.ok ? "available; `tally start` opens a split" : "not found; `tally start` prints the command to run in a second terminal" });
   const transcripts = path67.join(claudeHome(), "projects");
-  checks.push({ name: "transcripts", ok: fs60.existsSync(transcripts) ? true : "warn", detail: fs60.existsSync(transcripts) ? transcripts : `${transcripts} not found yet (created by Claude Code on first session)` });
+  checks.push({ name: "transcripts", ok: fs61.existsSync(transcripts) ? true : "warn", detail: fs61.existsSync(transcripts) ? transcripts : `${transcripts} not found yet (created by Claude Code on first session)` });
   const active = activeSessions();
   checks.push({ name: "sessions", ok: true, detail: `${active.length} active` });
   const receipts = loadHistory().filter((h) => typeof h.tally_share_pct === "number");
@@ -16789,7 +16822,7 @@ function runChecks(opts = {}) {
     checks.push({ name: "tally overhead", ok: true, detail: "no receipts yet; the share of session spend is reported on each receipt" });
   }
   checks.push(transcriptFormatCheck(process.cwd()));
-  const internalDirs = fs60.existsSync(transcripts) ? fs60.readdirSync(transcripts).filter((d) => isInternalCwd(d)).length : 0;
+  const internalDirs = fs61.existsSync(transcripts) ? fs61.readdirSync(transcripts).filter((d) => isInternalCwd(d)).length : 0;
   if (internalDirs) checks.push({ name: "internal runs", ok: true, detail: `${internalDirs} empty project dir(s) from Tally's own headless runs under ~/.claude/projects (no transcripts; safe to delete)` });
   return checks;
 }
@@ -16797,17 +16830,17 @@ function transcriptFormatCheck(cwd) {
   const dirs = [projectTranscriptsDir(cwd), path67.join(claudeHome(), "projects")];
   const files = [];
   for (const d of dirs) {
-    if (!fs60.existsSync(d)) continue;
-    const entries = fs60.readdirSync(d).map((f) => path67.join(d, f));
+    if (!fs61.existsSync(d)) continue;
+    const entries = fs61.readdirSync(d).map((f) => path67.join(d, f));
     for (const e of entries) {
       if (e.endsWith(".jsonl")) files.push(e);
-      else if (fs60.statSync(e).isDirectory() && !isInternalCwd(e)) {
-        for (const f of fs60.readdirSync(e)) if (f.endsWith(".jsonl")) files.push(path67.join(e, f));
+      else if (fs61.statSync(e).isDirectory() && !isInternalCwd(e)) {
+        for (const f of fs61.readdirSync(e)) if (f.endsWith(".jsonl")) files.push(path67.join(e, f));
       }
     }
     if (files.length) break;
   }
-  const recent = files.map((f) => ({ f, m: fs60.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, 5);
+  const recent = files.map((f) => ({ f, m: fs61.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, 5);
   if (!recent.length) return { name: "transcript format", ok: "warn", detail: "no transcripts found to check" };
   let unparseable = 0;
   let total = 0;
@@ -16883,7 +16916,7 @@ var init_doctor = __esm({
 });
 
 // src/calibrate/eval.ts
-import fs61 from "node:fs";
+import fs62 from "node:fs";
 import os12 from "node:os";
 import path68 from "node:path";
 import { spawnSync as spawnSync20 } from "node:child_process";
@@ -16894,13 +16927,13 @@ function baselineFile() {
   return path68.join(fixturesRoot(), "baseline.json");
 }
 function loadFixtures(root = fixturesRoot()) {
-  if (!fs61.existsSync(root)) return [];
-  return fs61.readdirSync(root).filter((d) => fs61.existsSync(path68.join(root, d, "expected.json"))).sort().map((name) => {
+  if (!fs62.existsSync(root)) return [];
+  return fs62.readdirSync(root).filter((d) => fs62.existsSync(path68.join(root, d, "expected.json"))).sort().map((name) => {
     const dir = path68.join(root, name);
-    const read2 = (f) => JSON.parse(fs61.readFileSync(path68.join(dir, f), "utf8"));
+    const read2 = (f) => JSON.parse(fs62.readFileSync(path68.join(dir, f), "utf8"));
     const recordedPath = path68.join(dir, "model-output.json");
     let recorded;
-    if (fs61.existsSync(recordedPath)) {
+    if (fs62.existsSync(recordedPath)) {
       const raw = read2("model-output.json");
       recorded = Array.isArray(raw.calls) ? { calls: raw.calls } : void 0;
     }
@@ -16914,32 +16947,32 @@ function git3(cwd, ...args) {
 }
 function materializeRepo(c, root) {
   const cwd = path68.join(root, c.name);
-  fs61.mkdirSync(cwd, { recursive: true });
+  fs62.mkdirSync(cwd, { recursive: true });
   git3(cwd, "init", "-q", "-b", "main");
   git3(cwd, "config", "user.email", "fixture@tally.local");
   git3(cwd, "config", "user.name", "tally fixture");
   for (const [f, content] of Object.entries(c.repo.base)) {
-    fs61.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
-    fs61.writeFileSync(path68.join(cwd, f), content);
+    fs62.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
+    fs62.writeFileSync(path68.join(cwd, f), content);
   }
   git3(cwd, "add", "-A");
   git3(cwd, "commit", "-q", "-m", "base");
   const base = git3(cwd, "rev-parse", "HEAD");
   for (const [f, content] of Object.entries(c.repo.after)) {
-    fs61.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
-    fs61.writeFileSync(path68.join(cwd, f), content);
+    fs62.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
+    fs62.writeFileSync(path68.join(cwd, f), content);
   }
-  for (const f of c.repo.delete ?? []) if (fs61.existsSync(path68.join(cwd, f))) fs61.unlinkSync(path68.join(cwd, f));
+  for (const f of c.repo.delete ?? []) if (fs62.existsSync(path68.join(cwd, f))) fs62.unlinkSync(path68.join(cwd, f));
   return { cwd, base };
 }
 async function runFixture(c, opts) {
   const cfg = opts.cfg ?? loadConfig();
   const ownRoot = !opts.workRoot;
-  const workRoot = opts.workRoot ?? fs61.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
+  const workRoot = opts.workRoot ?? fs62.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
   try {
     return await runFixtureIn(c, { ...opts, cfg, workRoot });
   } finally {
-    if (ownRoot) fs61.rmSync(workRoot, { recursive: true, force: true, maxRetries: 3 });
+    if (ownRoot) fs62.rmSync(workRoot, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 async function runFixtureIn(c, opts) {
@@ -16948,7 +16981,7 @@ async function runFixtureIn(c, opts) {
   const session = c.task.session;
   ensureDir(sessionDir(session));
   const transcriptPath = path68.join(sessionDir(session), "transcript.jsonl");
-  fs61.copyFileSync(path68.join(c.dir, "transcript.jsonl"), transcriptPath);
+  fs62.copyFileSync(path68.join(c.dir, "transcript.jsonl"), transcriptPath);
   const events = readEventsFile(path68.join(c.dir, "events.jsonl")).map((e) => e.type === "session_start" ? { ...e, session, cwd, data: { ...e.data, git_head: base } } : { ...e, session, cwd });
   const calls = [];
   let llm;
@@ -16980,13 +17013,13 @@ async function runFixtureIn(c, opts) {
 async function runEval(opts) {
   const cases = loadFixtures().filter((c) => !opts.only?.length || opts.only.includes(c.name));
   if (!cases.length) throw new Error("no calibration fixtures found");
-  const workRoot = fs61.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
+  const workRoot = fs62.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
   const results = [];
   for (const c of cases) {
     const r = await runFixture(c, { cfg: opts.cfg, live: opts.live, llm: opts.llmFor?.(c), workRoot, deep: opts.deep });
     results.push(r);
   }
-  fs61.rmSync(workRoot, { recursive: true, force: true });
+  fs62.rmSync(workRoot, { recursive: true, force: true });
   const report = buildCalibrationReport(results.map((r) => r.entry));
   const fixtures = results.map((r) => ({
     name: r.name,
@@ -17022,13 +17055,13 @@ async function runEval(opts) {
   };
   if (opts.record || opts.rebaseline) {
     const old = loadBaseline();
-    const writeOutput = (r) => fs61.writeFileSync(path68.join(cases.find((c) => c.name === r.name).dir, "model-output.json"), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), calls: r.calls }, null, 2) + "\n");
+    const writeOutput = (r) => fs62.writeFileSync(path68.join(cases.find((c) => c.name === r.name).dir, "model-output.json"), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), calls: r.calls }, null, 2) + "\n");
     if (opts.record && opts.live) {
       for (const r of results) if (!cases.find((c) => c.name === r.name).recorded) writeOutput(r);
     }
     if (opts.rebaseline || !old || summary.criterion_agreement >= old.criterion_agreement - 1e-9) {
       if (opts.record && opts.live) for (const r of results) writeOutput(r);
-      if (!opts.only?.length) fs61.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, tally_usd: f.tally_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + "\n");
+      if (!opts.only?.length) fs62.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, tally_usd: f.tally_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + "\n");
       summary.baseline_updated = true;
     } else summary.baseline_updated = false;
   }
@@ -17036,8 +17069,8 @@ async function runEval(opts) {
 }
 function loadBaseline() {
   const f = baselineFile();
-  if (!fs61.existsSync(f)) return null;
-  return JSON.parse(fs61.readFileSync(f, "utf8"));
+  if (!fs62.existsSync(f)) return null;
+  return JSON.parse(fs62.readFileSync(f, "utf8"));
 }
 function renderOverheadTable(s) {
   const L = [];
@@ -17077,13 +17110,13 @@ var init_eval2 = __esm({
 });
 
 // src/demo/demo.ts
-import fs62 from "node:fs";
+import fs63 from "node:fs";
 import os13 from "node:os";
 import path69 from "node:path";
 import { spawnSync as spawnSync21 } from "node:child_process";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function calibrationDir() {
-  for (const c of [path69.join(here2, "fixtures", "calibration"), path69.join(here2, "..", "..", "test", "fixtures", "calibration"), path69.join(here2, "..", "fixtures", "calibration")]) if (fs62.existsSync(path69.join(c, "adv-wrong-impl-matching-test", "expected.json"))) return c;
+  for (const c of [path69.join(here2, "fixtures", "calibration"), path69.join(here2, "..", "..", "test", "fixtures", "calibration"), path69.join(here2, "..", "fixtures", "calibration")]) if (fs63.existsSync(path69.join(c, "adv-wrong-impl-matching-test", "expected.json"))) return c;
   throw new Error("calibration fixture not found; run npm run build or run from a source checkout");
 }
 function visibleLength(s) {
@@ -17107,7 +17140,7 @@ function wrapLine(line, width) {
   return out;
 }
 function fixturesDir() {
-  for (const c of [path69.join(here2, "fixtures", "session-basic"), path69.join(here2, "..", "..", "test", "fixtures", "session-basic"), path69.join(here2, "..", "fixtures", "session-basic")]) if (fs62.existsSync(c)) return c;
+  for (const c of [path69.join(here2, "fixtures", "session-basic"), path69.join(here2, "..", "..", "test", "fixtures", "session-basic"), path69.join(here2, "..", "fixtures", "session-basic")]) if (fs63.existsSync(c)) return c;
   throw new Error("fixtures not found; run from a source checkout");
 }
 function git4(cwd, ...args) {
@@ -17117,28 +17150,28 @@ function git4(cwd, ...args) {
 }
 function makeRepo(root) {
   const cwd = path69.join(root, "acme-app");
-  fs62.mkdirSync(path69.join(cwd, "src"), { recursive: true });
+  fs63.mkdirSync(path69.join(cwd, "src"), { recursive: true });
   git4(cwd, "init", "-q", "-b", "main");
   git4(cwd, "config", "user.email", "demo@tally.local");
   git4(cwd, "config", "user.name", "tally demo");
-  fs62.writeFileSync(path69.join(cwd, "package.json"), JSON.stringify({ name: "acme-app", version: "1.0.0", scripts: { test: "node test.js" } }, null, 2));
-  fs62.writeFileSync(path69.join(cwd, "test.js"), `const login = require('./src/login');
+  fs63.writeFileSync(path69.join(cwd, "package.json"), JSON.stringify({ name: "acme-app", version: "1.0.0", scripts: { test: "node test.js" } }, null, 2));
+  fs63.writeFileSync(path69.join(cwd, "test.js"), `const login = require('./src/login');
 if (login(6) !== 429) { console.error('expected 429 after 5 attempts'); process.exit(1); }
 console.log('ok: 429 after 5 attempts');
 `);
-  fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
+  fs63.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
 `);
-  fs62.writeFileSync(path69.join(cwd, "README.md"), "# acme-app\n\nExpress API.\n");
+  fs63.writeFileSync(path69.join(cwd, "README.md"), "# acme-app\n\nExpress API.\n");
   git4(cwd, "add", "-A");
   git4(cwd, "commit", "-q", "-m", "base");
   const base = git4(cwd, "rev-parse", "HEAD");
   return { cwd, base };
 }
 function applyWork(cwd) {
-  fs62.writeFileSync(path69.join(cwd, "src", "rateLimit.js"), `const MAX = 5;
+  fs63.writeFileSync(path69.join(cwd, "src", "rateLimit.js"), `const MAX = 5;
 module.exports = function rateLimit(attempts) { return attempts > MAX; };
 `);
-  fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `const rateLimit = require('./rateLimit');
+  fs63.writeFileSync(path69.join(cwd, "src", "login.js"), `const rateLimit = require('./rateLimit');
 module.exports = function login(attempts) { return rateLimit(attempts) ? 429 : 200; };
 `);
   git4(cwd, "add", "-A");
@@ -17183,14 +17216,14 @@ async function runDemo(opts = {}) {
   const step = (n, s) => out(`
 ${bold(cyan(`[${n}] ${s}`))}`);
   const ownHome = !opts.home;
-  const home2 = opts.home ?? fs62.mkdtempSync(path69.join(os13.tmpdir(), "tally-demo-"));
+  const home2 = opts.home ?? fs63.mkdtempSync(path69.join(os13.tmpdir(), "tally-demo-"));
   const prev = { TALLY_HOME: process.env.TALLY_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, TALLY_NO_SPAWN: process.env.TALLY_NO_SPAWN, TALLY_LLM: process.env.TALLY_LLM };
   process.env.TALLY_HOME = path69.join(home2, "tally");
   process.env.CLAUDE_CONFIG_DIR = path69.join(home2, "claude");
   process.env.TALLY_NO_SPAWN = "1";
   process.env.TALLY_LLM = "stub";
-  fs62.mkdirSync(process.env.TALLY_HOME, { recursive: true });
-  fs62.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+  fs63.mkdirSync(process.env.TALLY_HOME, { recursive: true });
+  fs63.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
   try {
     const fx = fixturesDir();
     const session = "demo-" + Date.now().toString(36);
@@ -17200,7 +17233,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     const hook = builtHookPath();
     ensureDir(sessionDir(session));
     const transcriptPath = path69.join(sessionDir(session), "transcript.jsonl");
-    fs62.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
+    fs63.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
     out(bold("Tally demo") + dim(`  isolated data dir: ${process.env.TALLY_HOME}`));
     out(dim(`  fake repo: ${cwd}  \xB7  real ~/.claude and ~/.tally are not touched  \xB7  LLM calls are stubbed`));
     const repo = repoKey(cwd);
@@ -17254,7 +17287,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     let lastPromptDelivery = "";
     let llmCalls = 0;
     let transcriptCut = 0;
-    const transcriptLines = fs62.readFileSync(path69.join(fx, "transcript.jsonl"), "utf8").split("\n").filter(Boolean);
+    const transcriptLines = fs63.readFileSync(path69.join(fx, "transcript.jsonl"), "utf8").split("\n").filter(Boolean);
     const permissionEvents = [];
     const handle2 = (s, now) => {
       shown += 1;
@@ -17279,7 +17312,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
       if (!payload) continue;
       if (e.type === "session_start") {
         const fakeSettings = path69.join(process.env.CLAUDE_CONFIG_DIR, "settings.json");
-        fs62.writeFileSync(fakeSettings, JSON.stringify({ enabledPlugins: { "superpowers@official": true } }));
+        fs63.writeFileSync(fakeSettings, JSON.stringify({ enabledPlugins: { "superpowers@official": true } }));
       }
       const r = spawnSync21(process.execPath, [hook, payload.event], { input: JSON.stringify(payload.input), encoding: "utf8", env: { ...process.env }, windowsHide: true });
       if (r.status !== 0) out(yellow(`  hook ${payload.event} exited ${r.status}`));
@@ -17310,7 +17343,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
         if (ts && ts > e.ts) break;
         transcriptCut += 1;
       }
-      fs62.writeFileSync(transcriptPath, transcriptLines.slice(0, Math.max(transcriptCut, 1)).join("\n") + "\n");
+      fs63.writeFileSync(transcriptPath, transcriptLines.slice(0, Math.max(transcriptCut, 1)).join("\n") + "\n");
       const ctx = buildContext({ session, cwd, cfg, now, transcriptPath });
       const tick = engine.tick(ctx);
       for (const s of tick.show) handle2(s, now);
@@ -17324,7 +17357,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
       saveState(session, engine.state);
       if (!opts.fast) await new Promise((res) => setTimeout(res, 15));
     }
-    fs62.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
+    fs63.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
     out(dim(`  ${shown} suggestions shown (noise limits: 1 non-critical per ${cfg.coach.min_interval_s}s, ${cfg.coach.max_per_session} per session; critical always)`));
     step(3, "Judge (stubbed judge model, real git diff, real independent test run)");
     applyWork(cwd);
@@ -17340,7 +17373,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     out(dim("  deterministic evidence first; the model's reading is one item, labelled [model], and lifts nothing above SUPPORTED on its own"));
     if (judge.assurance) out(renderVerify(judge.assurance, { color }));
     step(5, "The agent fixes the forgotten criterion; verification becomes complete");
-    fs62.appendFileSync(path69.join(cwd, "README.md"), "\n## Rate limiting\n\nPOST /api/login answers 429 after 5 failed attempts from one IP within 15 minutes.\n");
+    fs63.appendFileSync(path69.join(cwd, "README.md"), "\n## Rate limiting\n\nPOST /api/login answers 429 after 5 failed attempts from one IP within 15 minutes.\n");
     git4(cwd, "add", "-A");
     git4(cwd, "commit", "-q", "-m", "docs: document the login rate limit");
     const llmFixed = new StubLlm(
@@ -17364,9 +17397,9 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     if (judgeFixed.assurance) out(renderVerify(judgeFixed.assurance, { color, evidence: false }));
     step(6, "Follow-up 8 days later: the PR was merged, then reverted");
     const mergeSha = git4(cwd, "rev-parse", "HEAD");
-    fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
+    fs63.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
 `);
-    fs62.unlinkSync(path69.join(cwd, "src", "rateLimit.js"));
+    fs63.unlinkSync(path69.join(cwd, "src", "rateLimit.js"));
     git4(cwd, "add", "-A");
     git4(cwd, "commit", "-q", "-m", `Revert "add rate limiting to login (#57)"
 
@@ -17401,7 +17434,7 @@ This reverts commit ${mergeSha}. Locked out the QA team.`);
     else out(dim(`Demo data: ${home2}${opts.keep ? " (kept)" : ""}  \xB7  receipt: ${reportPath}`));
     return { home: home2, repo: cwd, session, suggestionsShown: shown, applied, injected, shipDetected, verdict: judge.verdict.verdict, finalVerdict: after.followup.final_verdict, reportPath, removed: ownHome && !opts.keep };
   } finally {
-    if (ownHome && !opts.keep) fs62.rmSync(home2, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (ownHome && !opts.keep) fs63.rmSync(home2, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     for (const [k, v] of Object.entries(prev)) {
       if (v === void 0) delete process.env[k];
       else process.env[k] = v;
@@ -17452,7 +17485,7 @@ var status_exports = {};
 __export(status_exports, {
   run: () => run28
 });
-import fs63 from "node:fs";
+import fs64 from "node:fs";
 import path70 from "node:path";
 async function run28(args) {
   const cfg = loadConfig();
@@ -17462,7 +17495,7 @@ async function run28(args) {
     process.stdout.write("No tracked sessions yet. Install with `tally install`, then start Claude Code.\n");
     return;
   }
-  if (!fs63.existsSync(sessionDir(session))) {
+  if (!fs64.existsSync(sessionDir(session))) {
     process.stderr.write(`No session ${session} on this machine (tally sessions lists them).
 `);
     return 1;
@@ -17475,7 +17508,7 @@ async function run28(args) {
 `);
   const task = loadTask(session);
   if (task) process.stdout.write(renderTask(task) + "\n\n");
-  if (fs63.existsSync(path70.join(sessionDir(session), "task.pending")) && !task) process.stdout.write("task intake is running in the background\u2026\n\n");
+  if (fs64.existsSync(path70.join(sessionDir(session), "task.pending")) && !task) process.stdout.write("task intake is running in the background\u2026\n\n");
   const judge = loadJudge(session);
   if (judge) process.stdout.write(renderSummary(judge, color) + "\n\n");
   const inj = pendingInjects(session);
@@ -17642,7 +17675,7 @@ var init_otel2 = __esm({
 });
 
 // src/calibrate/grade.ts
-import fs64 from "node:fs";
+import fs65 from "node:fs";
 import path71 from "node:path";
 function evidenceSummary(session) {
   const j = loadJudge(session);
@@ -17721,7 +17754,7 @@ These criteria were inferred from the prompts${task.context?.branch ? `, branch 
   let verdict = null;
   while (!verdict) verdict = verdictFrom(await opts.ask("Your verdict: [w]orth it  [b]orderline  [n]ot worth it > "));
   const replayPath = path71.join(sessionDir(session), "coach_replay.json");
-  const replay = fs64.existsSync(replayPath) ? JSON.parse(fs64.readFileSync(replayPath, "utf8")) : null;
+  const replay = fs65.existsSync(replayPath) ? JSON.parse(fs65.readFileSync(replayPath, "utf8")) : null;
   const coach = [];
   if (replay?.shown.length) {
     opts.out(`
@@ -17766,7 +17799,7 @@ var calibrate_exports = {};
 __export(calibrate_exports, {
   run: () => run32
 });
-import fs65 from "node:fs";
+import fs66 from "node:fs";
 import os14 from "node:os";
 import path72 from "node:path";
 import readline4 from "node:readline";
@@ -17848,7 +17881,7 @@ async function run32(args) {
     }
     const prevHome = process.env.TALLY_HOME;
     const keep = has(args, "keep");
-    if (!keep) process.env.TALLY_HOME = fs65.mkdtempSync(path72.join(os14.tmpdir(), "tally-cal-home-"));
+    if (!keep) process.env.TALLY_HOME = fs66.mkdtempSync(path72.join(os14.tmpdir(), "tally-cal-home-"));
     try {
       const only = flag(args, "only")?.split(",").filter(Boolean);
       const s = await runEval({ live, record: record2, rebaseline: has(args, "rebaseline"), only, deep: has(args, "deep") });
@@ -17896,7 +17929,7 @@ PASS: criterion agreement ${(s.criterion_agreement * 100).toFixed(1)}% \u2265 ${
 `);
     } finally {
       if (!keep) {
-        fs65.rmSync(process.env.TALLY_HOME, { recursive: true, force: true });
+        fs66.rmSync(process.env.TALLY_HOME, { recursive: true, force: true });
         if (prevHome === void 0) delete process.env.TALLY_HOME;
         else process.env.TALLY_HOME = prevHome;
       }
@@ -17921,7 +17954,7 @@ var init_calibrate2 = __esm({
 });
 
 // src/backfill/history.ts
-import fs66 from "node:fs";
+import fs67 from "node:fs";
 import os15 from "node:os";
 import path73 from "node:path";
 import { spawnSync as spawnSync22 } from "node:child_process";
@@ -17968,24 +18001,24 @@ function reconstructWindow(cwd, opts) {
   return { start_head, end_head, branch, commits_in_window, extended_to_pr, notes };
 }
 function addWorktree(cwd, sha, exec = gitExecRaw) {
-  const dir = fs66.mkdtempSync(path73.join(os15.tmpdir(), "tally-wt-"));
-  fs66.rmdirSync(dir);
+  const dir = fs67.mkdtempSync(path73.join(os15.tmpdir(), "tally-wt-"));
+  fs67.rmdirSync(dir);
   const r = exec("git", ["worktree", "add", "--detach", dir, sha], cwd);
   if (!r.ok) throw new Error(`git worktree add failed: ${r.stderr.trim().slice(0, 200)}`);
   return {
     path: dir,
     remove: () => {
       exec("git", ["worktree", "remove", "--force", dir], cwd);
-      if (fs66.existsSync(dir)) fs66.rmSync(dir, { recursive: true, force: true });
+      if (fs67.existsSync(dir)) fs67.rmSync(dir, { recursive: true, force: true });
       exec("git", ["worktree", "prune"], cwd);
     }
   };
 }
 async function prepareDeps(wt, timeoutMs) {
-  const has2 = (f) => fs66.existsSync(path73.join(wt, f));
+  const has2 = (f) => fs67.existsSync(path73.join(wt, f));
   if (has2("package.json")) {
     if (has2("node_modules")) return { ok: true, note: "node_modules present" };
-    const pkg = JSON.parse(fs66.readFileSync(path73.join(wt, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs67.readFileSync(path73.join(wt, "package.json"), "utf8"));
     if (!Object.keys(pkg.dependencies ?? {}).length && !Object.keys(pkg.devDependencies ?? {}).length) return { ok: true, note: "no dependencies" };
     if (!has2("package-lock.json") && !has2("npm-shrinkwrap.json")) return { ok: false, note: "no lockfile; offline install not attempted" };
     const isWin = process.platform === "win32";
@@ -17993,7 +18026,7 @@ async function prepareDeps(wt, timeoutMs) {
     const r = await runProcess(isWin ? "cmd.exe" : "sh", isWin ? ["/d", "/s", "/c", `"${cmd}"`] : ["-c", cmd], { cwd: wt, timeoutMs, env: scrubEnv(), replaceEnv: true });
     return r.code === 0 ? { ok: true, note: "npm ci --offline succeeded" } : { ok: false, note: `npm ci --offline failed (${r.timedOut ? "timeout" : "exit " + r.code}); dependencies unavailable offline` };
   }
-  if (has2("requirements.txt") || has2("pyproject.toml")) return { ok: fs66.existsSync(path73.join(wt, ".venv")) || fs66.existsSync(path73.join(wt, "venv")), note: "python: runs only when a checked-in venv exists" };
+  if (has2("requirements.txt") || has2("pyproject.toml")) return { ok: fs67.existsSync(path73.join(wt, ".venv")) || fs67.existsSync(path73.join(wt, "venv")), note: "python: runs only when a checked-in venv exists" };
   return { ok: true, note: "no dependency step needed" };
 }
 async function runHistoricalTests(wt, opts) {
@@ -18170,21 +18203,21 @@ var init_ticket = __esm({
 });
 
 // src/backfill/run.ts
-import fs67 from "node:fs";
+import fs68 from "node:fs";
 import path74 from "node:path";
 function tier2Estimate(sessionCostUsd) {
   return Math.min(3, 0.15 + 4e-3 * sessionCostUsd);
 }
 function backfillSpendSince(hours = 24) {
   const f = tallySpendFile();
-  if (!fs67.existsSync(f)) return 0;
+  if (!fs68.existsSync(f)) return 0;
   const since = Date.now() - hours * 36e5;
   let sum2 = 0;
-  for (const line of fs67.readFileSync(f, "utf8").split("\n")) {
+  for (const line of fs68.readFileSync(f, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line);
-      if (Date.parse(e.ts ?? "") >= since && e.session && fs67.existsSync(path74.join(sessionDir(e.session), "backfill.json"))) sum2 += e.cost_usd ?? 0;
+      if (Date.parse(e.ts ?? "") >= since && e.session && fs68.existsSync(path74.join(sessionDir(e.session), "backfill.json"))) sum2 += e.cost_usd ?? 0;
     } catch {
     }
   }
@@ -18208,7 +18241,7 @@ async function backfillSession(c, opts) {
   const cwd = c.cwd;
   const t = parseTranscriptFile(c.transcript);
   if (t.internal) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "internal run" }, window: { commits_in_window: 0, notes: [] }, skipped: "internal Tally run", tally_spend_usd: 0 };
-  if (!cwd || !fs67.existsSync(cwd)) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "cwd missing" }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? "?"}`, tally_spend_usd: 0 };
+  if (!cwd || !fs68.existsSync(cwd)) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "cwd missing" }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? "?"}`, tally_spend_usd: 0 };
   const start = c.started ?? t.startedAt ?? (/* @__PURE__ */ new Date()).toISOString();
   const end = c.ended ?? t.endedAt ?? start;
   const link = opts.taskRef ? { kind: /^https?:\/\//.test(opts.taskRef) ? "url" : "key", ref: opts.taskRef, url: /^https?:\/\//.test(opts.taskRef) ? opts.taskRef : void 0, confidence: 1, evidence: "given with --task" } : detectTaskLink({ cwd, branch: c.branch, prompts: c.prompts, start, end }, deps.link ?? realLinkDeps);
@@ -18218,7 +18251,7 @@ async function backfillSession(c, opts) {
   if (noTree) window.notes.push("no commits inside the session window: evidence reconstructed from the transcript, tests not run");
   const dir = ensureDir(sessionDir(session)) ?? sessionDir(session);
   const events = eventsFromTranscript(t, session, cwd, c.transcript, window.start_head);
-  fs67.writeFileSync(eventsFile(session), events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  fs68.writeFileSync(eventsFile(session), events.map((e) => JSON.stringify(e)).join("\n") + "\n");
   writeJson(path74.join(dir, "backfill.json"), { session, link, window, started: start, ended: end, repo: cwd, transcript: c.transcript, backfilled_at: (/* @__PURE__ */ new Date()).toISOString() });
   let task = loadTask(session);
   if (!task) {
@@ -18256,7 +18289,7 @@ async function backfillSession(c, opts) {
   return { session, link, window, task, judge, replay, tally_spend_usd: tallyOwnSpend(session) };
 }
 function isBackfilled(session) {
-  return fs67.existsSync(path74.join(sessionDir(session), "backfill.json")) && !!loadJudge(session);
+  return fs68.existsSync(path74.join(sessionDir(session), "backfill.json")) && !!loadJudge(session);
 }
 var init_run2 = __esm({
   "src/backfill/run.ts"() {
@@ -18283,7 +18316,7 @@ var backfill_exports = {};
 __export(backfill_exports, {
   run: () => run33
 });
-import fs68 from "node:fs";
+import fs69 from "node:fs";
 import path75 from "node:path";
 function shortRepo2(repo) {
   if (!repo) return "?";
@@ -18298,7 +18331,7 @@ async function run33(args) {
   const plain = has(args, "plain");
   if (sub === "list" && flag(args, "suggest")) {
     const n = Math.max(1, Number(flag(args, "suggest")) || 20);
-    const cands = scanSessions({ since, repo }).filter((c) => c.cwd && fs68.existsSync(c.cwd) && c.cost >= 0.2);
+    const cands = scanSessions({ since, repo }).filter((c) => c.cwd && fs69.existsSync(c.cwd) && c.cost >= 0.2);
     const scored = cands.map((c) => {
       const link = detectTaskLink({ cwd: c.cwd, branch: c.branch, prompts: c.prompts, start: c.started, end: c.ended });
       const why = [];
@@ -18409,7 +18442,7 @@ ${linked}/${cands.length} with a detected task link. Projected cost to backfill 
         continue;
       }
       if (has(args, "force")) {
-        for (const f of ["judge.json", "task.json", "coach_replay.json"]) if (fs68.existsSync(path75.join(sessionDir(c.session), f))) fs68.unlinkSync(path75.join(sessionDir(c.session), f));
+        for (const f of ["judge.json", "task.json", "coach_replay.json"]) if (fs69.existsSync(path75.join(sessionDir(c.session), f))) fs69.unlinkSync(path75.join(sessionDir(c.session), f));
       }
       process.stdout.write(`${c.session.slice(0, 8)} ${(c.started ?? "").slice(0, 10)} ${shortRepo2(c.repo)} ${fmtUsd(c.cost)}
 `);
@@ -18562,7 +18595,7 @@ var feedback_exports = {};
 __export(feedback_exports, {
   run: () => run34
 });
-import fs69 from "node:fs";
+import fs70 from "node:fs";
 import path76 from "node:path";
 import readline5 from "node:readline";
 import { spawn as spawn6 } from "node:child_process";
@@ -18657,7 +18690,7 @@ async function run34(args) {
   }
   const out = flag(args, "out");
   if (out) {
-    fs69.writeFileSync(out, payload + "\n");
+    fs70.writeFileSync(out, payload + "\n");
     process.stdout.write(`Wrote ${out} (${payload.length} bytes). Excluded by construction: ${report.excluded.join(", ")}.
 `);
     return;
@@ -18679,7 +18712,7 @@ Excluded by construction: ${report.excluded.join(", ")}.
     return;
   }
   const file = path76.join(cwd, `tally-wrong-verdict-${entry.criterion}-${session.slice(0, 8)}.json`);
-  fs69.writeFileSync(file, payload + "\n");
+  fs70.writeFileSync(file, payload + "\n");
   process.stdout.write(`Saved ${file}.
 `);
   if (has(args, "yes") && !process.stdin.isTTY) return;
@@ -18712,7 +18745,7 @@ var telemetry_exports2 = {};
 __export(telemetry_exports2, {
   run: () => run35
 });
-import fs70 from "node:fs";
+import fs71 from "node:fs";
 async function run35(args) {
   const sub = args._[0] ?? "status";
   if (sub === "on") {
@@ -18745,7 +18778,7 @@ ${JSON.stringify(exampleEvent(t.state), null, 2)}
 
 `);
     const q = queueFile();
-    const pending = fs70.existsSync(q) ? fs70.readFileSync(q, "utf8").split("\n").filter(Boolean) : [];
+    const pending = fs71.existsSync(q) ? fs71.readFileSync(q, "utf8").split("\n").filter(Boolean) : [];
     process.stdout.write(pending.length ? `Queued, not yet sent (${pending.length}):
 ${pending.map((l) => "  " + l).join("\n")}
 
@@ -18779,6 +18812,12 @@ __export(recall_exports, {
 });
 async function run36(args) {
   const cwd = process.cwd();
+  if (has(args, "backfill")) {
+    const r = backfillCards(cwd, { since: flag(args, "since"), force: has(args, "force") });
+    process.stdout.write(`Recall cards for this repository: ${r.written} written from ${r.sessions} past sessions (${r.skipped} skipped: no changes, Tally's own runs, or already carded).
+`);
+    return;
+  }
   const cards = readCards(cwd);
   const ref = args._.join(" ").trim();
   if (!cards.length) {
@@ -18824,7 +18863,7 @@ __export(playbook_exports, {
   playbookSnippet: () => playbookSnippet,
   run: () => run37
 });
-import fs71 from "node:fs";
+import fs72 from "node:fs";
 import path77 from "node:path";
 function lessonKey(text2) {
   return text2.toLowerCase().replace(/`[^`]*`/g, (m) => m.replace(/[^a-z0-9]/g, "")).replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w && !STOP2.has(w)).slice(0, 5).join(" ");
@@ -18872,9 +18911,9 @@ ${snippet.split("\n").map((x) => "  " + x).join("\n")}
 `);
   if (has(args, "write")) {
     const file = path77.join(process.cwd(), "CLAUDE.md");
-    const existing = fs71.existsSync(file) ? fs71.readFileSync(file, "utf8") : "";
+    const existing = fs72.existsSync(file) ? fs72.readFileSync(file, "utf8") : "";
     const cleaned = existing.replace(/\n?## Lessons from Tally receipts[\s\S]*?(?=\n## |$)/, "").trimEnd();
-    fs71.writeFileSync(file, (cleaned ? cleaned + "\n\n" : "") + snippet);
+    fs72.writeFileSync(file, (cleaned ? cleaned + "\n\n" : "") + snippet);
     process.stdout.write(`Written to ${file}${existing ? " (previous Tally section replaced, the rest untouched)" : ""}.
 `);
   } else process.stdout.write("Add it with: tally playbook --write\n");
@@ -18898,7 +18937,7 @@ __export(export_exports, {
   renderInvoice: () => renderInvoice,
   run: () => run38
 });
-import fs72 from "node:fs";
+import fs73 from "node:fs";
 function exportRow(h, titles) {
   const j = h.session ? loadJudge(h.session) : null;
   const row = {
@@ -18963,7 +19002,7 @@ async function run38(args) {
     const entries = loadHistory().filter((e) => e.verdict && !e.internal && (!repo || e.repo === repo) && (!cutoff || Date.parse(e.ts ?? "") >= cutoff));
     const inv = renderInvoice(invoiceRows(entries), out?.endsWith(".csv") ? "csv" : "md");
     if (out) {
-      fs72.writeFileSync(out, inv);
+      fs73.writeFileSync(out, inv);
       process.stdout.write(`${entries.length} invoice line(s) \u2192 ${out}
 `);
     } else process.stdout.write(inv);
@@ -18971,7 +19010,7 @@ async function run38(args) {
   }
   const text2 = rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
   if (out) {
-    fs72.writeFileSync(out, text2);
+    fs73.writeFileSync(out, text2);
     process.stdout.write(`${rows.length} receipt(s) \u2192 ${out} (numbers, statuses and outcomes only${has(args, "titles") ? ", with task titles" : ""}).
 `);
   } else process.stdout.write(text2);
@@ -19590,6 +19629,7 @@ Judge
   budget set <usd> [--note]   Cap this task when nothing comparable priced it (tell Claude "cap this at $40")
   budget approve [--note]     Lift a repo-policy hard stop (tally.json budget.hard_stop) after a human decision
   recall [query|<session>]    What past sessions in this repo already produced for a task like this (local, no model)
+  recall --backfill [--since 365d]   Write recall cards for the sessions already on this machine for this repo
   playbook [--all] [--write]  Recurring lessons across receipts, as a CLAUDE.md snippet
   mcp [--install]             MCP server: Claude asks tally_task / tally_unmet / tally_receipt / tally_flags mid-task
   export [--since 30d] [--out f.jsonl] [--titles]   Numbers-only receipts for a team store

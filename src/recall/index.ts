@@ -6,8 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ensureDir, repoKey, writeJson } from '../paths.js';
 import { redact } from '../redact.js';
-import { isTestCommand, type Transcript } from '../transcript/parse.js';
-import type { Task } from '../task/intake.js';
+import { isTestCommand, parseTranscriptFile, type Transcript } from '../transcript/parse.js';
+import { loadTask, type Task } from '../task/intake.js';
+import { scanSessions } from '../backfill/scan.js';
+import { loadPricing, type Pricing } from '../cost/pricing.js';
 import { storyTitle } from '../estimate/estimate.js';
 import { spanOf } from '../estimate/variance.js';
 import { cardFile, type RecallCard } from './match.js';
@@ -63,6 +65,38 @@ export function writeCard(opts: { session: string; cwd: string; transcript: Tran
   ensureDir(path.dirname(f));
   writeJson(f, card);
   return card;
+}
+
+/* cards for the sessions already on this machine for a repository, so recall has something to offer on day one;
+   sessions that changed nothing, Tally's own runs, and sessions that already have a card are skipped */
+export function backfillCards(cwd: string, opts: { since?: string; force?: boolean; pricing?: Pricing } = {}): { written: number; skipped: number; sessions: number } {
+  const pricing = opts.pricing ?? loadPricing();
+  const candidates = scanSessions({ since: opts.since ?? '365d', repo: cwd });
+  let written = 0;
+  let skipped = 0;
+  for (const c of candidates) {
+    if (!opts.force && fs.existsSync(cardFile(cwd, c.session))) {
+      skipped += 1;
+      continue;
+    }
+    if (c.tool_calls === 0 || !fs.existsSync(c.transcript)) {
+      skipped += 1;
+      continue;
+    }
+    try {
+      const t = parseTranscriptFile(c.transcript, pricing);
+      if (t.internal) {
+        skipped += 1;
+        continue;
+      }
+      const card = writeCard({ session: c.session, cwd, transcript: t, task: loadTask(c.session) });
+      if (card) written += 1;
+      else skipped += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  return { written, skipped, sessions: candidates.length };
 }
 
 export function removeCard(cwd: string, session: string): void {

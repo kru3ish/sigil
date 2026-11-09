@@ -21,4 +21,15 @@ Classes are reported separately on purpose. There is no headline number.
 
 **What is not in the table yet.** Runs under 0.7 and later, including the mutation check (0.12), have not been added to the ledger; the next real and historical runs will be. The grader is a model, not a person; agreement with a model is a proxy for agreement with a maintainer, and the historical class exists to narrow that gap. Costs are what the agent spent, in API-equivalent dollars, not what Tally spent.
 
+## The estimate: how often is the price right?
+
+The budget Tally sets before a task starts is the upper range of the cost of comparable past tasks (README, "The budget"). `tally estimate --backtest` prices every past task on a machine from all the others and compares with what it actually cost; tasks whose opening words are identical (scripted re-runs) are kept out of each other's estimates. On the author's machine, 2026-11-09, 123 past tasks:
+
+| tasks | basis | median error | within 2× of actual | inside the stated range |
+|---|---|---|---|---|
+| 123 | all | 49% | 76% | 26% |
+| 101 | had similar neighbours | 44% | 87% | – |
+
+**How to read it.** The range is wide, which is why the budget is the upper quartile and not the median, and why Tally asks for a cap rather than inventing a number when no neighbour is similar enough (22 of the 123 here). "Within 2×" is the useful column for a budget: it says how often the real cost landed in the same order of magnitude as the number on the status line. Every finished task becomes an example, so the number moves with use; run the command on your own history before trusting any of this on your repositories.
+
 Methodology, datasets, threats to validity and the known failure classes: [`EVALUATION.md`](EVALUATION.md). To add a case: [`CONTRIBUTING.md`](../CONTRIBUTING.md).

@@ -8,7 +8,7 @@ import { type Args, flag, has } from '../cli.js';
 import { sessionsDir, readJson } from '../paths.js';
 import { readEvents } from '../store/events.js';
 
-export type AuditKind = 'receipt' | 'check' | 'dispute' | 'budget_approved' | 'hard_stop' | 'gate_block';
+export type AuditKind = 'receipt' | 'check' | 'dispute' | 'budget_set' | 'budget_approved' | 'hard_stop' | 'gate_block';
 
 export interface AuditLine {
   ts: string;
@@ -52,6 +52,7 @@ export function collectAudit(opts: { since: number; repo?: string }): AuditLine[
       if (e.type === 'judge') out.push({ ts: e.ts, session: id, repo, cwd, kind: isCheck ? 'check' : 'receipt', detail: `${String(d.verdict ?? '')} · ${String(d.completion_pct ?? '?')}% complete · $${Number(d.cost_usd ?? 0).toFixed(2)} (${String(d.reason ?? '')})` });
       else if (e.type === 'dispute') out.push({ ts: e.ts, session: id, repo, cwd, kind: 'dispute', detail: `${String(d.id)}: ${String(d.original)} → ${String(d.status)}`, by: d.by ? String(d.by) : undefined });
       else if (e.type === 'budget_approved') out.push({ ts: e.ts, session: id, repo, cwd, kind: 'budget_approved', detail: `${d.lifted ? 'hard stop lifted' : 'over-budget approved'}${d.note ? `: ${String(d.note)}` : ''}`, by: d.by ? String(d.by) : undefined });
+      else if (e.type === 'budget_set') out.push({ ts: e.ts, session: id, repo, cwd, kind: 'budget_set', detail: `cap set to $${Number(d.usd ?? 0).toFixed(2)}${d.clamped ? ' (clamped to repo policy)' : ''}${d.note ? `: ${String(d.note)}` : ''}`, by: d.by ? String(d.by) : undefined });
       else if (e.type === 'hard_stop_denied') out.push({ ts: e.ts, session: id, repo, cwd, kind: 'hard_stop', detail: `${String(d.tool_name ?? 'tool call')} denied: over the repo budget` });
     }
     const gate = readJson<{ blocks?: number; ts?: string; unmet?: string[] } | null>(path.join(dir, 'dod-gate.json'), null);

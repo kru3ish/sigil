@@ -74,7 +74,7 @@ Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')} (fl
     L.push(`Not run: ${j.verification.reason}.`);
   }
   L.push('');
-  L.push(`## Cost (${j.cost.label}) — ${fmtUsd(j.cost.total_usd)} of ${fmtUsd(j.cost.budget_usd)} budget (${j.cost.budget_used_pct}%)`);
+  L.push(`## Cost (${j.cost.label}) — ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` of ${fmtUsd(j.cost.budget_usd)} budget (${j.cost.budget_used_pct}%)` : ', no budget (no comparable past task, no cap set)'}`);
   L.push('');
   L.push(`Per completed criterion: ${j.cost.per_completed_criterion_usd === null ? 'n/a (none met)' : fmtUsd(j.cost.per_completed_criterion_usd)} · Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, counted separately) · models: ${j.cost.models.join(', ')}`);
   if (j.cost.confidence === 'partial') L.push(`\n> **Cost is partial.** Transcript format ${j.cost.format.version ?? 'unknown'}${j.cost.format.known ? '' : ' is not a verified layout'}; ${j.cost.format.unparseable_lines} of ${j.cost.format.total_lines} lines could not be parsed${j.cost.format.unknown_types.length ? `; unknown line types: ${j.cost.format.unknown_types.join(', ')}` : ''}. Run \`tally doctor\`.`);
@@ -167,7 +167,7 @@ export function renderSummary(j: Judge, color = true): string {
   L.push(`Verification: ${j.verification.ran ? `${j.verification.command} → ${j.verification.passed ? c('32', 'passed') : c('31', j.verification.timed_out ? 'timed out' : 'FAILED')} (independent run)` : c('90', `not run (${j.verification.reason})`)}${a ? c('90', ` · pre-existing tests ${a.verification.preexisting_files ?? '?'} file(s) · agent-created ${a.verification.agent_created.added_files.length} added, ${a.verification.agent_created.modified_files.length} modified, ${a.verification.agent_created.cases_added} case(s)`) : ''}`);
   if (a?.scope.unnamed_areas.length) L.push(c('33', `Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')} (flagged, not judged wrong)`));
   if (j.review) for (const line of renderReview(j.review as Review)) L.push(line);
-  L.push(`Cost (API-equivalent${j.cost.confidence === 'partial' ? ', PARTIAL: transcript not fully parsed' : ''}): ${fmtUsd(j.cost.total_usd)} / budget ${fmtUsd(j.cost.budget_usd)} (${j.cost.budget_used_pct}%) · per met criterion ${j.cost.per_completed_criterion_usd === null ? 'n/a' : fmtUsd(j.cost.per_completed_criterion_usd)} · waste ${fmtUsd(j.waste.total_usd)}`);
+  L.push(`Cost (API-equivalent${j.cost.confidence === 'partial' ? ', PARTIAL: transcript not fully parsed' : ''}): ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` / budget ${fmtUsd(j.cost.budget_usd)} (${j.cost.budget_used_pct}%)` : ' / no budget'} · per met criterion ${j.cost.per_completed_criterion_usd === null ? 'n/a' : fmtUsd(j.cost.per_completed_criterion_usd)} · waste ${fmtUsd(j.waste.total_usd)}`);
   L.push(`  Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, separate)${j.cost.otel?.available ? ` · OTel cross-check ${fmtUsd(j.cost.otel.total_usd ?? 0)}` : ''}`);
   const avoidable: string[] = [];
   for (const l of j.waste.failed_loops) avoidable.push(`${fmtUsd(l.usd)}  ${l.repeats} identical failing runs of \`${l.command}\``);

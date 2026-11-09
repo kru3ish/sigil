@@ -9,6 +9,7 @@ import { activeFile, appendLine, ensureDir, historyFile, readJson, repoKey, sess
 import { readEvents } from '../store/events.js';
 import { redact, redactDeep } from '../redact.js';
 import { quickChecks } from '../judge/quickcheck.js';
+import { findRecall, recallNote, recallSettings } from '../recall/match.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 /* dist/hook.js sits beside dist/cli.js in the bundle; TALLY_HOOK_CLI lets tests point the detached spawn at a stand-in */
@@ -197,44 +198,60 @@ function dodGate(session: string, cwd: string | undefined, stopHookActive: boole
    and once after a ship. */
 function costNotice(session: string): string | undefined {
   const dir = sessionDir(session);
+  const task = readJson<{ title?: string; budget_usd?: number; budget_basis?: string } | null>(path.join(dir, 'task.json'), null);
+  if (!task) return undefined;
   const est = readJson<{ usd?: number; low_usd?: number; high_usd?: number; basis?: string; n?: number; confidence?: string } | null>(path.join(dir, 'estimate.json'), null);
-  /* only a comparable story (or this repo's own sessions) is a number worth interrupting for */
-  if (!est || !est.usd || (est.basis !== 'similar' && est.basis !== 'points' && est.basis !== 'repo')) return undefined;
-  const check = readJson<{ actual_usd?: number; drivers?: Array<{ title: string; usd: number; fix?: { id: string; apply: { kind: string } } }> } | null>(path.join(dir, 'cost-check.json'), null);
+  const check = readJson<{ actual_usd?: number; drivers?: Array<{ title: string; usd: number; fix?: { id: string; apply: { kind: string } } }>; span?: { days: number; compactions: number } } | null>(path.join(dir, 'cost-check.json'), null);
   const live = readJson<{ usd?: number } | null>(path.join(dir, 'spend.json'), null);
   const spend = Math.max(live?.usd ?? 0, check?.actual_usd ?? 0);
   const stateFile = path.join(dir, 'cost-notice.json');
   const state = readJson<{ shown: string[] }>(stateFile, { shown: [] });
   const money = (n: number) => `$${n.toFixed(2)}`;
-  const shipped = fs.existsSync(path.join(dir, 'events.jsonl')) && fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').includes('"type":"ship"');
-  const top = (check?.drivers ?? []).find((d) => d.fix && d.fix.apply.kind !== 'advice');
-  /* inside the plugin the slash command always works; a CLI install has `tally` on PATH */
-  const fixCmd = (id: string) => (process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`);
-  const lever = top ? ` Biggest lever: ${top.title.toLowerCase()} (~${money(top.usd)}) → ${fixCmd(top.fix!.id)}.` : '';
-  const pct = (spend / est.usd) * 100;
+  const budget = task.budget_usd ?? 0;
+  const basis = task.budget_basis ?? (budget > 0 ? 'hours' : 'none');
   let key: string | undefined;
   let text = '';
-  const from = est.basis === 'similar' ? `${est.n} similar past stor${est.n === 1 ? 'y' : 'ies'}` : est.basis === 'points' ? `the story points × your cost per point` : `${est.n} past sessions in this repo (nothing closely similar)`;
-  for (const t of [200, 150, 100]) {
-    if (pct >= t && !state.shown.includes(`over${t}`)) {
-      key = `over${t}`;
-      text = `Tally: this story has cost ${money(spend)}, ${Math.round(pct)}% of the ~${money(est.usd)} estimate from ${from} (+${money(spend - est.usd)}).${lever} Breakdown and fixes: /tally:cost`;
-      for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
-      break;
+  /* no comparable past task and no cap: ask for one, once, as soon as there is any spend to speak of */
+  if (budget <= 0) {
+    if (state.shown.includes('cap') || spend < 0.5) return undefined;
+    key = 'cap';
+    const seen = est?.basis && est.basis !== 'none' ? `${est.n ?? 0} past tasks on record, none like this one` : 'no past tasks on record yet';
+    text = `Tally: no comparable past task to price "${(task.title ?? 'this task').slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Tally can hold the line: tell Claude "cap this at $40" (it runs tally budget set 40), or /tally:budget set 40.`;
+  } else {
+    const shipped = fs.existsSync(path.join(dir, 'events.jsonl')) && fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').includes('"type":"ship"');
+    const drivers = check?.drivers ?? [];
+    const top = drivers.find((d) => d.fix && d.fix.apply.kind !== 'advice');
+    /* inside the plugin the slash command always works; a CLI install has `tally` on PATH */
+    const fixCmd = (id: string) => (process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`);
+    const lever = top ? ` Fix for next time: ${top.title.toLowerCase()} (~${money(top.usd)}) → ${fixCmd(top.fix!.id)}.` : '';
+    const why = drivers[0] ? ` Largest reason: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : '';
+    const span = check?.span && check.span.days > 1 ? ` This transcript spans ${check.span.days} days, so it is probably more than one task.` : '';
+    const from = basis === 'history' ? `the upper range of ${est?.n ?? 0} comparable past task${(est?.n ?? 0) === 1 ? '' : 's'}` : basis === 'cap' ? 'the cap you set' : basis === 'policy' ? 'repo policy' : "the repo's hours × rate rule";
+    const pct = (spend / budget) * 100;
+    for (const t of [200, 150, 100]) {
+      if (pct >= t && !state.shown.includes(`over${t}`)) {
+        key = `over${t}`;
+        text = `Tally: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /tally:cost`;
+        for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
+        break;
+      }
     }
-  }
-  if (!key && shipped && !state.shown.includes('ship')) {
-    key = 'ship';
-    text = `Tally: shipped for ${money(spend)} against a ~${money(est.usd)} estimate (${spend > est.usd ? '+' : '−'}${money(Math.abs(spend - est.usd))}).${lever} Breakdown: /tally:cost`;
-  }
-  if (!key && !state.shown.includes('estimate')) {
-    key = 'estimate';
-    text = `Tally: stories like this have cost ~${money(est.usd)} here (typical ${money(est.low_usd ?? 0)}–${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence).${spend > 0 ? ` ${money(spend)} so far.` : ''}`;
+    if (!key && shipped && !state.shown.includes('ship')) {
+      key = 'ship';
+      text = spend > budget ? `Tally: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /tally:cost` : `Tally: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ''} Breakdown: /tally:cost`;
+    }
+    if (!key && !state.shown.includes('estimate')) {
+      key = 'estimate';
+      text =
+        basis === 'history' && est
+          ? `Tally: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}–${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ''}`
+          : `Tally: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ''} Change it: tally budget set <usd>`;
+    }
   }
   if (!key) return undefined;
   if (!state.shown.includes(key)) state.shown.push(key);
   writeJson(stateFile, state);
-  record(session, 'cost_notice', undefined, { key, spend_usd: spend, estimate_usd: est.usd });
+  record(session, 'cost_notice', undefined, { key, spend_usd: spend, budget_usd: budget, budget_basis: basis, estimate_usd: est?.usd });
   return text;
 }
 
@@ -318,6 +335,27 @@ function historyLessons(cwd: string | undefined): string {
     }
   }
   return lessons.length ? `Tally: past receipts in this repo recorded these lessons:\n- ${lessons.join('\n- ')}` : '';
+}
+
+/* recall: a prompt that looks like a task a past session in this repo already did gets that session's outcome, once
+   per past task per session, so the agent can reuse the work instead of spending tokens re-deriving it */
+function recallNotice(session: string, cwd: string | undefined, prompt: string): string {
+  if (!cwd) return '';
+  try {
+    const settings = recallSettings();
+    if (!settings.enabled) return '';
+    const stateFile = path.join(sessionDir(session), 'recall-state.json');
+    const state = readJson<{ offered: string[] }>(stateFile, { offered: [] });
+    const matches = findRecall(prompt, cwd, session, settings.min).filter((m) => !state.offered.includes(m.card.session));
+    if (!matches.length) return '';
+    const m = matches[0]!;
+    state.offered.push(m.card.session);
+    writeJson(stateFile, state);
+    record(session, 'recall', cwd, { ref: m.card.session, similarity: m.similarity, prior_cost_usd: m.card.cost_usd, title: m.card.title.slice(0, 120) });
+    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? '/tally:recall' : 'tally recall');
+  } catch {
+    return '';
+  }
 }
 
 function deliverInjects(session: string): string {
@@ -404,7 +442,7 @@ function main(): void {
           spawnDetached(['task', '--text', truncate(prompt, 4000), '--session', session, '--cwd', cwd ?? '', '--auto']);
         }
       }
-      const ctx = deliverInjects(session);
+      const ctx = [deliverInjects(session), recallNotice(session, cwd, prompt)].filter(Boolean).join('\n');
       if (ctx) out = { kind: 'context', event: 'UserPromptSubmit', text: ctx };
       break;
     }

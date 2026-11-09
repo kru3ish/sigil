@@ -85,7 +85,8 @@ describe('autopilot', () => {
     fs.writeFileSync(path.join(sessionDir(session), 'coach-flags.json'), JSON.stringify({ pending: [{ rule: 'task-confirm', key: 'k', title: 't', usd_saved: 1 }, { rule: 'claude-md', key: 'k2', title: 't2', usd_saved: 1 }] }));
     const line = renderStatusLine({ session_id: session, cost: { total_cost_usd: 30.5 }, context_window: { used_percentage: 72.4 } }, false);
     expect(line).toContain('Rate limit the login endpoint');
-    expect(line).toContain('$30.50/$37.50 (81%)');
+    /* nothing comparable on an isolated machine and no cap: spend is shown without an invented budget */
+    expect(line).toContain('$30.50 · no cap');
     expect(line).toContain('ctx 72%');
     expect(line).toMatch(/⚑ 2 · .+ · tally coach/);
     fs.mkdirSync(path.dirname(settingsPath('user')), { recursive: true });

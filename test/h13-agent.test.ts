@@ -71,7 +71,7 @@ describe('quick checks and the MCP server', () => {
     const lines = r.stdout.trim().split('\n').map((l) => JSON.parse(l) as { id: number; result: Record<string, unknown> });
     expect(lines.map((l) => l.id)).toEqual([1, 2, 3]);
     expect((lines[0]!.result.serverInfo as { name: string }).name).toBe('tally');
-    expect((lines[1]!.result.tools as Array<{ name: string }>).map((t) => t.name)).toEqual(['tally_task', 'tally_unmet', 'tally_receipt', 'tally_flags']);
+    expect((lines[1]!.result.tools as Array<{ name: string }>).map((t) => t.name)).toEqual(['tally_task', 'tally_unmet', 'tally_receipt', 'tally_flags', 'tally_budget']);
     expect(JSON.stringify(lines[2]!.result)).toContain('Rate limit login');
   });
 });

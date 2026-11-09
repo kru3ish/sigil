@@ -11,7 +11,8 @@ import { isLintCommand, isTestCommand, parseTranscriptFile, type Transcript } fr
 import { readEvents } from '../store/events.js';
 import { transcriptPathFor, sessionCwd } from '../session.js';
 import { loadTask } from '../task/intake.js';
-import { estimateCost, estimateFile, loadEstimate, storyText, storyTitle, type CostEstimate } from './estimate.js';
+import { estimateCost, estimateFile, fmtEstimate, isComparable, loadEstimate, storyText, storyTitle, type CostEstimate } from './estimate.js';
+import { describeBudget, type BudgetBasis } from '../task/budget.js';
 import { recordChange } from '../coach/undo.js';
 import { mergePatch } from '../coach/actions.js';
 import { findOpportunities } from './opportunities.js';
@@ -60,6 +61,14 @@ export interface AltTool {
   stars?: number;
 }
 
+/* one transcript is not one task: a session resumed over days carries every task it ever held */
+export interface Span {
+  days: number;
+  first?: string;
+  last?: string;
+  compactions: number;
+}
+
 export interface CostCheck {
   session: string;
   cwd?: string;
@@ -69,6 +78,12 @@ export interface CostCheck {
   delta_usd?: number;
   delta_pct?: number;
   status: 'over' | 'under' | 'on_target' | 'no_estimate';
+  /* the task's budget and where it came from (see task/budget.ts); 0 when nothing priced the task and no cap was set */
+  budget_usd?: number;
+  budget_basis?: BudgetBasis;
+  span?: Span;
+  /* past tasks in this repo offered to the agent at prompt time, and what they cost then */
+  recall?: { offered: number; prior_usd: number; titles: string[] };
   model: string;
   drivers: Driver[];
   savable_usd: number;
@@ -127,6 +142,19 @@ function rel(cwd: string | undefined, f: string): string {
   return r && !r.startsWith('..') ? r.replace(/\\/g, '/') : f;
 }
 
+export function spanOf(t: Transcript): Span {
+  const days = new Set<string>();
+  let first: string | undefined;
+  let last: string | undefined;
+  for (const m of t.messages) {
+    if (!m.ts) continue;
+    days.add(m.ts.slice(0, 10));
+    if (!first || m.ts < first) first = m.ts;
+    if (!last || m.ts > last) last = m.ts;
+  }
+  return { days: days.size, first, last, compactions: t.compactions.length };
+}
+
 export function computeCheck(session: string, opts: { transcript?: Transcript; transcriptPath?: string; estimate?: CostEstimate | null; baselineTokens?: number; now?: Date; pricing?: Pricing } = {}): CostCheck {
   const pricing = opts.pricing ?? loadPricing();
   const tPath = opts.transcript ? undefined : opts.transcriptPath ?? transcriptPathFor(session);
@@ -144,6 +172,7 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
   }
   const actual = t.cost;
   const model = mainModel(t);
+  const recalls = readEvents(session).filter((e) => e.type === 'recall');
   const drivers: Driver[] = [];
 
   /* 1. the main loop's model: the same tokens at Sonnet prices */
@@ -295,9 +324,9 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
   }
   savable += explore * cheapRatio;
   savable = Math.min(savable, actual);
-  /* only a comparable story (or this repo's own sessions) makes an over/under call; the median of every unrelated
-     session is shown for scale but judges nothing */
-  const est = estimate && (estimate.basis === 'similar' || estimate.basis === 'points' || estimate.basis === 'repo') ? estimate : undefined;
+  /* only a comparable task makes an over/under call; the median of unrelated sessions is kept for scale but judges
+     nothing and never becomes a budget */
+  const est = isComparable(estimate) ? estimate : undefined;
   const delta = est ? actual - est.usd : undefined;
   const status: CostCheck['status'] = !est ? 'no_estimate' : actual > est.high_usd || (delta! > 0 && actual > est.usd * 1.2) ? 'over' : actual < est.usd * 0.8 ? 'under' : 'on_target';
   const check: CostCheck = {
@@ -307,6 +336,9 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
     actual_usd: round2(actual),
     ...(est ? { estimate: est, delta_usd: round2(delta!), delta_pct: est.usd > 0 ? Math.round((delta! / est.usd) * 100) : 0 } : estimate ? { estimate } : {}),
     status,
+    ...(task ? { budget_usd: task.budget_usd, budget_basis: task.budget_basis ?? (task.budget_usd > 0 ? 'hours' : 'none') } : {}),
+    span: spanOf(t),
+    ...(recalls.length ? { recall: { offered: recalls.length, prior_usd: round2(recalls.reduce((s, r) => s + Number(r.data.prior_cost_usd ?? 0), 0)), titles: recalls.map((r) => String(r.data.title ?? '')).filter(Boolean).slice(0, 3) } } : {}),
     model,
     drivers,
     savable_usd: round2(savable),
@@ -323,13 +355,20 @@ export function renderCheck(c: CostCheck, opts: { cli?: string; details?: boolea
   const L: string[] = [];
   const e = c.estimate && c.estimate.basis !== 'none' ? c.estimate : undefined;
   L.push(`Tally cost check${c.task ? ` · ${c.task.split('\n')[0]!.slice(0, 80)}` : ''}`, '');
-  const estText = !e ? 'no estimate yet (no past sessions on this machine to compare with)' : e.basis === 'all' ? `no similar past story yet (your median session costs ${$(e.usd)})` : `estimate ~${$(e.usd)} (${$(e.low_usd)}–${$(e.high_usd)}, ${e.basis === 'similar' ? `${e.n} similar past ${e.n === 1 ? 'story' : 'stories'}` : e.basis === 'points' ? `story points × cost per point of ${e.n} pointed stories` : `median of ${e.n} past sessions in this repo`}, ${e.confidence} confidence)`;
-  L.push(`  Cost      ${$(c.actual_usd)} on ${c.model}`);
+  const estText = !e ? 'no estimate yet (no past tasks on this machine to compare with)' : fmtEstimate(e);
+  L.push(`  Cost      ${$(c.actual_usd)} on ${c.model}${c.span && c.span.days > 1 ? `, across ${c.span.days} days${c.span.compactions ? ` and ${c.span.compactions} compaction${c.span.compactions === 1 ? '' : 's'}` : ''} (one transcript, probably more than one task)` : ''}`);
   L.push(`  Estimate  ${estText}`);
+  if (c.budget_usd !== undefined) {
+    const b = c.budget_usd;
+    const gap = b > 0 ? (c.actual_usd > b ? `  OVER by ${$(c.actual_usd - b)} (${Math.round((c.actual_usd / b) * 100)}%)` : `  ${$(b - c.actual_usd)} left (${Math.round((c.actual_usd / b) * 100)}%)`) : '';
+    L.push(`  Budget    ${describeBudget(c.budget_basis, b, c.estimate)}${gap}`);
+    if (b > 0 && c.actual_usd > b && c.drivers.length) L.push(`  Why       ${c.drivers[0]!.title.toLowerCase()} (~${$(c.drivers[0]!.usd)}) is the largest single reason`);
+  }
   if (c.delta_usd !== undefined) {
     const d = c.delta_usd;
-    L.push(`  Result    ${c.status === 'over' ? `OVER by ${$(d)} (+${c.delta_pct}%)` : c.status === 'under' ? `UNDER by ${$(-d)} (${c.delta_pct}%)` : `ON TARGET (${d >= 0 ? '+' : '−'}${$(Math.abs(d))})`}`);
+    L.push(`  Result    ${c.status === 'over' ? `OVER by ${$(d)} (+${c.delta_pct}%)` : c.status === 'under' ? `UNDER by ${$(-d)} (${c.delta_pct}%)` : `ON TARGET (${d >= 0 ? '+' : '−'}${$(Math.abs(d))})`} against the estimate`);
   }
+  if (c.recall) L.push(`  Recall    ${c.recall.offered} past ${c.recall.offered === 1 ? 'task' : 'tasks'} offered at prompt time (${$(c.recall.prior_usd)} then${c.recall.titles[0] ? `: ${c.recall.titles.map((s) => `"${s.slice(0, 50)}"`).join(', ')}` : ''})`);
   L.push('');
   if (!c.drivers.length) {
     L.push('Nothing in this session stands out as avoidable spend, and no pattern calls for a new skill, MCP server or setting.');

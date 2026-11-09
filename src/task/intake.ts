@@ -10,7 +10,10 @@ import { fetchTask, type FetchDeps, type FetchedTask, type TaskSource } from './
 import { appendEvent } from '../store/events.js';
 import { CheckSpecSchema, CHECK_JSON_SCHEMA, parseCheck } from '../judge/checks.js';
 import { loadPolicy } from '../policy.js';
-import { estimateCost, estimateFile, loadEstimate, fmtEstimate, storyText } from '../estimate/estimate.js';
+import { estimateCost, estimateFile, loadEstimate, fmtEstimate, storyText, type CostEstimate } from '../estimate/estimate.js';
+import { budgetFor, describeBudget, hoursBudget, readCap, BUDGET_FRACTION, BUDGET_FLOOR_USD } from './budget.js';
+
+export { BUDGET_FRACTION, BUDGET_FLOOR_USD };
 
 export const CriterionSchema = z.object({
   id: z.string(),
@@ -47,6 +50,9 @@ export const TaskSchema = z.object({
   needs_clarification: z.boolean(),
   estimate: z.object({ hours: z.number().nonnegative(), basis: z.enum(['story_points', 'llm', 'default']), story_points: z.number().optional() }),
   budget_usd: z.number().nonnegative(),
+  /* where the budget came from: a cap set this session, repo policy, comparable past tasks, an hours × rate rule, or
+     nothing (no number was invented) */
+  budget_basis: z.enum(['cap', 'policy', 'history', 'hours', 'none']).optional(),
   hourly_rate: z.number(),
   tally_cost_usd: z.number(),
   model: z.string(),
@@ -62,8 +68,6 @@ export const TaskSchema = z.object({
 export type Task = z.infer<typeof TaskSchema>;
 
 export const HOURS_PER_STORY_POINT = 4;
-export const BUDGET_FRACTION = 0.25;
-export const BUDGET_FLOOR_USD = 2;
 
 export const INTAKE_SCHEMA = {
   type: 'object',
@@ -206,8 +210,9 @@ export function computeEstimate(fetched: FetchedTask, llmHours: number): Task['e
   return { hours: 2, basis: 'default' };
 }
 
+/* the hours × rate rule, kept for repositories whose policy asks for it (`budget.fraction` or `budget.hourly_rate`) */
 export function computeBudget(hours: number, hourlyRate: number): number {
-  return Math.max(BUDGET_FLOOR_USD, Math.round(hours * hourlyRate * BUDGET_FRACTION * 100) / 100);
+  return hoursBudget(hours, hourlyRate);
 }
 
 export async function intake(opts: {
@@ -298,6 +303,16 @@ export async function intake(opts: {
   const r = { cost_usd: cost, model };
   const score = Math.max(0, Math.min(10, Number(out.spec_quality?.score ?? 0)));
   const estimate = computeEstimate(fetched, Number(out.estimate_hours ?? 0));
+  /* the story's price tag: what comparable past tasks cost on this machine and in the team ledger; best effort */
+  let priced: CostEstimate | null = null;
+  try {
+    const words = inferred ? `${out.title?.trim() || fetched.title}\n${storyText([fetched.body], opts.cwd)}` : `${out.title?.trim() || fetched.title}\n${fetched.body}`;
+    priced = estimateCost(words, { cwd: opts.cwd, exclude: opts.session, storyPoints: fetched.story_points });
+  } catch {
+    /* no history to read is not an error */
+  }
+  const rate = pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate;
+  const budget = budgetFor({ cap: readCap(opts.session), policy: pol.policy.budget, estimate: priced, hours: estimate.hours, rate });
   const task: Task = {
     session: opts.session,
     cwd: opts.cwd,
@@ -314,8 +329,9 @@ export async function intake(opts: {
     ...(constraintsInferred.length ? { constraints_inferred: constraintsInferred } : {}),
     needs_clarification: score < 5,
     estimate,
-    budget_usd: pol.policy.budget.usd ?? (pol.policy.budget.fraction ? Math.max(BUDGET_FLOOR_USD, Math.round(estimate.hours * (pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate) * pol.policy.budget.fraction * 100) / 100) : computeBudget(estimate.hours, pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate)),
-    hourly_rate: pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate,
+    budget_usd: budget.usd,
+    budget_basis: budget.basis,
+    hourly_rate: rate,
     tally_cost_usd: r.cost_usd,
     model: r.model,
     cache_key: cacheKey,
@@ -329,20 +345,13 @@ export async function intake(opts: {
   recordRevision(opts.session, existing ? 'replaced' : 'created', task.criteria.map((c) => c.text), existing ? 'intake re-run with --force' : undefined);
   const pending = path.join(sessionDir(opts.session), 'task.pending');
   if (fs.existsSync(pending)) fs.unlinkSync(pending);
-  /* the story's price tag: what similar past sessions on this machine cost; best effort, never fails intake */
-  try {
-    const words = inferred ? `${task.title}\n${storyText([fetched.body], opts.cwd)}` : `${task.title}\n${fetched.body}`;
-    const est = estimateCost(words, { cwd: opts.cwd, exclude: opts.session, storyPoints: fetched.story_points });
-    writeJson(estimateFile(opts.session), est);
-  } catch {
-    /* no history to read is not an error */
-  }
+  if (priced) writeJson(estimateFile(opts.session), priced);
   appendEvent({
     ts: new Date().toISOString(),
     type: 'task',
     session: opts.session,
     cwd: opts.cwd,
-    data: { title: task.title, criteria: task.criteria.length, spec_quality: task.spec_quality.score, needs_clarification: task.needs_clarification, budget_usd: task.budget_usd, estimate_hours: task.estimate.hours, source: task.source.kind },
+    data: { title: task.title, criteria: task.criteria.length, spec_quality: task.spec_quality.score, needs_clarification: task.needs_clarification, budget_usd: task.budget_usd, budget_basis: task.budget_basis, estimate_hours: task.estimate.hours, source: task.source.kind },
   });
   return { task, created: true };
 }
@@ -373,6 +382,6 @@ export function renderTask(task: Task): string {
   }
   const cost = loadEstimate(task.session);
   if (cost) lines.push(`Cost estimate: ${fmtEstimate(cost)}`);
-  lines.push(`Estimate: ${task.estimate.hours}h human (${task.estimate.basis}${task.estimate.story_points ? `, ${task.estimate.story_points} SP` : ''})  Budget: $${task.budget_usd.toFixed(2)} API-equivalent`);
+  lines.push(`Estimate: ${task.estimate.hours}h human (${task.estimate.basis}${task.estimate.story_points ? `, ${task.estimate.story_points} SP` : ''})  Budget: ${describeBudget(task.budget_basis, task.budget_usd, cost)}`);
   return lines.join('\n');
 }

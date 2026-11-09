@@ -135,7 +135,7 @@ describe('cost check: estimate vs actual, drivers and one-line fixes', () => {
     const t = parseTranscriptFile(path.join(basicFixture, 'transcript.jsonl'));
     const all = computeCheck('cost-0003', { transcript: t, estimate: { usd: 0.01, low_usd: 0.01, high_usd: 0.01, basis: 'all', confidence: 'low', n: 50, corpus: 50, neighbours: [], computed_at: '' } });
     expect(all.status).toBe('no_estimate');
-    expect(renderCheck(all)).toContain('no similar past story yet');
+    expect(renderCheck(all)).toContain('no comparable past task');
   });
 
   it('applies a settings fix to the repo, merges with what is there, and undoes byte for byte', () => {
@@ -196,23 +196,46 @@ describe('in the session: status line and the end-of-turn notice', () => {
     expect(JSON.parse(fs.readFileSync(path.join(sessionDir(session), 'spend.json'), 'utf8')).usd).toBe(75);
   });
 
-  it('tells the user the estimate once, then each threshold crossed once, then the ship result', () => {
+  it('tells the user the budget once, then each threshold crossed once, then the ship result', () => {
     const session = 'live-0002';
     const dir = sessionDir(session);
+    /* the budget is the upper range of comparable past tasks: est(50) has high_usd 65 */
     writeJson(path.join(dir, 'estimate.json'), est(50));
+    writeJson(path.join(dir, 'task.json'), { title: 'Rate limit the login endpoint', budget_usd: 65, budget_basis: 'history' });
     writeJson(path.join(dir, 'spend.json'), { usd: 10 });
     const first = JSON.parse(stop(session).stdout) as { systemMessage: string };
     expect(first.systemMessage).toContain('~$50.00');
-    expect(first.systemMessage).toContain('5 similar past stories');
+    expect(first.systemMessage).toContain('5 comparable past tasks');
+    expect(first.systemMessage).toContain('budget $65.00');
     expect(stop(session).stdout.trim()).toBe('');
-    writeJson(path.join(dir, 'cost-check.json'), { actual_usd: 75, drivers: [{ title: 'Main model claude-opus-5', usd: 30, fix: { id: 'model-sonnet', apply: { kind: 'settings' } } }] });
+    writeJson(path.join(dir, 'cost-check.json'), { actual_usd: 75, drivers: [{ title: 'Main model claude-opus-5', usd: 30, fix: { id: 'model-sonnet', apply: { kind: 'settings' } } }], span: { days: 3, compactions: 1 } });
     const over = JSON.parse(stop(session).stdout) as { systemMessage: string };
     expect(over.systemMessage).toContain('$75.00');
-    expect(over.systemMessage).toContain('+$25.00');
+    expect(over.systemMessage).toContain('115% of its $65.00 budget');
+    expect(over.systemMessage).toContain('+$10.00');
+    expect(over.systemMessage).toContain('Largest reason: main model claude-opus-5');
+    expect(over.systemMessage).toContain('spans 3 days');
     expect(over.systemMessage).toContain('tally fix model-sonnet');
     expect(stop(session).stdout.trim()).toBe('');
     fs.appendFileSync(path.join(dir, 'events.jsonl'), JSON.stringify({ ts: new Date().toISOString(), type: 'ship', session, data: {} }) + '\n');
-    expect((JSON.parse(stop(session).stdout) as { systemMessage: string }).systemMessage).toContain('shipped for $75.00');
+    expect((JSON.parse(stop(session).stdout) as { systemMessage: string }).systemMessage).toContain('shipped for $75.00, $10.00 over the $65.00 budget');
+  });
+
+  it('with no comparable past task and no cap it asks for one, once, and never invents a number', () => {
+    const session = 'live-0003';
+    const dir = sessionDir(session);
+    writeJson(path.join(dir, 'estimate.json'), { usd: 1.54, low_usd: 0.9, high_usd: 3, basis: 'all', confidence: 'low', n: 87, corpus: 87, neighbours: [], computed_at: '' });
+    writeJson(path.join(dir, 'task.json'), { title: 'Build the org dashboard', budget_usd: 0, budget_basis: 'none' });
+    writeJson(path.join(dir, 'spend.json'), { usd: 0.2 });
+    expect(stop(session).stdout.trim()).toBe('');
+    writeJson(path.join(dir, 'spend.json'), { usd: 3.4 });
+    const ask = JSON.parse(stop(session).stdout) as { systemMessage: string };
+    expect(ask.systemMessage).toContain('no comparable past task');
+    expect(ask.systemMessage).toContain('87 past tasks on record');
+    expect(ask.systemMessage).toContain('tally budget set 40');
+    expect(ask.systemMessage).not.toContain('$1.54');
+    writeJson(path.join(dir, 'spend.json'), { usd: 30 });
+    expect(stop(session).stdout.trim()).toBe('');
   });
 
   it('says nothing without an estimate, or with only the median of unrelated sessions', () => {

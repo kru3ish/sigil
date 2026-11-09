@@ -83,6 +83,17 @@ export const ConfigSchema = z.object({
     .default({}),
   linear: z.object({ api_key: z.string().optional() }).default({}),
   consent: z.object({ test_rerun: z.record(z.boolean()).default({}) }).default({}),
+  /* recall: a card per past session in a repo (task, outcome, files, cost); a new prompt that looks like a past task
+     gets the card's outcome before any token is spent re-deriving it */
+  recall: z
+    .object({
+      enabled: z.boolean().default(true),
+      /* TF-IDF cosine a past task must reach to be offered */
+      min_similarity: z.number().min(0).max(1).default(0.35),
+      /* where the cards live; default ~/.tally/recall. A synced folder (a notes vault) shares them across machines */
+      dir: z.string().optional(),
+    })
+    .default({}),
 });
 
 export function testRerunConsent(cfg: Config, cwd: string): boolean | undefined {

@@ -13,6 +13,7 @@ import { enqueueInject } from '../coach/inject.js';
 import { loadPolicy } from '../policy.js';
 import { quickChecks } from '../judge/quickcheck.js';
 import { hardStopFile, isApproved } from './budget.js';
+import { writeCard } from '../recall/index.js';
 import fs from 'node:fs';
 import { computeCheck } from '../estimate/variance.js';
 
@@ -48,6 +49,15 @@ export async function run(args: Args): Promise<number | void> {
         computeCheck(session, { transcript: ctx.transcript, baselineTokens: cfg.baseline_context_tokens });
       } catch {
         /* the rules already ran */
+      }
+      /* the recall card for this session: task, outcome so far, files, cost; the next session that asks for the same
+         thing starts from it */
+      if (cfg.recall.enabled) {
+        try {
+          writeCard({ session, cwd, transcript: ctx.transcript, task: ctx.task });
+        } catch {
+          /* recall is a convenience; never fails the tick */
+        }
       }
     }
     /* repo policy hard stop: spend past the budget writes a marker the PreToolUse hook enforces; approval clears it */

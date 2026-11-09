@@ -97,16 +97,23 @@ The open MCP registry is not used for ranking: it has no quality signal, and a s
 
 On the $156.52 session above, that adds: compacting at 200k would have saved about $37 (the session never compacted; its main loop ran at a median 626k tokens of context per call), plus a project skill, an output cap and Serena for five large source reads in subagents. Small stories show no add-ons when none of these patterns is there; the 13 issue #3 stories had none beyond an unused plugin.
 
-## Where the estimate comes from
+## The budget: what a task like this should cost
 
-Every Claude Code (and Codex) session already on your disk is an example with a price. A session Tally linked to a ticket is described by the ticket; any other by its first prompts, plus the `.md` file it names if that is where the story lives. Tally finds the most similar ones (TF-IDF over their words, a small bonus for the same repo) and takes the similarity-weighted median of their cost; the range is their 25th–75th percentile. With nothing similar it says so and only shows your median session for scale; it never calls a story "over" against unrelated work. No model call, nothing leaves the machine, and every finished session becomes another example.
+A weekly dollar limit per person is the wrong unit. The work comes in tasks, and a task has a price history. Every Claude Code (and Codex) session already on your disk is an example with a price. A session Tally linked to a ticket is described by the ticket; any other by its first prompts, plus the `.md` file it names if that is where the story lives. Tally finds the most similar past tasks (TF-IDF over their words, a small bonus for the same repo, teammates' stories from the repo ledger included) and takes the similarity-weighted median of their cost; the range is their 25th–75th percentile. No model call, nothing leaves the machine, and every finished task becomes another example.
 
-How good is it? Run `tally estimate --backtest`: it prices each of your past sessions from all the others. On the author's machine (169 past sessions, many of them near-identical scripted runs, which the backtest keeps apart): median error 40%, 70% within 2× of the actual cost. Read it as "about this much", not a quote. `tally estimate "<story or ticket url>"` shows the estimate and the past stories behind it before you start.
+**The budget is that history.** When comparable past tasks exist, the task's budget is their upper range ("a task like this should not take more than"), and everything runs against it: the status line, the Stop notices at 100%, 150% and 200%, the Coach's burn-rate rule, the repo policy's hard stop, the receipt. When nothing comparable exists, Tally invents nothing. The status line shows spend with "no cap", and the first Stop after 50¢ asks once: tell Claude "cap this at $40" (it calls the `tally_budget` tool), or `tally budget set 40`. A repo policy's fixed `budget.usd` is a ceiling a cap cannot raise. Every cap is recorded and appears in `tally audit`.
+
+**Over or under, Tally says why.** The over notice names the largest single reason in dollars (the main model, a context that grew past 200k and was re-sent 900 times, a tool that errored in a loop) and the fix for next time. The ship notice says how far under or over the budget the task landed. One transcript is not one task: a session resumed over days carries every task it held, so the cost check says "across 13 days and 8 compactions" when that is what it is reading.
+
+**Reuse before re-deriving.** The Coach writes a recall card for every session it watches: what was asked, the final outcome, the files touched, the tests run, the cost. On each new prompt the hook ranks this repository's cards by the same word similarity, and when one is close enough it hands Claude that card's outcome before any token is spent re-deriving it, once per past task per session. `tally recall` lists the cards; `tally recall <session>` prints one; `recall.dir` in `tally config` points them at a synced folder (a notes vault works) so a team shares them. The receipt shows what was offered and what it cost the first time; Tally does not claim a saving it cannot measure.
+
+**How good is the estimate?** Run `tally estimate --backtest`: it prices each of your past tasks from all the others. On the author's machine (123 past tasks): median error 49%, 76% within 2× of the actual cost, 26% inside the stated range; among the 101 with similar neighbours, median error 44% and 87% within 2×. Read it as "about this much", not a quote, and it is why the budget is the upper range rather than the middle. The numbers are in [`docs/BENCHMARK.md`](docs/BENCHMARK.md).
 
 ```bash
-tally estimate https://github.com/acme/app/issues/42   # before you start: the number and the stories behind it
-tally cost                                            # during or after: estimate vs actual, drivers, fixes
-tally cost <session-id>                               # any past session on this machine, recorded by Tally or not
+tally estimate https://github.com/acme/app/issues/42   # before you start: the number and the tasks behind it
+tally budget                                          # this task's budget and where it came from; budget set 40 to cap it
+tally cost                                            # during or after: budget, estimate vs actual, span, drivers, fixes
+tally recall "rate limit the login endpoint"          # what past sessions here already produced for a task like this
 tally fix --list                                      # the fixes for this session; tally fix <id> [--global]; tally undo
 ```
 
@@ -319,7 +326,7 @@ The full `report.md` adds the evidence table, the waste breakdown (failed loops,
 
 ## How the Judge works
 
-1. **Intake** (one small-model call, cached): fetches the ticket via `gh`, the Jira REST API, the Linear API, a local `.md`, or plain text; freezes a checklist of acceptance criteria in `task.json` so the goalposts cannot move; scores spec quality 0–10 and lists the missing information; estimates human-hours (story points win when present) and sets a budget of 25% of the human-equivalent value.
+1. **Intake** (one small-model call, cached): fetches the ticket via `gh`, the Jira REST API, the Linear API, a local `.md`, or plain text; freezes a checklist of acceptance criteria in `task.json` so the goalposts cannot move; scores spec quality 0–10 and lists the missing information; estimates human-hours (story points win when present) and sets the budget from comparable past tasks, a cap, or repo policy (see "The budget" above; nothing is invented when there is no history).
 2. **Evidence**: the git diff from the session-start HEAD, files changed, every test and lint command Claude ran with its result, ship events, and Claude's final messages. With no commits, the changes are reconstructed from the Edit / MultiEdit / Write calls and the shell commands that write files, and labelled as such.
 3. **Independent verification**: Tally detects the project's test command (`package.json`, pytest, go, cargo, make, …) and runs it itself with a timeout, after asking once per repo. It never trusts "tests pass" in the transcript, and never runs tests against a reconstructed tree. Anything it cannot check is marked `unverifiable`, never guessed.
 4. **Tiered judging**, so most receipts cost almost nothing:
@@ -356,7 +363,7 @@ All dollar figures are **API-equivalent** at list price from `pricing.json` (wit
 }
 ```
 
-`test_command` is what the Judge runs for independent verification when the detected runner is wrong for the repo (a `pretest` step that needs the network or breaks on one platform, a monorepo, a suite that only works in CI). Standing criteria are appended to every task's frozen checklist (mechanical where a check is given, judged otherwise). The budget block sets the rate, the fraction of human-equivalent value, or a fixed `usd`. With `hard_stop`, once a session passes its budget the PreToolUse hook denies every tool call, the status line says `HARD STOP`, and a human lifts it with `tally budget approve --note "why"` (or `/tally:budget`), which is recorded on the receipt.
+`test_command` is what the Judge runs for independent verification when the detected runner is wrong for the repo (a `pretest` step that needs the network or breaks on one platform, a monorepo, a suite that only works in CI). Standing criteria are appended to every task's frozen checklist (mechanical where a check is given, judged otherwise). The budget block is optional: by default the budget is the price of comparable past tasks, or a cap the person sets. A fixed `usd` is a ceiling for every task in the repo that a cap cannot raise; `fraction` or `hourly_rate` opt the repo into the older hours × rate rule when no history matches. With `hard_stop`, once a session passes its budget the PreToolUse hook denies every tool call, the status line says `HARD STOP`, and a human lifts it with `tally budget approve --note "why"` (or `/tally:budget`), which is recorded on the receipt.
 
 **Reviewer brief.** `tally judge --post` (or `writeback: true`) now posts a brief for the reviewer rather than a score: what was verified independently, what the model rated, what needs a manual look, where the agent struggled, and what was not verified against disk.
 
@@ -481,6 +488,7 @@ Verified against each agent's hook documentation on 2026-09-26 (`docs/PLATFORM_N
 |---|---|---|---|---|
 | Unit | session, day, model | 30 days of sessions | plugin, skill, MCP | one task |
 | Question | how much did I spend? | how do I work, what friction recurs? | what is loaded and used? | was this task done, at what cost, and was it worth it? |
+| A budget before the work | per-person limits, `--max-budget-usd` per run | no | no | the price of comparable past tasks, per task; a cap when there are none |
 | Ties spend to acceptance criteria | no | no | no | yes, frozen at intake |
 | Independent verification | no | no | no | re-runs your tests |
 | Mutation check (do the new tests fail without the change?) | no | no | no | yes |
@@ -508,7 +516,7 @@ Where a built-in already does the job, Tally points you to it: `/insights` for t
 
 ## Roadmap
 
-The plan to v1.0 is in [`docs/ROADMAP_RELIABILITY_LAYER.md`](docs/ROADMAP_RELIABILITY_LAYER.md): v0.6 became the evaluation release (this document is its evidence); ship readiness and scope and risk analysis (v0.7), repository and mistake memory that survives switching agents (v0.8), a stable adapter SDK and comparison views with sample sizes (v0.9), mutation verification in an isolated worktree (shipped early, as the mutation check). Architecture in [`ARCHITECTURE.md`](ARCHITECTURE.md); adding an agent in [`docs/ADAPTER_SDK.md`](docs/ADAPTER_SDK.md); how the numbers are measured in [`docs/EVALUATION.md`](docs/EVALUATION.md); how to help in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+The plan to v1.0 is in [`docs/ROADMAP_RELIABILITY_LAYER.md`](docs/ROADMAP_RELIABILITY_LAYER.md): v0.6 became the evaluation release (this document is its evidence); ship readiness and scope and risk analysis (v0.7), repository and mistake memory that survives switching agents (v0.8; recall cards and the task budget from history are its first pieces, shipped in 0.13), a stable adapter SDK and comparison views with sample sizes (v0.9), mutation verification in an isolated worktree (shipped early, as the mutation check). Architecture in [`ARCHITECTURE.md`](ARCHITECTURE.md); adding an agent in [`docs/ADAPTER_SDK.md`](docs/ADAPTER_SDK.md); how the numbers are measured in [`docs/EVALUATION.md`](docs/EVALUATION.md); how to help in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Evaluation
 

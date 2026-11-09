@@ -35,15 +35,16 @@ export const burnRate: Rule = {
     const task = ctx.task;
     if (task && task.budget_usd > 0 && ctx.spendUsd > 0) {
       const pct = (ctx.spendUsd / task.budget_usd) * 100;
+      const from = task.budget_basis === 'history' ? 'what comparable past tasks cost' : task.budget_basis === 'cap' ? 'the cap set for this session' : task.budget_basis === 'policy' ? 'the repo policy' : "the repo's hours × rate rule";
       if (pct >= 100) {
         out.push({
           rule: this.id,
           key: 'budget:100',
           severity: 'critical',
           title: `Over budget: $${ctx.spendUsd.toFixed(2)} of $${task.budget_usd.toFixed(2)}`,
-          message: `Spend has passed the intake budget for "${task.title}" (${pct.toFixed(0)}%). The budget was 25% of the human-equivalent value; beyond it the ROI verdict turns borderline. Wrap up or re-scope.`,
+          message: `Spend has passed the budget for "${task.title}" (${pct.toFixed(0)}%), set from ${from}. Wrap up, re-scope, or raise the cap on purpose (tally budget set <usd>).`,
           usd_saved: ctx.avgTurnCostUsd * 5,
-          action: { kind: 'inject', label: 'Tell Claude to wrap up', note: `Tally observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget set at intake (${pct.toFixed(0)}%).` },
+          action: { kind: 'inject', label: 'Tell Claude to wrap up', note: `Tally observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget from ${from} (${pct.toFixed(0)}%).` },
         });
       } else if (pct >= 80) {
         out.push({

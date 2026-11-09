@@ -2,6 +2,25 @@
 
 All notable changes to Tally. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
 
+## [0.13.0] - 2026-11-09
+
+Back to the original idea, properly this time: the unit of spend is the task, not the person, and the number comes from history, not from a formula.
+
+### Changed
+- **The budget is the price of comparable past tasks.** At intake the task's budget is the upper range of the past tasks most similar to it (the same TF-IDF match the estimate used, teammates' ledger stories included), recorded on the task as `budget_basis: history`. The old default (25% of a human-hours guess × an hourly rate) is gone unless a repo's `tally.json` asks for it with `budget.fraction` or `budget.hourly_rate` (`budget_basis: hours`). A fixed `budget.usd` is a ceiling (`policy`). Status line, Stop notices, the burn-rate rule, the hard stop and the receipt all run against this one number.
+- **Nothing is invented.** With no comparable past task the budget is 0 (`none`): the status line shows spend with "no cap", the receipt says "no budget" instead of a percentage, `tally cost` says "no comparable past task" instead of quoting the median of unrelated sessions, and the first Stop after 50¢ asks once for a cap. The median of everything on the machine is kept for scale only and never judges a task over or under.
+- **The Stop notice explains the gap.** Over budget: how much, the largest single reason in dollars (the top cost driver) and the fix for next time. Shipped: how far under or over. The first notice states the budget and where it came from. One transcript is not one task: the notice and `tally cost` say "across N days and M compactions" when the transcript spans more than a day.
+- The receipt's recommendations say "set a cap at the start next time" when a task had no budget, instead of claiming spend exceeded $0.
+
+### Added
+- **The cap.** `tally budget set <usd> [--note]` sets this session's budget (`budget_basis: cap`), applies it to the linked task at once, and records a `budget_set` event that `tally audit` lists. The `tally_budget` MCP tool lets Claude set it when the user says "cap this at $40", or report the current budget and its basis; `/tally:budget set 40` does the same from the plugin. A repo policy's fixed budget clamps a cap, so the hard stop cannot be escaped by capping; lifting it stays `tally budget approve`.
+- **Recall.** The Coach tick writes one card per session (task text, final outcome, files touched, tests run, cost, span) under `~/.tally/recall/<repo>/`, or `recall.dir` for a synced folder. On every prompt the hook ranks the repository's cards by word similarity and, above `recall.min_similarity` (0.35), hands Claude the best card's outcome once per past task per session, with the files and the command for the full card; a `recall` event is recorded and the cost check shows what was offered and what it cost then. `tally recall [query | <session>]` lists or prints cards; `/tally:recall` from the plugin. `recall.enabled: false` turns it off.
+- `tally budget` (status) now prints the budget and its basis before the hard-stop line. The cost check carries `budget_usd`, `budget_basis`, `span` and `recall`.
+- `docs/BENCHMARK.md` has the estimate backtest: on the author's machine (123 past tasks) median error 49%, 76% within 2× of actual, 26% inside the stated range; with similar neighbours, 44% and 87%.
+
+### Fixed
+- The estimate module's text similarity moved to `src/text/similarity.ts` so the hook can match prompts at startup without loading the session scanner.
+
 ## [0.12.0] - 2026-11-05
 
 ### Added

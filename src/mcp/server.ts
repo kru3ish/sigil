@@ -9,6 +9,9 @@ import { quickChecks } from '../judge/quickcheck.js';
 import { readFlags } from '../commands/statusline.js';
 import { fmtUsd } from '../cost/pricing.js';
 import { packageVersion } from '../cli.js';
+import { setCap } from '../commands/budget.js';
+import { describeBudget } from '../task/budget.js';
+import { loadEstimate } from '../estimate/estimate.js';
 
 type Json = Record<string, unknown>;
 
@@ -33,15 +36,29 @@ const TOOLS = [
     description: 'Coach flags waiting for a decision from the user (consent, confirmation, a file to write), with the command that resolves each.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'tally_budget',
+    description: "Set the dollar cap for the current task when the user names one (\"cap this at $40\"). Without usd it reports the current budget and where it came from. The cap drives the status line, the Stop notices and any repo-policy hard stop; a repo policy's fixed budget is a ceiling it cannot raise.",
+    inputSchema: { type: 'object', properties: { usd: { type: 'number', description: 'the cap in API-equivalent dollars' }, note: { type: 'string', description: 'why, in the user’s words' } }, additionalProperties: false },
+  },
 ];
 
 function text(s: string): Json {
   return { content: [{ type: 'text', text: s }] };
 }
 
-export function callTool(name: string, cwd: string): Json {
+export function callTool(name: string, cwd: string, args: Json = {}): Json {
   const session = resolveSession(undefined, cwd);
   if (!session) return text('Tally: no active session for this directory (hooks not installed, or no prompt yet).');
+  if (name === 'tally_budget') {
+    const usd = typeof args.usd === 'number' ? args.usd : Number(args.usd);
+    if (usd > 0) {
+      const r = setCap(session, usd, 'user via Claude', typeof args.note === 'string' ? args.note : undefined, cwd);
+      return text(`Budget set to ${fmtUsd(r.usd)}${r.clamped ? ' (clamped to the repo policy budget)' : ''}${r.applied ? '' : '; it applies once the task is linked'}. Tally now measures this task against it.`);
+    }
+    const task = loadTask(session);
+    return text(task ? `Budget: ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}.${task.budget_usd > 0 ? '' : ' Ask the user for a cap and call tally_budget with usd.'}` : 'Tally: no task linked yet; the budget is decided at intake.');
+  }
   if (name === 'tally_task' || name === 'tally_unmet') {
     const task = loadTask(session);
     if (!task) return text('Tally: no task linked yet. Link one with /tally:task <url|text> (or it will be inferred from the first prompt).');
@@ -79,7 +96,7 @@ function handle(msg: { id?: number | string; method?: string; params?: Json }, c
     case 'tools/call': {
       const name = String((msg.params?.name as string) ?? '');
       try {
-        return reply(callTool(name, cwd));
+        return reply(callTool(name, cwd, (msg.params?.arguments as Json | undefined) ?? {}));
       } catch (err) {
         return reply({ ...text(`Tally error: ${err instanceof Error ? err.message : String(err)}`), isError: true });
       }

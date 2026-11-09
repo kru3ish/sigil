@@ -80,6 +80,7 @@ const COMMANDS: Record<string, () => Promise<{ run: (args: Args) => Promise<numb
   feedback: () => import('./commands/feedback.js'),
   telemetry: () => import('./commands/telemetry.js'),
   budget: () => import('./commands/budget.js'),
+  recall: () => import('./commands/recall.js'),
   playbook: () => import('./commands/playbook.js'),
   export: () => import('./commands/export.js'),
   mcp: () => import('./commands/mcp.js'),
@@ -127,7 +128,10 @@ Judge
   judge <session> --explain <c1|all>   The evidence behind a status: diff hunks, test output, transcript moments
   dispute <session> <c#> --status s --reason ".."   Contest a criterion; the receipt keeps both and is re-scored
   feedback <c#> correct|wrong|unsure [--comment ..]   Label a criterion on the receipt (local); "feedback wrong <c#> --report" builds a sanitized issue report
-  budget status|approve       Repo-policy hard stop over budget (tally.json), and the approval that lifts it
+  budget [status]             The task's budget and where it came from: comparable past tasks, a cap, or repo policy
+  budget set <usd> [--note]   Cap this task when nothing comparable priced it (tell Claude "cap this at $40")
+  budget approve [--note]     Lift a repo-policy hard stop (tally.json budget.hard_stop) after a human decision
+  recall [query|<session>]    What past sessions in this repo already produced for a task like this (local, no model)
   playbook [--all] [--write]  Recurring lessons across receipts, as a CLAUDE.md snippet
   mcp [--install]             MCP server: Claude asks tally_task / tally_unmet / tally_receipt / tally_flags mid-task
   export [--since 30d] [--out f.jsonl] [--titles]   Numbers-only receipts for a team store

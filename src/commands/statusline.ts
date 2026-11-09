@@ -12,7 +12,7 @@ import { fmtUsd } from '../cost/pricing.js';
 import { readProgress } from '../judge/quickcheck.js';
 import { rateLimitsFile } from '../coach/rules/rate-limit.js';
 import { writeJson } from '../paths.js';
-import { loadEstimate } from '../estimate/estimate.js';
+import { isComparable, loadEstimate } from '../estimate/estimate.js';
 
 interface StatusInput {
   session_id?: string;
@@ -68,16 +68,19 @@ export function renderStatusLine(input: StatusInput, color = true): string {
     const prog = readProgress(session!);
     if (prog && prog.checked) parts.push(paint(prog.met === prog.checked ? C.green : C.yellow, `${prog.met}/${prog.checked} ✔`));
   }
-  /* spend against the estimate from similar past stories; the repo budget only when there is no estimate */
+  /* spend against the task's budget (comparable past tasks, a cap, or repo policy); with no budget the estimate from
+     similar sessions is shown when one exists, else the fact that there is no cap */
   const est = session ? loadEstimate(session) : null;
-  if (est && est.usd > 0 && est.basis !== 'none') {
+  if (task && task.budget_usd > 0) {
+    const pct = Math.round((spend / task.budget_usd) * 100);
+    const s = `${fmtUsd(spend)} / ${fmtUsd(task.budget_usd)}${task.budget_basis === 'cap' ? ' cap' : ''} (${pct}%)`;
+    parts.push(pct >= 100 ? paint(C.red, s) : pct >= 80 ? paint(C.yellow, s) : s);
+  } else if (isComparable(est)) {
     const pct = Math.round((spend / est.usd) * 100);
     const s = `${fmtUsd(spend)} / ~${fmtUsd(est.usd)} est (${pct}%)`;
     parts.push(pct >= 100 ? paint(C.red, s) : pct >= 80 ? paint(C.yellow, s) : s);
   } else if (task) {
-    const pct = task.budget_usd ? Math.round((spend / task.budget_usd) * 100) : null;
-    const budgetStr = pct === null ? fmtUsd(spend) : `${fmtUsd(spend)}/${fmtUsd(task.budget_usd)} (${pct}%)`;
-    parts.push(pct !== null && pct >= 100 ? paint(C.red, budgetStr) : pct !== null && pct >= 80 ? paint(C.yellow, budgetStr) : budgetStr);
+    parts.push(`${fmtUsd(spend)}${paint(C.dim, ' · no cap')}`);
   } else {
     parts.push(paint(C.dim, `no task linked · ${fmtUsd(spend)}`));
   }

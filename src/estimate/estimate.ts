@@ -9,6 +9,7 @@ import path from 'node:path';
 import { readJson, repoKey, sessionDir } from '../paths.js';
 import { scanSessions, type SessionCandidate } from '../backfill/scan.js';
 import { readLedger } from './ledger.js';
+import { tokenize, termCounts as tf, vectorize, cosine } from '../text/similarity.js';
 
 export interface Neighbour {
   session: string;
@@ -45,18 +46,7 @@ export interface CorpusDoc {
   team?: boolean;
 }
 
-const STOP = new Set(
-  'the and for with that this from into have has are was were will would should could can not but you your our their them they its use using please make need needs want also then than when what which there here just like some any all each other more most very about after before over under only into onto off out via per a an to of in on at by is it be as or if so do we i me my'.split(' '),
-);
-
-export function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/<\/?pasted_content[^>]*>/g, ' ')
-    .replace(/https?:\/\/\S+/g, (u) => u.replace(/[/.:#?=&_-]+/g, ' '))
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w) && w.length < 30);
-}
+export { tokenize };
 
 /* a session is a story only if the agent did something; pure chats and Tally's own runs are not examples */
 function isStory(c: SessionCandidate): boolean {
@@ -100,34 +90,6 @@ export function buildCorpus(opts: { since?: string; projectsDir?: string; cwd?: 
     .filter((e) => !seen.has(e.session) && e.actual_usd > 0)
     .map((e): CorpusDoc => ({ session: e.session, text: e.story, repo, cost_usd: e.actual_usd, models: [e.model], started: e.ts, team: true, ...(e.story_points ? { story_points: e.story_points } : {}) }));
   return [...local, ...team];
-}
-
-type Vec = Map<string, number>;
-
-function tf(tokens: string[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const t of tokens) m.set(t, (m.get(t) ?? 0) + 1);
-  return m;
-}
-
-function vectorize(counts: Map<string, number>, idf: Map<string, number>, fallbackIdf: number): Vec {
-  const v: Vec = new Map();
-  let norm = 0;
-  for (const [t, n] of counts) {
-    const w = (1 + Math.log(n)) * (idf.get(t) ?? fallbackIdf);
-    v.set(t, w);
-    norm += w * w;
-  }
-  norm = Math.sqrt(norm) || 1;
-  for (const [t, w] of v) v.set(t, w / norm);
-  return v;
-}
-
-function cosine(a: Vec, b: Vec): number {
-  const [small, large] = a.size < b.size ? [a, b] : [b, a];
-  let s = 0;
-  for (const [t, w] of small) s += w * (large.get(t) ?? 0);
-  return s;
 }
 
 export function quantile(xs: number[], q: number): number {
@@ -251,7 +213,14 @@ export function loadEstimate(session: string): CostEstimate | null {
 
 export function fmtEstimate(e: CostEstimate): string {
   const $ = (n: number) => `$${n.toFixed(2)}`;
-  if (e.basis === 'none') return 'no past sessions on this machine to estimate from yet';
-  const what = e.basis === 'similar' ? `${e.n} similar past ${e.n === 1 ? 'story' : 'stories'}` : e.basis === 'points' ? `story points × the median cost per point of ${e.n} pointed stories` : e.basis === 'repo' ? `the median of ${e.n} past sessions in this repo (nothing similar enough)` : `the median of all ${e.n} past sessions (nothing similar enough)`;
+  if (e.basis === 'none') return 'no past tasks on this machine to estimate from yet';
+  if (!isComparable(e)) return `no comparable past task (${e.corpus} on record, none similar enough); set a cap with: tally budget set <usd>`;
+  const what = e.basis === 'similar' ? `${e.n} similar past ${e.n === 1 ? 'task' : 'tasks'}` : `story points × the median cost per point of ${e.n} pointed tasks`;
   return `~${$(e.usd)} (typical ${$(e.low_usd)}–${$(e.high_usd)}; from ${what}; ${e.confidence} confidence)`;
+}
+
+/* a price only counts when it comes from tasks like this one; the median of unrelated sessions is a fact about the
+   machine, not about the task, and never becomes a budget */
+export function isComparable(e: CostEstimate | null | undefined): e is CostEstimate & { basis: 'similar' | 'points' } {
+  return !!e && e.usd > 0 && (e.basis === 'similar' || e.basis === 'points');
 }

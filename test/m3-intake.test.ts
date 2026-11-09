@@ -129,8 +129,11 @@ describe('intake', () => {
     expect(task.spec_quality.score).toBe(7);
     expect(task.needs_clarification).toBe(false);
     expect(task.estimate).toEqual({ hours: 3, basis: 'llm' });
-    expect(task.budget_usd).toBe(computeBudget(3, 75));
-    expect(task.budget_usd).toBe(56.25);
+    /* no comparable past task on this (isolated) machine and no repo policy: no budget is invented; the hours × rate
+       rule is still there for repositories that opt into it */
+    expect(task.budget_usd).toBe(0);
+    expect(task.budget_basis).toBe('none');
+    expect(computeBudget(3, 75)).toBe(56.25);
     expect(TaskSchema.safeParse(JSON.parse(fs.readFileSync(path.join(iso.home, 'sessions', 's1', 'task.json'), 'utf8'))).success).toBe(true);
     expect(llm.calls[0]!.kind).toBe('intake');
     expect(llm.calls[0]!.prompt).toContain('Add tests');

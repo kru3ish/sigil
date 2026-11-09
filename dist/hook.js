@@ -3,7 +3,7 @@ import { createRequire as __tallyCreateRequire } from "node:module";
 const require = __tallyCreateRequire(import.meta.url);
 
 // src/hooks/hook.ts
-import fs4 from "node:fs";
+import fs5 from "node:fs";
 
 // src/agents/index.ts
 import os from "node:os";
@@ -222,7 +222,7 @@ function agentFromArgv(argv) {
 }
 
 // src/hooks/hook.ts
-import path5 from "node:path";
+import path6 from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -411,16 +411,118 @@ function quickChecks(session, cwd) {
   return progress;
 }
 
+// src/recall/match.ts
+import fs4 from "node:fs";
+import path5 from "node:path";
+import { createHash } from "node:crypto";
+
+// src/text/similarity.ts
+var STOP = new Set(
+  "the and for with that this from into have has are was were will would should could can not but you your our their them they its use using please make need needs want also then than when what which there here just like some any all each other more most very about after before over under only into onto off out via per a an to of in on at by is it be as or if so do we i me my".split(" ")
+);
+function tokenize(text) {
+  return text.toLowerCase().replace(/<\/?pasted_content[^>]*>/g, " ").replace(/https?:\/\/\S+/g, (u) => u.replace(/[/.:#?=&_-]+/g, " ")).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w) && w.length < 30);
+}
+function termCounts(tokens) {
+  const m = /* @__PURE__ */ new Map();
+  for (const t of tokens) m.set(t, (m.get(t) ?? 0) + 1);
+  return m;
+}
+function vectorize(counts, idf, fallbackIdf) {
+  const v = /* @__PURE__ */ new Map();
+  let norm2 = 0;
+  for (const [t, n] of counts) {
+    const w = (1 + Math.log(n)) * (idf.get(t) ?? fallbackIdf);
+    v.set(t, w);
+    norm2 += w * w;
+  }
+  norm2 = Math.sqrt(norm2) || 1;
+  for (const [t, w] of v) v.set(t, w / norm2);
+  return v;
+}
+function cosine(a, b) {
+  const [small, large] = a.size < b.size ? [a, b] : [b, a];
+  let s = 0;
+  for (const [t, w] of small) s += w * (large.get(t) ?? 0);
+  return s;
+}
+function index(texts) {
+  const counts = texts.map((t) => termCounts(tokenize(t)));
+  const df = /* @__PURE__ */ new Map();
+  for (const c of counts) for (const t of c.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  const N = texts.length;
+  const idf = /* @__PURE__ */ new Map();
+  for (const [t, n] of df) idf.set(t, Math.log((N + 1) / (n + 1)) + 1);
+  const fallbackIdf = Math.log(N + 1) + 1;
+  return { idf, fallbackIdf, vectors: counts.map((c) => vectorize(c, idf, fallbackIdf)) };
+}
+function rank(query, texts) {
+  const ix = index(texts);
+  const q = vectorize(termCounts(tokenize(query)), ix.idf, ix.fallbackIdf);
+  if (!q.size) return [];
+  return ix.vectors.map((v, i) => ({ i, sim: cosine(q, v) })).filter((x) => x.sim > 0).sort((a, b) => b.sim - a.sim);
+}
+
+// src/recall/match.ts
+var RECALL_MIN_SIMILARITY = 0.35;
+var RECALL_MIN_PROMPT_CHARS = 20;
+function recallSettings() {
+  const raw = readJson(configFile(), {});
+  const r = raw.recall ?? {};
+  return { enabled: r.enabled !== false, min: typeof r.min_similarity === "number" ? r.min_similarity : RECALL_MIN_SIMILARITY, dir: typeof r.dir === "string" && r.dir ? r.dir : void 0 };
+}
+function recallKey(cwd) {
+  const key = repoKey(cwd);
+  const slug = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(-60);
+  return `${slug || "repo"}-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
+}
+function recallDir(cwd, dir = recallSettings().dir) {
+  return path5.join(dir ?? path5.join(tallyHome(), "recall"), recallKey(cwd));
+}
+function readCards(cwd) {
+  const dir = recallDir(cwd);
+  if (!fs4.existsSync(dir)) return [];
+  const out = [];
+  for (const f of fs4.readdirSync(dir)) {
+    if (!f.endsWith(".json")) continue;
+    const c = readJson(path5.join(dir, f), null);
+    if (c && c.v === 1 && c.title && c.outcome) out.push(c);
+  }
+  return out.sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? ""));
+}
+function worthMatching(prompt) {
+  const p = prompt.trim();
+  return p.length >= RECALL_MIN_PROMPT_CHARS && !p.startsWith("/") && !/^(yes|no|ok|okay|go|continue|done|thanks)\b/i.test(p);
+}
+function matchRecall(query, cards, opts = {}) {
+  const pool = cards.filter((c) => c.session !== opts.exclude);
+  if (!pool.length) return [];
+  const min = opts.min ?? RECALL_MIN_SIMILARITY;
+  return rank(query, pool.map((c) => `${c.title}
+${c.text}`)).filter((r) => r.sim >= min).slice(0, opts.limit ?? 3).map((r) => ({ card: pool[r.i], similarity: Math.round(r.sim * 100) / 100 }));
+}
+function findRecall(prompt, cwd, session, min) {
+  if (!worthMatching(prompt)) return [];
+  return matchRecall(prompt, readCards(cwd), { exclude: session, min });
+}
+var cut = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s;
+function recallNote(m, cli = "tally") {
+  const c = m.card;
+  const when = (c.started ?? c.updated).slice(0, 10);
+  const files = c.files.length ? ` Files it touched: ${c.files.slice(0, 6).join(", ")}${c.files.length > 6 ? ` (+${c.files.length - 6})` : ""}.` : "";
+  return `Tally recall: a task like this ran in this repo on ${when} and cost $${c.cost_usd.toFixed(2)}: "${cut(c.title, 80)}". Outcome then: ${cut(c.outcome.replace(/\s+/g, " "), 400)}${files} Reuse that work before re-deriving it; the full card: ${cli} recall ${c.session.slice(0, 8)}`;
+}
+
 // src/hooks/hook.ts
-var here = path5.dirname(fileURLToPath(import.meta.url));
-var CLI = process.env.TALLY_HOOK_CLI || [path5.join(here, "cli.js"), path5.join(here, "..", "cli.js")].find((p) => fs4.existsSync(p)) || path5.join(here, "cli.js");
+var here = path6.dirname(fileURLToPath(import.meta.url));
+var CLI = process.env.TALLY_HOOK_CLI || [path6.join(here, "cli.js"), path6.join(here, "..", "cli.js")].find((p) => fs5.existsSync(p)) || path6.join(here, "cli.js");
 var SHIP_RE = /\bgit\s+push\b|\bgh\s+pr\s+(create|merge)\b|\bnpm\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/;
 var TASK_URL_RE = /https?:\/\/(github\.com\/[^\s/]+\/[^\s/]+\/(issues|pull)\/\d+|[^\s]+\.atlassian\.net\/browse\/[A-Z][A-Z0-9]+-\d+|linear\.app\/[^\s]+\/issue\/[A-Z0-9]+-\d+[^\s]*)/;
 var TASK_MD_RE = /(?:^|[\s`"'(])((?:[A-Za-z]:)?[^\s"'`]+?\.md)(?=[\s.,;:!?)"'`]|$)/;
 var MAX_FIELD = 2e3;
 function readStdin() {
   try {
-    return fs4.readFileSync(0, "utf8");
+    return fs5.readFileSync(0, "utf8");
   } catch {
     return "";
   }
@@ -434,23 +536,23 @@ function nowIso() {
 }
 function record(session, type, cwd, data) {
   const ev = { ts: nowIso(), type, session, cwd, data: redactDeep(data) };
-  appendLine(path5.join(sessionDir(session), "events.jsonl"), JSON.stringify(ev));
+  appendLine(path6.join(sessionDir(session), "events.jsonl"), JSON.stringify(ev));
 }
 function alreadySeen(session, event, toolUseId) {
   if (!toolUseId) return false;
-  const file = path5.join(sessionDir(session), "seen.txt");
+  const file = path6.join(sessionDir(session), "seen.txt");
   const key = `${event}:${toolUseId}
 `;
   try {
-    if (fs4.existsSync(file) && fs4.readFileSync(file, "utf8").includes(key)) return true;
-    fs4.appendFileSync(file, key);
+    if (fs5.existsSync(file) && fs5.readFileSync(file, "utf8").includes(key)) return true;
+    fs5.appendFileSync(file, key);
   } catch {
   }
   return false;
 }
 function spawnDetached(args) {
   if (process.env.TALLY_NO_SPAWN) {
-    appendLine(path5.join(tallyHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
+    appendLine(path6.join(tallyHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
     return;
   }
   try {
@@ -464,29 +566,29 @@ function gitHead(cwd) {
   try {
     let dir = cwd;
     for (let i = 0; i < 6; i++) {
-      const gitPath = path5.join(dir, ".git");
-      if (fs4.existsSync(gitPath)) {
+      const gitPath = path6.join(dir, ".git");
+      if (fs5.existsSync(gitPath)) {
         let gitDir = gitPath;
-        if (fs4.statSync(gitPath).isFile()) {
-          const m = /gitdir:\s*(.+)/.exec(fs4.readFileSync(gitPath, "utf8"));
+        if (fs5.statSync(gitPath).isFile()) {
+          const m = /gitdir:\s*(.+)/.exec(fs5.readFileSync(gitPath, "utf8"));
           if (!m) return void 0;
-          gitDir = path5.resolve(dir, m[1].trim());
+          gitDir = path6.resolve(dir, m[1].trim());
         }
-        const head = fs4.readFileSync(path5.join(gitDir, "HEAD"), "utf8").trim();
+        const head = fs5.readFileSync(path6.join(gitDir, "HEAD"), "utf8").trim();
         const ref = /^ref:\s*(.+)$/.exec(head);
         if (!ref) return head;
-        const refFile = path5.join(gitDir, ref[1]);
-        if (fs4.existsSync(refFile)) return fs4.readFileSync(refFile, "utf8").trim();
-        const packed = path5.join(gitDir, "packed-refs");
-        if (fs4.existsSync(packed)) {
-          for (const line of fs4.readFileSync(packed, "utf8").split("\n")) {
+        const refFile = path6.join(gitDir, ref[1]);
+        if (fs5.existsSync(refFile)) return fs5.readFileSync(refFile, "utf8").trim();
+        const packed = path6.join(gitDir, "packed-refs");
+        if (fs5.existsSync(packed)) {
+          for (const line of fs5.readFileSync(packed, "utf8").split("\n")) {
             const [sha, name] = line.split(" ");
             if (name === ref[1]) return sha;
           }
         }
         return void 0;
       }
-      const parent = path5.dirname(dir);
+      const parent = path6.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -500,19 +602,19 @@ function loadedInventory(cwd) {
   const plugins = /* @__PURE__ */ new Set();
   try {
     const home2 = claudeHome();
-    const global = readJson(path5.join(path5.dirname(home2), ".claude.json"), {});
+    const global = readJson(path6.join(path6.dirname(home2), ".claude.json"), {});
     for (const k of Object.keys(global.mcpServers ?? {})) mcp.add(k);
     if (cwd) for (const k of Object.keys(global.projects?.[cwd]?.mcpServers ?? {})) mcp.add(k);
     if (cwd) {
-      const proj = readJson(path5.join(cwd, ".mcp.json"), {});
+      const proj = readJson(path6.join(cwd, ".mcp.json"), {});
       for (const k of Object.keys(proj.mcpServers ?? {})) mcp.add(k);
     }
-    const settings = readJson(path5.join(home2, "settings.json"), {});
+    const settings = readJson(path6.join(home2, "settings.json"), {});
     for (const [k, v] of Object.entries(settings.enabledPlugins ?? {})) if (v) plugins.add(k.split("@")[0]);
-    const skillDirs = [path5.join(home2, "skills"), cwd ? path5.join(cwd, ".claude", "skills") : ""].filter(Boolean);
+    const skillDirs = [path6.join(home2, "skills"), cwd ? path6.join(cwd, ".claude", "skills") : ""].filter(Boolean);
     for (const d of skillDirs) {
-      if (!fs4.existsSync(d)) continue;
-      for (const s of fs4.readdirSync(d)) if (fs4.existsSync(path5.join(d, s, "SKILL.md"))) skills.add(s);
+      if (!fs5.existsSync(d)) continue;
+      for (const s of fs5.readdirSync(d)) if (fs5.existsSync(path6.join(d, s, "SKILL.md"))) skills.add(s);
     }
   } catch {
   }
@@ -528,15 +630,15 @@ function updateActive(session, patch, remove = false) {
   writeJson(file, active);
 }
 function dodGate(session, cwd, stopHookActive) {
-  if (stopHookActive || !fs4.existsSync(path5.join(sessionDir(session), "task.json"))) return void 0;
+  if (stopHookActive || !fs5.existsSync(path6.join(sessionDir(session), "task.json"))) return void 0;
   const cfg = readJson(configFile(), {});
   if (cfg.coach?.dod_gate !== true) return void 0;
-  const task = readJson(path5.join(sessionDir(session), "task.json"), {});
+  const task = readJson(path6.join(sessionDir(session), "task.json"), {});
   if (task.inferred && !task.confirmed) return void 0;
   if (task.needs_clarification && !task.confirmed) return void 0;
   if (!readEvents(session).some((e) => e.type === "pre_tool" && ["Edit", "Write", "MultiEdit", "NotebookEdit"].includes(String(e.data.tool_name)))) return void 0;
   const max = cfg.coach?.dod_max_blocks ?? 1;
-  const marker = path5.join(sessionDir(session), "dod-gate.json");
+  const marker = path6.join(sessionDir(session), "dod-gate.json");
   const state = readJson(marker, { blocks: 0 });
   const progress = quickChecks(session, cwd);
   const unmet = progress.items.filter((i) => i.status === "unmet");
@@ -548,46 +650,59 @@ function dodGate(session, cwd, stopHookActive) {
 }
 function costNotice(session) {
   const dir = sessionDir(session);
-  const est = readJson(path5.join(dir, "estimate.json"), null);
-  if (!est || !est.usd || est.basis !== "similar" && est.basis !== "points" && est.basis !== "repo") return void 0;
-  const check = readJson(path5.join(dir, "cost-check.json"), null);
-  const live = readJson(path5.join(dir, "spend.json"), null);
+  const task = readJson(path6.join(dir, "task.json"), null);
+  if (!task) return void 0;
+  const est = readJson(path6.join(dir, "estimate.json"), null);
+  const check = readJson(path6.join(dir, "cost-check.json"), null);
+  const live = readJson(path6.join(dir, "spend.json"), null);
   const spend = Math.max(live?.usd ?? 0, check?.actual_usd ?? 0);
-  const stateFile = path5.join(dir, "cost-notice.json");
+  const stateFile = path6.join(dir, "cost-notice.json");
   const state = readJson(stateFile, { shown: [] });
   const money = (n) => `$${n.toFixed(2)}`;
-  const shipped = fs4.existsSync(path5.join(dir, "events.jsonl")) && fs4.readFileSync(path5.join(dir, "events.jsonl"), "utf8").includes('"type":"ship"');
-  const top = (check?.drivers ?? []).find((d) => d.fix && d.fix.apply.kind !== "advice");
-  const fixCmd = (id) => process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`;
-  const lever = top ? ` Biggest lever: ${top.title.toLowerCase()} (~${money(top.usd)}) \u2192 ${fixCmd(top.fix.id)}.` : "";
-  const pct = spend / est.usd * 100;
+  const budget = task.budget_usd ?? 0;
+  const basis = task.budget_basis ?? (budget > 0 ? "hours" : "none");
   let key;
   let text = "";
-  const from = est.basis === "similar" ? `${est.n} similar past stor${est.n === 1 ? "y" : "ies"}` : est.basis === "points" ? `the story points \xD7 your cost per point` : `${est.n} past sessions in this repo (nothing closely similar)`;
-  for (const t of [200, 150, 100]) {
-    if (pct >= t && !state.shown.includes(`over${t}`)) {
-      key = `over${t}`;
-      text = `Tally: this story has cost ${money(spend)}, ${Math.round(pct)}% of the ~${money(est.usd)} estimate from ${from} (+${money(spend - est.usd)}).${lever} Breakdown and fixes: /tally:cost`;
-      for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
-      break;
+  if (budget <= 0) {
+    if (state.shown.includes("cap") || spend < 0.5) return void 0;
+    key = "cap";
+    const seen = est?.basis && est.basis !== "none" ? `${est.n ?? 0} past tasks on record, none like this one` : "no past tasks on record yet";
+    text = `Tally: no comparable past task to price "${(task.title ?? "this task").slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Tally can hold the line: tell Claude "cap this at $40" (it runs tally budget set 40), or /tally:budget set 40.`;
+  } else {
+    const shipped = fs5.existsSync(path6.join(dir, "events.jsonl")) && fs5.readFileSync(path6.join(dir, "events.jsonl"), "utf8").includes('"type":"ship"');
+    const drivers = check?.drivers ?? [];
+    const top = drivers.find((d) => d.fix && d.fix.apply.kind !== "advice");
+    const fixCmd = (id) => process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`;
+    const lever = top ? ` Fix for next time: ${top.title.toLowerCase()} (~${money(top.usd)}) \u2192 ${fixCmd(top.fix.id)}.` : "";
+    const why = drivers[0] ? ` Largest reason: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : "";
+    const span = check?.span && check.span.days > 1 ? ` This transcript spans ${check.span.days} days, so it is probably more than one task.` : "";
+    const from = basis === "history" ? `the upper range of ${est?.n ?? 0} comparable past task${(est?.n ?? 0) === 1 ? "" : "s"}` : basis === "cap" ? "the cap you set" : basis === "policy" ? "repo policy" : "the repo's hours \xD7 rate rule";
+    const pct = spend / budget * 100;
+    for (const t of [200, 150, 100]) {
+      if (pct >= t && !state.shown.includes(`over${t}`)) {
+        key = `over${t}`;
+        text = `Tally: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /tally:cost`;
+        for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
+        break;
+      }
     }
-  }
-  if (!key && shipped && !state.shown.includes("ship")) {
-    key = "ship";
-    text = `Tally: shipped for ${money(spend)} against a ~${money(est.usd)} estimate (${spend > est.usd ? "+" : "\u2212"}${money(Math.abs(spend - est.usd))}).${lever} Breakdown: /tally:cost`;
-  }
-  if (!key && !state.shown.includes("estimate")) {
-    key = "estimate";
-    text = `Tally: stories like this have cost ~${money(est.usd)} here (typical ${money(est.low_usd ?? 0)}\u2013${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence).${spend > 0 ? ` ${money(spend)} so far.` : ""}`;
+    if (!key && shipped && !state.shown.includes("ship")) {
+      key = "ship";
+      text = spend > budget ? `Tally: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /tally:cost` : `Tally: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ""} Breakdown: /tally:cost`;
+    }
+    if (!key && !state.shown.includes("estimate")) {
+      key = "estimate";
+      text = basis === "history" && est ? `Tally: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}\u2013${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ""}` : `Tally: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ""} Change it: tally budget set <usd>`;
+    }
   }
   if (!key) return void 0;
   if (!state.shown.includes(key)) state.shown.push(key);
   writeJson(stateFile, state);
-  record(session, "cost_notice", void 0, { key, spend_usd: spend, estimate_usd: est.usd });
+  record(session, "cost_notice", void 0, { key, spend_usd: spend, budget_usd: budget, budget_basis: basis, estimate_usd: est?.usd });
   return text;
 }
 function flagNotice(session) {
-  const file = path5.join(sessionDir(session), "coach-flags.json");
+  const file = path6.join(sessionDir(session), "coach-flags.json");
   const flags = readJson(file, {});
   const notified = new Set(flags.notified ?? []);
   const ordered = [...flags.pending ?? []].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
@@ -604,11 +719,11 @@ function autopilotEnabled() {
 }
 function handoffNote(cwd) {
   if (!cwd) return "";
-  const f = path5.join(cwd, "HANDOFF.md");
-  if (!fs4.existsSync(f)) return "";
-  const age = Date.now() - fs4.statSync(f).mtimeMs;
+  const f = path6.join(cwd, "HANDOFF.md");
+  if (!fs5.existsSync(f)) return "";
+  const age = Date.now() - fs5.statSync(f).mtimeMs;
   if (age > 24 * 3600 * 1e3) return "";
-  const body = fs4.readFileSync(f, "utf8").split("\n").slice(0, 25).join("\n").slice(0, 1800);
+  const body = fs5.readFileSync(f, "utf8").split("\n").slice(0, 25).join("\n").slice(0, 1800);
   return `Tally: HANDOFF.md in this repo was written ${Math.round(age / 6e4)} min ago and holds the state to resume from:
 ${body}`;
 }
@@ -616,8 +731,8 @@ function lastReceipt(cwd) {
   if (!cwd) return "";
   const key = repoKey(cwd);
   const file = historyFile();
-  if (!fs4.existsSync(file)) return "";
-  const lines = fs4.readFileSync(file, "utf8").trim().split("\n").slice(-300);
+  if (!fs5.existsSync(file)) return "";
+  const lines = fs5.readFileSync(file, "utf8").trim().split("\n").slice(-300);
   for (const line of lines.reverse()) {
     try {
       const h = JSON.parse(line);
@@ -633,8 +748,8 @@ function historyLessons(cwd) {
   if (!cwd) return "";
   const key = repoKey(cwd);
   const file = historyFile();
-  if (!fs4.existsSync(file)) return "";
-  const lines = fs4.readFileSync(file, "utf8").trim().split("\n").slice(-200);
+  if (!fs5.existsSync(file)) return "";
+  const lines = fs5.readFileSync(file, "utf8").trim().split("\n").slice(-200);
   const lessons = [];
   for (const line of lines.reverse()) {
     try {
@@ -652,10 +767,28 @@ function historyLessons(cwd) {
   return lessons.length ? `Tally: past receipts in this repo recorded these lessons:
 - ${lessons.join("\n- ")}` : "";
 }
+function recallNotice(session, cwd, prompt) {
+  if (!cwd) return "";
+  try {
+    const settings = recallSettings();
+    if (!settings.enabled) return "";
+    const stateFile = path6.join(sessionDir(session), "recall-state.json");
+    const state = readJson(stateFile, { offered: [] });
+    const matches = findRecall(prompt, cwd, session, settings.min).filter((m2) => !state.offered.includes(m2.card.session));
+    if (!matches.length) return "";
+    const m = matches[0];
+    state.offered.push(m.card.session);
+    writeJson(stateFile, state);
+    record(session, "recall", cwd, { ref: m.card.session, similarity: m.similarity, prior_cost_usd: m.card.cost_usd, title: m.card.title.slice(0, 120) });
+    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? "/tally:recall" : "tally recall");
+  } catch {
+    return "";
+  }
+}
 function deliverInjects(session) {
-  const file = path5.join(sessionDir(session), "inject.jsonl");
-  if (!fs4.existsSync(file)) return "";
-  const lines = fs4.readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
+  const file = path6.join(sessionDir(session), "inject.jsonl");
+  if (!fs5.existsSync(file)) return "";
+  const lines = fs5.readFileSync(file, "utf8").split("\n").filter((l) => l.trim());
   const pending = [];
   const kept = [];
   for (const line of lines) {
@@ -670,11 +803,11 @@ function deliverInjects(session) {
     }
   }
   if (!pending.length) return "";
-  fs4.writeFileSync(file, kept.join("\n") + "\n");
+  fs5.writeFileSync(file, kept.join("\n") + "\n");
   return pending.map((n) => `Tally: ${n}`).join("\n");
 }
 function followupDue() {
-  const state = readJson(path5.join(tallyHome(), "followup-state.json"), {});
+  const state = readJson(path6.join(tallyHome(), "followup-state.json"), {});
   const last = state.last_run ? Date.parse(state.last_run) : 0;
   return Date.now() - last > 24 * 3600 * 1e3;
 }
@@ -715,30 +848,30 @@ function main() {
     }
     case "UserPromptSubmit": {
       const prompt = String(input.prompt ?? "");
-      const isFirst = !fs4.existsSync(path5.join(sessionDir(session), "task.json")) && !fs4.existsSync(path5.join(sessionDir(session), "task.pending"));
+      const isFirst = !fs5.existsSync(path6.join(sessionDir(session), "task.json")) && !fs5.existsSync(path6.join(sessionDir(session), "task.pending"));
       record(session, "prompt", cwd, { prompt: truncate(prompt), chars: prompt.length });
       updateActive(session, { cwd, transcript_path: input.transcript_path });
       if (isFirst) {
         const url = TASK_URL_RE.exec(prompt)?.[0];
         const md = !url ? TASK_MD_RE.exec(prompt)?.[1] : void 0;
-        const ref = url ?? (md && cwd && fs4.existsSync(path5.resolve(cwd, md)) ? path5.resolve(cwd, md) : void 0);
+        const ref = url ?? (md && cwd && fs5.existsSync(path6.resolve(cwd, md)) ? path6.resolve(cwd, md) : void 0);
         if (ref) {
-          fs4.writeFileSync(path5.join(sessionDir(session), "task.pending"), ref);
+          fs5.writeFileSync(path6.join(sessionDir(session), "task.pending"), ref);
           spawnDetached(["task", ref, "--session", session, "--cwd", cwd ?? "", "--auto"]);
         } else if (prompt.trim().length > 0) {
-          fs4.writeFileSync(path5.join(sessionDir(session), "task.pending"), "text");
+          fs5.writeFileSync(path6.join(sessionDir(session), "task.pending"), "text");
           spawnDetached(["task", "--text", truncate(prompt, 4e3), "--session", session, "--cwd", cwd ?? "", "--auto"]);
         }
       }
-      const ctx = deliverInjects(session);
+      const ctx = [deliverInjects(session), recallNotice(session, cwd, prompt)].filter(Boolean).join("\n");
       if (ctx) out = { kind: "context", event: "UserPromptSubmit", text: ctx };
       break;
     }
     case "PreToolUse": {
       if (alreadySeen(session, event, input.tool_use_id)) break;
-      const stopFile = path5.join(sessionDir(session), "hard-stop.json");
+      const stopFile = path6.join(sessionDir(session), "hard-stop.json");
       const cmd0 = typeof input.tool_input?.command === "string" ? input.tool_input.command : "";
-      if (fs4.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
+      if (fs5.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
         const stop = readJson(stopFile, {});
         out = { kind: "deny", reason: `Tally: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: tally budget approve --note "<why>"` };
         record(session, "hard_stop_denied", cwd, { tool_name: input.tool_name, tool_use_id: input.tool_use_id });

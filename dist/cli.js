@@ -1043,8 +1043,8 @@ var init_parseUtil = __esm({
     init_errors();
     init_en();
     makeIssue = (params) => {
-      const { data, path: path76, errorMaps, issueData } = params;
-      const fullPath = [...path76, ...issueData.path || []];
+      const { data, path: path79, errorMaps, issueData } = params;
+      const fullPath = [...path79, ...issueData.path || []];
       const fullIssue = {
         ...issueData,
         path: fullPath
@@ -1293,9 +1293,9 @@ function mergeValues(a, b) {
       return { valid: false };
     }
     const newArray = [];
-    for (let index = 0; index < a.length; index++) {
-      const itemA = a[index];
-      const itemB = b[index];
+    for (let index2 = 0; index2 < a.length; index2++) {
+      const itemA = a[index2];
+      const itemB = b[index2];
       const sharedValue = mergeValues(itemA, itemB);
       if (!sharedValue.valid) {
         return { valid: false };
@@ -1352,11 +1352,11 @@ var init_types = __esm({
     init_parseUtil();
     init_util();
     ParseInputLazyPath = class {
-      constructor(parent, value, path76, key) {
+      constructor(parent, value, path79, key) {
         this._cachedPath = [];
         this.parent = parent;
         this.data = value;
-        this._path = path76;
+        this._path = path79;
         this._key = key;
       }
       get path() {
@@ -3242,10 +3242,10 @@ var init_types = __esm({
       //   }) as any;
       //   return merged;
       // }
-      catchall(index) {
+      catchall(index2) {
         return new _ZodObject({
           ...this._def,
-          catchall: index
+          catchall: index2
         });
       }
       pick(mask) {
@@ -3733,10 +3733,10 @@ var init_types = __esm({
         }
         const keyType = this._def.keyType;
         const valueType = this._def.valueType;
-        const pairs = [...ctx.data.entries()].map(([key, value], index) => {
+        const pairs = [...ctx.data.entries()].map(([key, value], index2) => {
           return {
-            key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
-            value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
+            key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index2, "key"])),
+            value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index2, "value"]))
           };
         });
         if (ctx.common.async) {
@@ -4852,7 +4852,16 @@ var init_config = __esm({
         api_token: external_exports.string().optional()
       }).default({}),
       linear: external_exports.object({ api_key: external_exports.string().optional() }).default({}),
-      consent: external_exports.object({ test_rerun: external_exports.record(external_exports.boolean()).default({}) }).default({})
+      consent: external_exports.object({ test_rerun: external_exports.record(external_exports.boolean()).default({}) }).default({}),
+      /* recall: a card per past session in a repo (task, outcome, files, cost); a new prompt that looks like a past task
+         gets the card's outcome before any token is spent re-deriving it */
+      recall: external_exports.object({
+        enabled: external_exports.boolean().default(true),
+        /* TF-IDF cosine a past task must reach to be offered */
+        min_similarity: external_exports.number().min(0).max(1).default(0.35),
+        /* where the cards live; default ~/.tally/recall. A synced folder (a notes vault) shares them across machines */
+        dir: external_exports.string().optional()
+      }).default({})
     });
   }
 });
@@ -6065,12 +6074,62 @@ var init_ledger = __esm({
   }
 });
 
-// src/estimate/estimate.ts
-import fs11 from "node:fs";
-import path11 from "node:path";
+// src/text/similarity.ts
 function tokenize(text2) {
   return text2.toLowerCase().replace(/<\/?pasted_content[^>]*>/g, " ").replace(/https?:\/\/\S+/g, (u) => u.replace(/[/.:#?=&_-]+/g, " ")).split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !STOP.has(w) && !/^\d+$/.test(w) && w.length < 30);
 }
+function termCounts(tokens) {
+  const m = /* @__PURE__ */ new Map();
+  for (const t of tokens) m.set(t, (m.get(t) ?? 0) + 1);
+  return m;
+}
+function vectorize(counts, idf, fallbackIdf) {
+  const v = /* @__PURE__ */ new Map();
+  let norm7 = 0;
+  for (const [t, n] of counts) {
+    const w = (1 + Math.log(n)) * (idf.get(t) ?? fallbackIdf);
+    v.set(t, w);
+    norm7 += w * w;
+  }
+  norm7 = Math.sqrt(norm7) || 1;
+  for (const [t, w] of v) v.set(t, w / norm7);
+  return v;
+}
+function cosine(a, b) {
+  const [small, large] = a.size < b.size ? [a, b] : [b, a];
+  let s = 0;
+  for (const [t, w] of small) s += w * (large.get(t) ?? 0);
+  return s;
+}
+function index(texts) {
+  const counts = texts.map((t) => termCounts(tokenize(t)));
+  const df = /* @__PURE__ */ new Map();
+  for (const c of counts) for (const t of c.keys()) df.set(t, (df.get(t) ?? 0) + 1);
+  const N = texts.length;
+  const idf = /* @__PURE__ */ new Map();
+  for (const [t, n] of df) idf.set(t, Math.log((N + 1) / (n + 1)) + 1);
+  const fallbackIdf = Math.log(N + 1) + 1;
+  return { idf, fallbackIdf, vectors: counts.map((c) => vectorize(c, idf, fallbackIdf)) };
+}
+function rank(query, texts) {
+  const ix = index(texts);
+  const q = vectorize(termCounts(tokenize(query)), ix.idf, ix.fallbackIdf);
+  if (!q.size) return [];
+  return ix.vectors.map((v, i) => ({ i, sim: cosine(q, v) })).filter((x) => x.sim > 0).sort((a, b) => b.sim - a.sim);
+}
+var STOP;
+var init_similarity = __esm({
+  "src/text/similarity.ts"() {
+    "use strict";
+    STOP = new Set(
+      "the and for with that this from into have has are was were will would should could can not but you your our their them they its use using please make need needs want also then than when what which there here just like some any all each other more most very about after before over under only into onto off out via per a an to of in on at by is it be as or if so do we i me my".split(" ")
+    );
+  }
+});
+
+// src/estimate/estimate.ts
+import fs11 from "node:fs";
+import path11 from "node:path";
 function isStory(c) {
   return c.tool_calls > 0 && c.cost > 5e-3;
 }
@@ -6101,29 +6160,6 @@ function buildCorpus(opts = {}) {
   const team = readLedger(opts.cwd).filter((e) => !seen.has(e.session) && e.actual_usd > 0).map((e) => ({ session: e.session, text: e.story, repo, cost_usd: e.actual_usd, models: [e.model], started: e.ts, team: true, ...e.story_points ? { story_points: e.story_points } : {} }));
   return [...local, ...team];
 }
-function tf(tokens) {
-  const m = /* @__PURE__ */ new Map();
-  for (const t of tokens) m.set(t, (m.get(t) ?? 0) + 1);
-  return m;
-}
-function vectorize(counts, idf, fallbackIdf) {
-  const v = /* @__PURE__ */ new Map();
-  let norm7 = 0;
-  for (const [t, n] of counts) {
-    const w = (1 + Math.log(n)) * (idf.get(t) ?? fallbackIdf);
-    v.set(t, w);
-    norm7 += w * w;
-  }
-  norm7 = Math.sqrt(norm7) || 1;
-  for (const [t, w] of v) v.set(t, w / norm7);
-  return v;
-}
-function cosine(a, b) {
-  const [small, large] = a.size < b.size ? [a, b] : [b, a];
-  let s = 0;
-  for (const [t, w] of small) s += w * (large.get(t) ?? 0);
-  return s;
-}
 function quantile(xs, q) {
   if (!xs.length) return 0;
   const s = [...xs].sort((a, b) => a - b);
@@ -6147,14 +6183,14 @@ function estimateFromCorpus(text2, corpus, opts = {}) {
   const docs = corpus.filter((d) => d.session !== opts.exclude && !same(d));
   const repo = opts.cwd ? repoKey(opts.cwd) : void 0;
   const computed_at = (opts.now ?? /* @__PURE__ */ new Date()).toISOString();
-  const tokenized = docs.map((d) => tf(tokenize(d.text)));
+  const tokenized = docs.map((d) => termCounts(tokenize(d.text)));
   const df = /* @__PURE__ */ new Map();
   for (const counts of tokenized) for (const t of counts.keys()) df.set(t, (df.get(t) ?? 0) + 1);
   const N = docs.length;
   const idf = /* @__PURE__ */ new Map();
   for (const [t, n] of df) idf.set(t, Math.log((N + 1) / (n + 1)) + 1);
   const fallbackIdf = Math.log(N + 1) + 1;
-  const q = vectorize(tf(tokenize(text2)), idf, fallbackIdf);
+  const q = vectorize(termCounts(tokenize(text2)), idf, fallbackIdf);
   const scored = docs.map((d, i) => {
     const sim = q.size ? cosine(q, vectorize(tokenized[i], idf, fallbackIdf)) : 0;
     return { d, sim: sim > 0 && repo && d.repo === repo ? Math.min(1, sim + 0.1) : sim };
@@ -6211,20 +6247,22 @@ function loadEstimate(session) {
 }
 function fmtEstimate(e) {
   const $6 = (n) => `$${n.toFixed(2)}`;
-  if (e.basis === "none") return "no past sessions on this machine to estimate from yet";
-  const what = e.basis === "similar" ? `${e.n} similar past ${e.n === 1 ? "story" : "stories"}` : e.basis === "points" ? `story points \xD7 the median cost per point of ${e.n} pointed stories` : e.basis === "repo" ? `the median of ${e.n} past sessions in this repo (nothing similar enough)` : `the median of all ${e.n} past sessions (nothing similar enough)`;
+  if (e.basis === "none") return "no past tasks on this machine to estimate from yet";
+  if (!isComparable(e)) return `no comparable past task (${e.corpus} on record, none similar enough); set a cap with: tally budget set <usd>`;
+  const what = e.basis === "similar" ? `${e.n} similar past ${e.n === 1 ? "task" : "tasks"}` : `story points \xD7 the median cost per point of ${e.n} pointed tasks`;
   return `~${$6(e.usd)} (typical ${$6(e.low_usd)}\u2013${$6(e.high_usd)}; from ${what}; ${e.confidence} confidence)`;
 }
-var STOP, round2, MIN_SIMILARITY, MAX_NEIGHBOURS, STRONG_SIMILARITY;
+function isComparable(e) {
+  return !!e && e.usd > 0 && (e.basis === "similar" || e.basis === "points");
+}
+var round2, MIN_SIMILARITY, MAX_NEIGHBOURS, STRONG_SIMILARITY;
 var init_estimate = __esm({
   "src/estimate/estimate.ts"() {
     "use strict";
     init_paths();
     init_scan();
     init_ledger();
-    STOP = new Set(
-      "the and for with that this from into have has are was were will would should could can not but you your our their them they its use using please make need needs want also then than when what which there here just like some any all each other more most very about after before over under only into onto off out via per a an to of in on at by is it be as or if so do we i me my".split(" ")
-    );
+    init_similarity();
     round2 = (n) => Math.round(n * 100) / 100;
     MIN_SIMILARITY = 0.2;
     MAX_NEIGHBOURS = 7;
@@ -7204,9 +7242,60 @@ var init_events = __esm({
   }
 });
 
+// src/task/budget.ts
+import path19 from "node:path";
+function capFile(session) {
+  return path19.join(sessionDir(session), "budget.json");
+}
+function readCap(session) {
+  const c = readJson(capFile(session), null);
+  return c && typeof c.usd === "number" && c.usd > 0 ? c : null;
+}
+function writeCap(session, cap) {
+  ensureDir(sessionDir(session));
+  writeJson(capFile(session), cap);
+}
+function hoursBudget(hours, hourlyRate, fraction = BUDGET_FRACTION) {
+  return Math.max(BUDGET_FLOOR_USD, round22(hours * hourlyRate * fraction));
+}
+function budgetFor(opts) {
+  const ceiling = opts.policy.usd;
+  if (opts.cap) return { usd: round22(ceiling ? Math.min(opts.cap.usd, ceiling) : opts.cap.usd), basis: "cap" };
+  if (ceiling) return { usd: round22(ceiling), basis: "policy" };
+  if (isComparable(opts.estimate)) return { usd: round22(Math.max(opts.estimate.high_usd, opts.estimate.usd)), basis: "history" };
+  if (opts.policy.fraction || opts.policy.hourly_rate) return { usd: hoursBudget(opts.hours, opts.policy.hourly_rate ?? opts.rate, opts.policy.fraction ?? BUDGET_FRACTION), basis: "hours" };
+  return { usd: 0, basis: "none" };
+}
+function describeBudget(basis, usd, est) {
+  const $6 = (n) => `$${n.toFixed(2)}`;
+  switch (basis ?? (usd > 0 ? "hours" : "none")) {
+    case "cap":
+      return `${$6(usd)} cap set for this session`;
+    case "policy":
+      return `${$6(usd)} fixed by repo policy (tally.json)`;
+    case "history":
+      return est && isComparable(est) ? `${$6(usd)}, the upper range of ${est.n} comparable past ${est.n === 1 ? "task" : "tasks"} (typical ${$6(est.low_usd)}\u2013${$6(est.high_usd)})` : `${$6(usd)} from comparable past tasks`;
+    case "hours":
+      return `${$6(usd)} from the repo's hours \xD7 rate rule`;
+    default:
+      return "no budget: no comparable past task and no cap set";
+  }
+}
+var BUDGET_FRACTION, BUDGET_FLOOR_USD, round22;
+var init_budget = __esm({
+  "src/task/budget.ts"() {
+    "use strict";
+    init_paths();
+    init_estimate();
+    BUDGET_FRACTION = 0.25;
+    BUDGET_FLOOR_USD = 2;
+    round22 = (n) => Math.round(n * 100) / 100;
+  }
+});
+
 // src/task/intake.ts
 import fs19 from "node:fs";
-import path19 from "node:path";
+import path20 from "node:path";
 import crypto from "node:crypto";
 function sanitiseCheck(check) {
   if (!check) return null;
@@ -7215,7 +7304,7 @@ function sanitiseCheck(check) {
   return check;
 }
 function taskFile(session) {
-  return path19.join(sessionDir(session), "task.json");
+  return path20.join(sessionDir(session), "task.json");
 }
 function listedSection(body, heading) {
   const lines = body.replace(/\r/g, "").split("\n");
@@ -7263,7 +7352,7 @@ function intakeCacheKey(fetched, model) {
   return crypto.createHash("sha256").update(material).digest("hex").slice(0, 32);
 }
 function intakeCacheFile(key) {
-  return path19.join(tallyHome(), "cache", "intake", `${key}.json`);
+  return path20.join(tallyHome(), "cache", "intake", `${key}.json`);
 }
 function loadTask(session) {
   const raw = readJson(taskFile(session), null);
@@ -7277,9 +7366,6 @@ function computeEstimate(fetched, llmHours) {
   }
   if (llmHours > 0) return { hours: Math.round(llmHours * 10) / 10, basis: "llm" };
   return { hours: 2, basis: "default" };
-}
-function computeBudget(hours, hourlyRate) {
-  return Math.max(BUDGET_FLOOR_USD, Math.round(hours * hourlyRate * BUDGET_FRACTION * 100) / 100);
 }
 async function intake(opts) {
   const existing = loadTask(opts.session);
@@ -7354,6 +7440,16 @@ ${bodyForLlm || "(empty)"}`;
   const r = { cost_usd: cost, model };
   const score = Math.max(0, Math.min(10, Number(out.spec_quality?.score ?? 0)));
   const estimate = computeEstimate(fetched, Number(out.estimate_hours ?? 0));
+  let priced = null;
+  try {
+    const words2 = inferred ? `${out.title?.trim() || fetched.title}
+${storyText([fetched.body], opts.cwd)}` : `${out.title?.trim() || fetched.title}
+${fetched.body}`;
+    priced = estimateCost(words2, { cwd: opts.cwd, exclude: opts.session, storyPoints: fetched.story_points });
+  } catch {
+  }
+  const rate = pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate;
+  const budget = budgetFor({ cap: readCap(opts.session), policy: pol.policy.budget, estimate: priced, hours: estimate.hours, rate });
   const task = {
     session: opts.session,
     cwd: opts.cwd,
@@ -7370,8 +7466,9 @@ ${bodyForLlm || "(empty)"}`;
     ...constraintsInferred.length ? { constraints_inferred: constraintsInferred } : {},
     needs_clarification: score < 5,
     estimate,
-    budget_usd: pol.policy.budget.usd ?? (pol.policy.budget.fraction ? Math.max(BUDGET_FLOOR_USD, Math.round(estimate.hours * (pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate) * pol.policy.budget.fraction * 100) / 100) : computeBudget(estimate.hours, pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate)),
-    hourly_rate: pol.policy.budget.hourly_rate ?? opts.cfg.hourly_rate,
+    budget_usd: budget.usd,
+    budget_basis: budget.basis,
+    hourly_rate: rate,
     tally_cost_usd: r.cost_usd,
     model: r.model,
     cache_key: cacheKey,
@@ -7383,22 +7480,15 @@ ${bodyForLlm || "(empty)"}`;
   ensureDir(sessionDir(opts.session));
   writeJson(taskFile(opts.session), task);
   recordRevision(opts.session, existing ? "replaced" : "created", task.criteria.map((c) => c.text), existing ? "intake re-run with --force" : void 0);
-  const pending = path19.join(sessionDir(opts.session), "task.pending");
+  const pending = path20.join(sessionDir(opts.session), "task.pending");
   if (fs19.existsSync(pending)) fs19.unlinkSync(pending);
-  try {
-    const words2 = inferred ? `${task.title}
-${storyText([fetched.body], opts.cwd)}` : `${task.title}
-${fetched.body}`;
-    const est = estimateCost(words2, { cwd: opts.cwd, exclude: opts.session, storyPoints: fetched.story_points });
-    writeJson(estimateFile(opts.session), est);
-  } catch {
-  }
+  if (priced) writeJson(estimateFile(opts.session), priced);
   appendEvent({
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     type: "task",
     session: opts.session,
     cwd: opts.cwd,
-    data: { title: task.title, criteria: task.criteria.length, spec_quality: task.spec_quality.score, needs_clarification: task.needs_clarification, budget_usd: task.budget_usd, estimate_hours: task.estimate.hours, source: task.source.kind }
+    data: { title: task.title, criteria: task.criteria.length, spec_quality: task.spec_quality.score, needs_clarification: task.needs_clarification, budget_usd: task.budget_usd, budget_basis: task.budget_basis, estimate_hours: task.estimate.hours, source: task.source.kind }
   });
   return { task, created: true };
 }
@@ -7427,10 +7517,10 @@ function renderTask(task) {
   }
   const cost = loadEstimate(task.session);
   if (cost) lines.push(`Cost estimate: ${fmtEstimate(cost)}`);
-  lines.push(`Estimate: ${task.estimate.hours}h human (${task.estimate.basis}${task.estimate.story_points ? `, ${task.estimate.story_points} SP` : ""})  Budget: $${task.budget_usd.toFixed(2)} API-equivalent`);
+  lines.push(`Estimate: ${task.estimate.hours}h human (${task.estimate.basis}${task.estimate.story_points ? `, ${task.estimate.story_points} SP` : ""})  Budget: ${describeBudget(task.budget_basis, task.budget_usd, cost)}`);
   return lines.join("\n");
 }
-var CriterionSchema, TaskSchema, HOURS_PER_STORY_POINT, BUDGET_FRACTION, BUDGET_FLOOR_USD, INTAKE_SCHEMA, INTAKE_SYSTEM, norm2;
+var CriterionSchema, TaskSchema, HOURS_PER_STORY_POINT, INTAKE_SCHEMA, INTAKE_SYSTEM, norm2;
 var init_intake = __esm({
   "src/task/intake.ts"() {
     "use strict";
@@ -7442,6 +7532,7 @@ var init_intake = __esm({
     init_checks();
     init_policy();
     init_estimate();
+    init_budget();
     CriterionSchema = external_exports.object({
       id: external_exports.string(),
       text: external_exports.string(),
@@ -7476,6 +7567,9 @@ var init_intake = __esm({
       needs_clarification: external_exports.boolean(),
       estimate: external_exports.object({ hours: external_exports.number().nonnegative(), basis: external_exports.enum(["story_points", "llm", "default"]), story_points: external_exports.number().optional() }),
       budget_usd: external_exports.number().nonnegative(),
+      /* where the budget came from: a cap set this session, repo policy, comparable past tasks, an hours × rate rule, or
+         nothing (no number was invented) */
+      budget_basis: external_exports.enum(["cap", "policy", "history", "hours", "none"]).optional(),
       hourly_rate: external_exports.number(),
       tally_cost_usd: external_exports.number(),
       model: external_exports.string(),
@@ -7488,8 +7582,6 @@ var init_intake = __esm({
       context: external_exports.object({ branch: external_exports.string().optional(), commits: external_exports.array(external_exports.string()).optional() }).optional()
     });
     HOURS_PER_STORY_POINT = 4;
-    BUDGET_FRACTION = 0.25;
-    BUDGET_FLOOR_USD = 2;
     INTAKE_SCHEMA = {
       type: "object",
       properties: {
@@ -7526,7 +7618,7 @@ Return only the JSON object.`;
 
 // src/coach/undo.ts
 import fs20 from "node:fs";
-import path20 from "node:path";
+import path21 from "node:path";
 function recordChange(entry) {
   const e = { id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, ts: (/* @__PURE__ */ new Date()).toISOString(), ...entry };
   appendLine(undoLog(), JSON.stringify(e));
@@ -7560,7 +7652,7 @@ function undoLast(n = 1) {
     if (e.before === null) {
       if (fs20.existsSync(e.file)) fs20.unlinkSync(e.file);
     } else {
-      ensureDir(path20.dirname(e.file));
+      ensureDir(path21.dirname(e.file));
       fs20.writeFileSync(e.file, e.before);
     }
     appendLine(undoLog(), JSON.stringify({ undone_marker: e.id, ts: (/* @__PURE__ */ new Date()).toISOString() }));
@@ -7668,14 +7760,14 @@ var init_waste = __esm({
 
 // src/session.ts
 import fs21 from "node:fs";
-import path21 from "node:path";
+import path22 from "node:path";
 function activeSessions() {
   const a = readJson(activeFile(), {});
   return Object.entries(a).map(([id, v]) => ({ id, cwd: v.cwd, transcript_path: v.transcript_path, model: v.model, last_seen: v.last_seen })).sort((x, y) => (y.last_seen ?? "").localeCompare(x.last_seen ?? ""));
 }
 function knownSessionIds() {
-  const root = path21.join(path21.dirname(sessionDir("x")), "");
-  const dirs = fs21.existsSync(root) ? fs21.readdirSync(root).filter((d) => fs21.statSync(path21.join(root, d)).isDirectory()) : [];
+  const root = path22.join(path22.dirname(sessionDir("x")), "");
+  const dirs = fs21.existsSync(root) ? fs21.readdirSync(root).filter((d) => fs21.statSync(path22.join(root, d)).isDirectory()) : [];
   return [.../* @__PURE__ */ new Set([...dirs, ...activeSessions().map((s) => s.id)])];
 }
 function resolveSessionId(given) {
@@ -7725,10 +7817,10 @@ function transcriptPathFor(session) {
   if (active?.transcript_path && fs21.existsSync(active.transcript_path)) return active.transcript_path;
   const cwd = events.find((e) => e.cwd)?.cwd;
   if (cwd) {
-    const candidate = path21.join(projectTranscriptsDir(cwd), `${session}.jsonl`);
+    const candidate = path22.join(projectTranscriptsDir(cwd), `${session}.jsonl`);
     if (fs21.existsSync(candidate)) return candidate;
   }
-  const local = path21.join(sessionDir(session), "transcript.jsonl");
+  const local = path22.join(sessionDir(session), "transcript.jsonl");
   if (fs21.existsSync(local)) return local;
   return void 0;
 }
@@ -7738,7 +7830,7 @@ function sessionCwd(session) {
   if (fromEvents) return fromEvents;
   const fromActive = activeSessions().find((s) => s.id === session)?.cwd;
   if (fromActive) return fromActive;
-  const task = readJson(path21.join(sessionDir(session), "task.json"), null);
+  const task = readJson(path22.join(sessionDir(session), "task.json"), null);
   return task?.cwd;
 }
 var SessionNotFound;
@@ -7759,9 +7851,9 @@ var init_session = __esm({
 
 // src/coach/inject.ts
 import fs22 from "node:fs";
-import path22 from "node:path";
+import path23 from "node:path";
 function injectFile(session) {
-  return path22.join(sessionDir(session), "inject.jsonl");
+  return path23.join(sessionDir(session), "inject.jsonl");
 }
 function enqueueInject(session, note, source, cwd) {
   ensureDir(sessionDir(session));
@@ -7794,7 +7886,7 @@ var init_inject = __esm({
 
 // src/coach/actions.ts
 import fs23 from "node:fs";
-import path23 from "node:path";
+import path24 from "node:path";
 function isAutoApplicable(s) {
   if (s.action.kind === "inject") return true;
   if (s.action.kind === "confirm") return false;
@@ -7809,12 +7901,12 @@ function applySuggestion(s, opts) {
     case "write_md": {
       if (!/\.md$/i.test(a.file)) return { ok: false, detail: "only .md files can be written by Coach" };
       const before = fs23.existsSync(a.file) ? fs23.readFileSync(a.file, "utf8") : null;
-      if (a.mode === "create" && before !== null) return { ok: false, detail: `${path23.basename(a.file)} already exists` };
+      if (a.mode === "create" && before !== null) return { ok: false, detail: `${path24.basename(a.file)} already exists` };
       const after = a.mode === "append" ? (before ?? "") + (before && !before.endsWith("\n") ? "\n" : "") + a.content : a.content;
-      ensureDir(path23.dirname(a.file));
+      ensureDir(path24.dirname(a.file));
       fs23.writeFileSync(a.file, after);
       recordChange({ session: opts.session, rule: s.rule, label: a.label, file: a.file, before, after });
-      result = { ok: true, detail: `${a.mode === "append" ? "appended to" : before === null ? "created" : "rewrote"} ${path23.relative(opts.cwd, a.file) || a.file}`, file: a.file };
+      result = { ok: true, detail: `${a.mode === "append" ? "appended to" : before === null ? "created" : "rewrote"} ${path24.relative(opts.cwd, a.file) || a.file}`, file: a.file };
       break;
     }
     case "inject": {
@@ -7823,9 +7915,9 @@ function applySuggestion(s, opts) {
       break;
     }
     case "snippet": {
-      const dir = path23.join(tallyHome(), "snippets");
+      const dir = path24.join(tallyHome(), "snippets");
       ensureDir(dir);
-      const f = path23.join(dir, `${s.key.replace(/[^a-z0-9]+/gi, "-")}.txt`);
+      const f = path24.join(dir, `${s.key.replace(/[^a-z0-9]+/gi, "-")}.txt`);
       fs23.writeFileSync(f, `${a.snippet}
 # ${a.where}
 `);
@@ -7846,10 +7938,10 @@ function applySuggestion(s, opts) {
       }
       const merged = mergePatch(current, a.patch);
       const after = JSON.stringify(merged, null, 2) + "\n";
-      ensureDir(path23.dirname(a.file));
+      ensureDir(path24.dirname(a.file));
       fs23.writeFileSync(a.file, after);
       recordChange({ session: opts.session, rule: s.rule, label: a.label, file: a.file, before, after });
-      result = { ok: true, detail: `updated ${path23.relative(opts.cwd, a.file) || a.file} (undo with \`tally undo\`)`, file: a.file };
+      result = { ok: true, detail: `updated ${path24.relative(opts.cwd, a.file) || a.file} (undo with \`tally undo\`)`, file: a.file };
       break;
     }
     case "confirm": {
@@ -7908,7 +8000,7 @@ var init_actions = __esm({
 });
 
 // src/estimate/opportunities.ts
-import path24 from "node:path";
+import path25 from "node:path";
 function carryCost(t, call, chars, pricing) {
   if (chars <= 0) return 0;
   const msg = t.messages.find((m) => m.id === call.messageId);
@@ -7947,7 +8039,7 @@ function findOpportunities(t, opts) {
     const sub = cs.filter((c) => c.agent !== "main").length;
     return !sub ? "" : sub === cs.length ? " (all in subagents)" : ` (${sub} of them in subagents)`;
   };
-  const rel3 = (f) => opts.cwd && path24.isAbsolute(f) && !path24.relative(opts.cwd, f).startsWith("..") ? path24.relative(opts.cwd, f).replace(/\\/g, "/") : f;
+  const rel3 = (f) => opts.cwd && path25.isAbsolute(f) && !path25.relative(opts.cwd, f).startsWith("..") ? path25.relative(opts.cwd, f).replace(/\\/g, "/") : f;
   const exploreCost = main2.filter((m) => m.phase === "explore").reduce((s, m) => s + m.cost, 0);
   const exploreCalls = mainCalls.filter((c) => c.phase === "explore" && ["Read", "Grep", "Glob", "LS"].includes(c.name));
   const scoutSave = exploreCost * (1 - haiku.output / Math.max(mainPrice.output, haiku.output)) * 0.5;
@@ -7956,7 +8048,7 @@ function findOpportunities(t, opts) {
       id: "scout",
       group: "add",
       title: "Add a Haiku scout subagent for exploring the code",
-      usd: round22(scoutSave),
+      usd: round23(scoutSave),
       detail: `${exploreCalls.length} Read/Grep/Glob calls before the first edit cost ${$(exploreCost)} on ${mainModel2}. A scout subagent on Haiku does the searching and returns paths and summaries; estimate assumes it takes half of that work.`,
       basis: "estimated",
       fix: {
@@ -7995,7 +8087,7 @@ Do not paste whole files. Quote at most a few lines when the exact text matters.
         id: "docs",
         group: "add",
         title: "Add the Context7 MCP server for library docs",
-        usd: round22(usd),
+        usd: round23(usd),
         detail: `${docCalls.length} documentation lookups (web pages or files inside installed dependencies) were pulled into the context whole. Context7 returns the relevant section of current docs for a library; estimate assumes half the tokens.`,
         basis: "estimated",
         fix: { id: "context7", title: "Install Context7", what: "adds the hosted Context7 server (an API key from context7.com only raises rate limits)", apply: { kind: "command", commands: ["claude mcp add --transport http context7 https://mcp.context7.com/mcp"] } }
@@ -8013,7 +8105,7 @@ Do not paste whole files. Quote at most a few lines when the exact text matters.
         id: "big-reads",
         group: "add",
         title: "Read code by symbol instead of whole files",
-        usd: round22(usd),
+        usd: round23(usd),
         detail: `${bigReads.length} large source files (${Math.round(bigChars / 4e3)}k tokens) were read whole${where(bigReads)} and stayed in context. For example ${[...new Set(bigReads.map((c) => rel3(String(c.input.file_path))))].slice(0, 3).join(", ")}. A language server or Serena fetches one function or class instead of the file; estimate assumes 60% fewer tokens.`,
         basis: "estimated",
         fix: { id: "serena", title: "Install Serena", what: "needs uv; Serena runs locally and indexes this project", apply: { kind: "command", commands: ["uv tool install -p 3.13 serena-agent", 'claude mcp add serena -- serena start-mcp-server --context claude-code --project "$(pwd)"'] } }
@@ -8029,7 +8121,7 @@ Do not paste whole files. Quote at most a few lines when the exact text matters.
         id: "noisy-tests",
         group: "add",
         title: "Add a run-tests skill with a quiet reporter",
-        usd: round22(usd),
+        usd: round23(usd),
         detail: `${noisy.length} test/lint runs${where(noisy)} printed ${Math.round(noisy.reduce((s, c) => s + (c.result?.chars ?? 0), 0) / 4e3)}k tokens of output that stayed in context. \`${quiet}\` prints the failures and a summary; estimate assumes 70% less.`,
         basis: "estimated",
         fix: {
@@ -8065,7 +8157,7 @@ ${quiet}
         id: "bash-output",
         group: "add",
         title: "Cap command output at 15k characters",
-        usd: round22(usd),
+        usd: round23(usd),
         detail: `${bigBash.length} commands${where(bigBash)} returned more than 15k characters (up to ${Math.round(Math.max(...bigBash.map((c) => c.result?.chars ?? 0)) / 1e3)}k), and the excess was re-sent on every later call. BASH_MAX_OUTPUT_LENGTH=15000 keeps the head and tail; the figure is what the excess cost.`,
         basis: "estimated",
         fix: { id: "bash-output-cap", title: "Set BASH_MAX_OUTPUT_LENGTH=15000", what: "sets env BASH_MAX_OUTPUT_LENGTH in .claude/settings.json (Claude Code default is 30000)", apply: { kind: "settings", patch: { env: { BASH_MAX_OUTPUT_LENGTH: "15000" } }, scope: "project" } }
@@ -8089,7 +8181,7 @@ ${quiet}
       id: "compact-window",
       group: "add",
       title: "Compact before the context passes 200k tokens",
-      usd: round22(windowUsd * 0.8),
+      usd: round23(windowUsd * 0.8),
       detail: `The context reached ${Math.round(maxCtx / 1e3)}k tokens${t.compactions.length ? "" : " and never compacted"}, so ${windowCalls} calls re-sent more than 200k each. autoCompactWindow: 200000 compacts there instead of near the model's limit; estimate keeps 20% for the compactions themselves. A compacted summary loses detail, so keep the plan in a file.`,
       basis: "estimated",
       fix: { id: "compact-window", title: "Set autoCompactWindow to 200000", what: 'sets "autoCompactWindow": 200000 in .claude/settings.json (Claude Code 2.1.288+); raise it for a story that needs the whole context', apply: { kind: "settings", patch: { autoCompactWindow: 2e5 }, scope: "project" } }
@@ -8103,7 +8195,7 @@ ${quiet}
         id: "mcp-output",
         group: "add",
         title: "Cap MCP tool output",
-        usd: round22(usd),
+        usd: round23(usd),
         detail: `${bigMcp.length} MCP result(s) above 10k tokens (${[...new Set(bigMcp.map((c) => c.name.split("__")[1]))].join(", ")}). MAX_MCP_OUTPUT_TOKENS=10000 truncates them; the figure is what the excess cost.`,
         basis: "estimated",
         fix: { id: "mcp-output-cap", title: "Set MAX_MCP_OUTPUT_TOKENS=10000", what: "sets env MAX_MCP_OUTPUT_TOKENS in .claude/settings.json", apply: { kind: "settings", patch: { env: { MAX_MCP_OUTPUT_TOKENS: "10000" } }, scope: "project" } }
@@ -8116,7 +8208,7 @@ ${quiet}
       id: "effort",
       group: "add",
       title: "Lower the default effort",
-      usd: round22(outUsd * 0.3),
+      usd: round23(outUsd * 0.3),
       detail: `output and thinking were ${$(outUsd)} of the main loop's ${$(mainCost)} (${Math.round(outTokens / 1e3)}k tokens). Medium effort thinks less on routine steps; estimate assumes 30% fewer output tokens. Raise it with /effort for a hard story.`,
       basis: "estimated",
       fix: { id: "effort-medium", title: "Default effort to medium", what: 'sets "effortLevel": "medium" in .claude/settings.json', apply: { kind: "settings", patch: { effortLevel: "medium" }, scope: "project" } }
@@ -8130,7 +8222,7 @@ ${quiet}
       id: "story-skill",
       group: "add",
       title: "Save what this story taught as a project skill",
-      usd: round22(exploreCost * 0.5),
+      usd: round23(exploreCost * 0.5),
       detail: `this session spent ${$(exploreCost)} finding its way before the first edit. A skill with the files it touched and the commands that worked lets the next similar story start there; estimate assumes it halves that.`,
       basis: "estimated",
       fix: {
@@ -8159,13 +8251,13 @@ ${worked.map((c) => `- \`${c}\``).join("\n")}
   }
   return out;
 }
-var round22, $, DOCS_RE, DEP_RE, CODE_RE;
+var round23, $, DOCS_RE, DEP_RE, CODE_RE;
 var init_opportunities = __esm({
   "src/estimate/opportunities.ts"() {
     "use strict";
     init_pricing();
     init_parse();
-    round22 = (n) => Math.round(n * 100) / 100;
+    round23 = (n) => Math.round(n * 100) / 100;
     $ = (n) => `$${n.toFixed(2)}`;
     DOCS_RE = /(^|\/\/|\.)(docs?|developer|developers|devdocs|readthedocs|api)\.|\/docs?\/|\/api\/|\/reference\/|npmjs\.com|pypi\.org|pkg\.go\.dev|crates\.io|docs\.rs|mdn|stackoverflow\.com/i;
     DEP_RE = /\/(node_modules|site-packages|\.venv|vendor|\.cargo\/registry|go\/pkg\/mod)\//;
@@ -8244,7 +8336,7 @@ var init_actions2 = __esm({
 });
 
 // src/catalog/catalog.ts
-import path25 from "node:path";
+import path26 from "node:path";
 import { spawnSync as spawnSync8 } from "node:child_process";
 function parseMarketplace(marketplace, kind) {
   return (body, src) => {
@@ -8282,7 +8374,7 @@ function parseAwesome(kindFor) {
   };
 }
 function catalogFile() {
-  return path25.join(tallyHome(), "catalog.json");
+  return path26.join(tallyHome(), "catalog.json");
 }
 function loadCatalog() {
   return readJson(catalogFile(), null);
@@ -8413,13 +8505,13 @@ var init_catalog = __esm({
 
 // src/catalog/needs.ts
 import fs24 from "node:fs";
-import path26 from "node:path";
+import path27 from "node:path";
 function stackOf(root) {
   if (!root) return { languages: [], deps: [] };
   const merged = stackAt(root);
   let subs = [];
   try {
-    subs = fs24.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".") && !["node_modules", "dist", "build", "vendor", "target"].includes(d.name)).map((d) => path26.join(root, d.name)).slice(0, 30);
+    subs = fs24.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith(".") && !["node_modules", "dist", "build", "vendor", "target"].includes(d.name)).map((d) => path27.join(root, d.name)).slice(0, 30);
   } catch {
     subs = [];
   }
@@ -8433,8 +8525,8 @@ function stackOf(root) {
 function stackAt(root) {
   const langs = /* @__PURE__ */ new Set();
   const deps = /* @__PURE__ */ new Set();
-  const has2 = (f) => fs24.existsSync(path26.join(root, f));
-  const pkg = read(path26.join(root, "package.json"));
+  const has2 = (f) => fs24.existsSync(path27.join(root, f));
+  const pkg = read(path27.join(root, "package.json"));
   if (pkg) {
     langs.add(has2("tsconfig.json") || /typescript/.test(pkg) ? "typescript" : "javascript");
     try {
@@ -8443,7 +8535,7 @@ function stackAt(root) {
     } catch {
     }
   }
-  const py = read(path26.join(root, "requirements.txt")) + read(path26.join(root, "pyproject.toml"));
+  const py = read(path27.join(root, "requirements.txt")) + read(path27.join(root, "pyproject.toml"));
   if (py || has2("setup.py")) {
     langs.add("python");
     for (const m of py.matchAll(/^\s*["']?([A-Za-z][\w.-]+)/gm)) deps.add(m[1].toLowerCase());
@@ -8560,9 +8652,9 @@ var init_needs = __esm({
 
 // src/estimate/variance.ts
 import fs25 from "node:fs";
-import path27 from "node:path";
+import path28 from "node:path";
 function checkFile(session) {
-  return path27.join(sessionDir(session), "cost-check.json");
+  return path28.join(sessionDir(session), "cost-check.json");
 }
 function loadCheck(session) {
   return readJson(checkFile(session), null);
@@ -8595,8 +8687,20 @@ function successfulCommands(t) {
 }
 function rel(cwd, f) {
   if (!cwd) return f;
-  const r = path27.relative(cwd, f);
+  const r = path28.relative(cwd, f);
   return r && !r.startsWith("..") ? r.replace(/\\/g, "/") : f;
+}
+function spanOf(t) {
+  const days = /* @__PURE__ */ new Set();
+  let first;
+  let last;
+  for (const m of t.messages) {
+    if (!m.ts) continue;
+    days.add(m.ts.slice(0, 10));
+    if (!first || m.ts < first) first = m.ts;
+    if (!last || m.ts > last) last = m.ts;
+  }
+  return { days: days.size, first, last, compactions: t.compactions.length };
 }
 function computeCheck(session, opts = {}) {
   const pricing = opts.pricing ?? loadPricing();
@@ -8616,6 +8720,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
   }
   const actual = t.cost;
   const model = mainModel(t);
+  const recalls = readEvents(session).filter((e) => e.type === "recall");
   const drivers = [];
   const main2 = repriced(t, (a) => a === "main", pricing);
   const modelSave = main2.actual - main2.cheap;
@@ -8623,7 +8728,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     drivers.push({
       id: "model",
       title: `Main model ${model}`,
-      usd: round23(modelSave),
+      usd: round24(modelSave),
       detail: `the main loop cost ${$2(main2.actual)}; the same tokens at Sonnet prices cost ${$2(main2.cheap)}. Sonnet may need more turns, so treat this as the most it could save.`,
       basis: "estimated",
       fix: { id: "model-sonnet", title: "Default this repo to Sonnet", what: 'sets "model": "sonnet" in .claude/settings.json; use /model opus for a story that needs it', apply: { kind: "settings", patch: { model: "sonnet" }, scope: "project" } }
@@ -8635,7 +8740,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     drivers.push({
       id: "subagents",
       title: "Subagents on an expensive model",
-      usd: round23(subSave),
+      usd: round24(subSave),
       detail: `subagents cost ${$2(sub.actual)} (${Math.round(sub.actual / (actual || 1) * 100)}% of the session); at Sonnet prices ${$2(sub.cheap)}.`,
       basis: "estimated",
       fix: { id: "subagent-sonnet", title: "Run subagents on Sonnet", what: "sets env CLAUDE_CODE_SUBAGENT_MODEL=sonnet in .claude/settings.json, so subagents without their own model stop inheriting the main one (Explore keeps its own default)", apply: { kind: "settings", patch: { env: { CLAUDE_CODE_SUBAGENT_MODEL: "sonnet" } }, scope: "project" } }
@@ -8649,9 +8754,9 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
   if (reread2.length) mdLines.push("## Files agents keep re-reading (recorded by Tally)", ...reread2.map((r) => `- ${rel(cwd, r.file)}`), "");
   const claudeMdFix = mdLines.length ? { id: "claude-md", title: "Write what this session learned into CLAUDE.md", what: `appends ${[cmds.length ? `${cmds.length} working command(s)` : "", reread2.length ? `${reread2.length} file(s) it kept re-reading` : ""].filter(Boolean).join(" and ")} to CLAUDE.md, so the next session does not rediscover them`, apply: { kind: "claude_md", content: mdLines.join("\n") } } : void 0;
   const loopUsd = waste.failed_loops.reduce((s, l) => s + l.usd, 0);
-  if (loopUsd >= 0.01) drivers.push({ id: "retries", title: "Failing commands retried", usd: round23(loopUsd), detail: waste.failed_loops.slice(0, 3).map((l) => `\`${l.command.slice(0, 60)}\` failed \xD7${l.repeats}`).join("; "), basis: "measured", fix: claudeMdFix });
+  if (loopUsd >= 0.01) drivers.push({ id: "retries", title: "Failing commands retried", usd: round24(loopUsd), detail: waste.failed_loops.slice(0, 3).map((l) => `\`${l.command.slice(0, 60)}\` failed \xD7${l.repeats}`).join("; "), basis: "measured", fix: claudeMdFix });
   const readUsd = waste.repeated_reads.reduce((s, r) => s + r.usd, 0);
-  if (readUsd >= 0.01) drivers.push({ id: "rereads", title: "Files re-read", usd: round23(readUsd), detail: reread2.slice(0, 3).map((r) => `${rel(cwd, r.file)} \xD7${r.reads}`).join("; "), basis: "measured", fix: claudeMdFix });
+  if (readUsd >= 0.01) drivers.push({ id: "rereads", title: "Files re-read", usd: round24(readUsd), detail: reread2.slice(0, 3).map((r) => `${rel(cwd, r.file)} \xD7${r.reads}`).join("; "), basis: "measured", fix: claudeMdFix });
   const start = readEvents(session).find((e) => e.type === "session_start");
   const loaded = start?.data.loaded ?? {};
   const usedMcp = new Set(t.mcpCalls.map((c) => c.server));
@@ -8661,7 +8766,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
   const items = (loaded.mcp?.length ?? 0) + (loaded.plugins?.length ?? 0) + (loaded.skills?.length ?? 0);
   const unused = unusedMcp.length + unusedPlugins.length;
   if (waste.dead_weight.usd >= 0.01 && unused > 0 && items > 0) {
-    const projectMcp = readJson(path27.join(cwd ?? ".", ".mcp.json"), {}).mcpServers ?? {};
+    const projectMcp = readJson(path28.join(cwd ?? ".", ".mcp.json"), {}).mcpServers ?? {};
     const inProject = unusedMcp.filter((m) => m in projectMcp);
     const elsewhere = unusedMcp.filter((m) => !(m in projectMcp));
     const commands = [...elsewhere.map((m) => `claude mcp remove ${m} --scope user`), ...unusedPlugins.map((p) => `claude plugin disable ${p}`)];
@@ -8669,7 +8774,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     drivers.push({
       id: "context",
       title: "Tools loaded but never used",
-      usd: round23(waste.dead_weight.usd * unused / items),
+      usd: round24(waste.dead_weight.usd * unused / items),
       detail: `${waste.dead_weight.overhead_tokens.toLocaleString("en-US")} tokens were in context before the first prompt and re-sent on every call; unused here: ${[...unusedMcp.map((m) => `MCP ${m}`), ...unusedPlugins.map((p) => `plugin ${p}`)].slice(0, 6).join(", ")}. Share of that overhead, spread evenly over ${items} loaded item(s).`,
       basis: "estimated",
       fix
@@ -8691,7 +8796,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     drivers.push({
       id: "long-context",
       title: "One long conversation",
-      usd: round23(longUsd),
+      usd: round24(longUsd),
       detail: `${longCalls} call(s) carried more than ${LONG / 1e3}k tokens of history; re-sending the part above ${LONG / 1e3}k cost ${$2(longUsd)}. Part of this is the work itself; a fresh session per sub-task avoids most of it.`,
       basis: "measured",
       fix: { id: "split-story", title: "Split stories this size", what: "run /clear (or a new session) between sub-tasks, with the plan in a file so nothing is lost; Tally cannot apply this for you", apply: { kind: "advice" } }
@@ -8701,7 +8806,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     drivers.push({
       id: "compaction",
       title: "Context compacted and re-cached",
-      usd: round23(waste.compaction_churn.usd),
+      usd: round24(waste.compaction_churn.usd),
       detail: `${waste.compaction_churn.compactions} compaction(s) re-cached ${waste.compaction_churn.recache_tokens.toLocaleString("en-US")} tokens. A story this size is cheaper as two sessions.`,
       basis: "measured",
       fix: { id: "split-story", title: "Split stories this size", what: "run /clear (or a new session) between sub-tasks; Tally cannot apply this for you", apply: { kind: "advice" } }
@@ -8723,7 +8828,7 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
     }
     stackTools = stackPicks(cat, stack, installed).map(alt);
   }
-  for (const d of drivers) d.usd = round23(Math.min(d.usd, actual));
+  for (const d of drivers) d.usd = round24(Math.min(d.usd, actual));
   drivers.sort((a, b) => b.usd - a.usd);
   const seen = /* @__PURE__ */ new Set();
   const cheapRatio = drivers.some((d) => d.id === "model") && main2.actual > 0 ? main2.cheap / main2.actual : 1;
@@ -8738,19 +8843,22 @@ ${task.body_excerpt}` : storyText(t.prompts.map((p) => p.text), cwd);
   }
   savable += explore * cheapRatio;
   savable = Math.min(savable, actual);
-  const est = estimate && (estimate.basis === "similar" || estimate.basis === "points" || estimate.basis === "repo") ? estimate : void 0;
+  const est = isComparable(estimate) ? estimate : void 0;
   const delta = est ? actual - est.usd : void 0;
   const status2 = !est ? "no_estimate" : actual > est.high_usd || delta > 0 && actual > est.usd * 1.2 ? "over" : actual < est.usd * 0.8 ? "under" : "on_target";
   const check = {
     session,
     cwd,
     task: task && !task.inferred ? task.title : storyTitle(t.prompts.map((p) => p.text), cwd) ?? task?.title,
-    actual_usd: round23(actual),
-    ...est ? { estimate: est, delta_usd: round23(delta), delta_pct: est.usd > 0 ? Math.round(delta / est.usd * 100) : 0 } : estimate ? { estimate } : {},
+    actual_usd: round24(actual),
+    ...est ? { estimate: est, delta_usd: round24(delta), delta_pct: est.usd > 0 ? Math.round(delta / est.usd * 100) : 0 } : estimate ? { estimate } : {},
     status: status2,
+    ...task ? { budget_usd: task.budget_usd, budget_basis: task.budget_basis ?? (task.budget_usd > 0 ? "hours" : "none") } : {},
+    span: spanOf(t),
+    ...recalls.length ? { recall: { offered: recalls.length, prior_usd: round24(recalls.reduce((s, r) => s + Number(r.data.prior_cost_usd ?? 0), 0)), titles: recalls.map((r) => String(r.data.title ?? "")).filter(Boolean).slice(0, 3) } } : {},
     model,
     drivers,
-    savable_usd: round23(savable),
+    savable_usd: round24(savable),
     ...stackTools?.length ? { stack_tools: stackTools } : {},
     ...cat ? { catalog: { fetched_at: cat.fetched_at, entries: cat.entries.length } } : {},
     computed_at: (opts.now ?? /* @__PURE__ */ new Date()).toISOString()
@@ -8763,13 +8871,20 @@ function renderCheck(c, opts = {}) {
   const L = [];
   const e = c.estimate && c.estimate.basis !== "none" ? c.estimate : void 0;
   L.push(`Tally cost check${c.task ? ` \xB7 ${c.task.split("\n")[0].slice(0, 80)}` : ""}`, "");
-  const estText = !e ? "no estimate yet (no past sessions on this machine to compare with)" : e.basis === "all" ? `no similar past story yet (your median session costs ${$2(e.usd)})` : `estimate ~${$2(e.usd)} (${$2(e.low_usd)}\u2013${$2(e.high_usd)}, ${e.basis === "similar" ? `${e.n} similar past ${e.n === 1 ? "story" : "stories"}` : e.basis === "points" ? `story points \xD7 cost per point of ${e.n} pointed stories` : `median of ${e.n} past sessions in this repo`}, ${e.confidence} confidence)`;
-  L.push(`  Cost      ${$2(c.actual_usd)} on ${c.model}`);
+  const estText = !e ? "no estimate yet (no past tasks on this machine to compare with)" : fmtEstimate(e);
+  L.push(`  Cost      ${$2(c.actual_usd)} on ${c.model}${c.span && c.span.days > 1 ? `, across ${c.span.days} days${c.span.compactions ? ` and ${c.span.compactions} compaction${c.span.compactions === 1 ? "" : "s"}` : ""} (one transcript, probably more than one task)` : ""}`);
   L.push(`  Estimate  ${estText}`);
+  if (c.budget_usd !== void 0) {
+    const b = c.budget_usd;
+    const gap = b > 0 ? c.actual_usd > b ? `  OVER by ${$2(c.actual_usd - b)} (${Math.round(c.actual_usd / b * 100)}%)` : `  ${$2(b - c.actual_usd)} left (${Math.round(c.actual_usd / b * 100)}%)` : "";
+    L.push(`  Budget    ${describeBudget(c.budget_basis, b, c.estimate)}${gap}`);
+    if (b > 0 && c.actual_usd > b && c.drivers.length) L.push(`  Why       ${c.drivers[0].title.toLowerCase()} (~${$2(c.drivers[0].usd)}) is the largest single reason`);
+  }
   if (c.delta_usd !== void 0) {
     const d = c.delta_usd;
-    L.push(`  Result    ${c.status === "over" ? `OVER by ${$2(d)} (+${c.delta_pct}%)` : c.status === "under" ? `UNDER by ${$2(-d)} (${c.delta_pct}%)` : `ON TARGET (${d >= 0 ? "+" : "\u2212"}${$2(Math.abs(d))})`}`);
+    L.push(`  Result    ${c.status === "over" ? `OVER by ${$2(d)} (+${c.delta_pct}%)` : c.status === "under" ? `UNDER by ${$2(-d)} (${c.delta_pct}%)` : `ON TARGET (${d >= 0 ? "+" : "\u2212"}${$2(Math.abs(d))})`} against the estimate`);
   }
+  if (c.recall) L.push(`  Recall    ${c.recall.offered} past ${c.recall.offered === 1 ? "task" : "tasks"} offered at prompt time (${$2(c.recall.prior_usd)} then${c.recall.titles[0] ? `: ${c.recall.titles.map((s) => `"${s.slice(0, 50)}"`).join(", ")}` : ""})`);
   L.push("");
   if (!c.drivers.length) {
     L.push("Nothing in this session stands out as avoidable spend, and no pattern calls for a new skill, MCP server or setting.");
@@ -8796,8 +8911,8 @@ function renderCheck(c, opts = {}) {
   return L.join("\n");
 }
 function settingsFileFor(scope, cwd) {
-  if (scope === "user") return path27.join(claudeHome(), "settings.json");
-  return path27.join(cwd, ".claude", scope === "local" ? "settings.local.json" : "settings.json");
+  if (scope === "user") return path28.join(claudeHome(), "settings.json");
+  return path28.join(cwd, ".claude", scope === "local" ? "settings.local.json" : "settings.json");
 }
 function findFix(c, id) {
   for (const d of c.drivers) if (d.fix?.id === id) return d.fix;
@@ -8809,15 +8924,15 @@ function applyFix(fix, opts) {
   if (a.kind === "command") return { ok: false, detail: `Tally does not run these for you:
   ${a.commands.join("\n  ")}` };
   if (a.kind === "file") {
-    const file2 = path27.join(opts.cwd, a.path);
+    const file2 = path28.join(opts.cwd, a.path);
     if (fs25.existsSync(file2)) return { ok: true, detail: `${a.path} already exists; not overwritten`, file: file2 };
-    fs25.mkdirSync(path27.dirname(file2), { recursive: true });
+    fs25.mkdirSync(path28.dirname(file2), { recursive: true });
     fs25.writeFileSync(file2, a.content);
     recordChange({ session: opts.session, rule: `fix:${fix.id}`, label: fix.title, file: file2, before: null, after: a.content });
     return { ok: true, detail: `created ${a.path} (commit it and the whole team has it)`, file: file2 };
   }
   if (a.kind === "claude_md") {
-    const file2 = path27.join(opts.cwd, "CLAUDE.md");
+    const file2 = path28.join(opts.cwd, "CLAUDE.md");
     const before2 = fs25.existsSync(file2) ? fs25.readFileSync(file2, "utf8") : null;
     const sections = a.content.split(/\n\s*\n/).map((sec) => {
       const [heading, ...bullets] = sec.trim().split("\n");
@@ -8845,12 +8960,12 @@ function applyFix(fix, opts) {
   const shadow = "model" in a.patch && process.env.ANTHROPIC_MODEL ? `
 Note: ANTHROPIC_MODEL=${process.env.ANTHROPIC_MODEL} is set in your shell and overrides this setting; unset it for the change to apply.` : "";
   if (after === before) return { ok: true, detail: `${file} already has it${shadow}`, file };
-  fs25.mkdirSync(path27.dirname(file), { recursive: true });
+  fs25.mkdirSync(path28.dirname(file), { recursive: true });
   fs25.writeFileSync(file, after);
   recordChange({ session: opts.session, rule: `fix:${fix.id}`, label: fix.title, file, before, after });
   return { ok: true, detail: `updated ${file}${scope === "project" ? " (commit it and the whole team gets it)" : ""}${shadow}`, file };
 }
-var CHEAP_MODEL, round23, $2;
+var CHEAP_MODEL, round24, $2;
 var init_variance = __esm({
   "src/estimate/variance.ts"() {
     "use strict";
@@ -8862,6 +8977,7 @@ var init_variance = __esm({
     init_session();
     init_intake();
     init_estimate();
+    init_budget();
     init_undo();
     init_actions();
     init_opportunities();
@@ -8870,7 +8986,7 @@ var init_variance = __esm({
     init_needs();
     init_ledger();
     CHEAP_MODEL = "sonnet";
-    round23 = (n) => Math.round(n * 100) / 100;
+    round24 = (n) => Math.round(n * 100) / 100;
     $2 = (n) => `$${n.toFixed(2)}`;
   }
 });
@@ -8911,22 +9027,22 @@ var init_refresh = __esm({
 
 // src/telemetry/otlp.ts
 import fs26 from "node:fs";
-import path28 from "node:path";
+import path29 from "node:path";
 function managedSettingsPaths() {
   if (process.platform === "darwin") return ["/Library/Application Support/ClaudeCode/managed-settings.json"];
-  if (process.platform === "win32") return [path28.join(process.env.ProgramFiles ?? "C:\\Program Files", "ClaudeCode", "managed-settings.json")];
+  if (process.platform === "win32") return [path29.join(process.env.ProgramFiles ?? "C:\\Program Files", "ClaudeCode", "managed-settings.json")];
   return ["/etc/claude-code/managed-settings.json"];
 }
 function managedDropIns() {
-  const dir = path28.join(path28.dirname(managedSettingsPaths()[0]), "managed-settings.d");
+  const dir = path29.join(path29.dirname(managedSettingsPaths()[0]), "managed-settings.d");
   try {
-    return fs26.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().map((f) => path28.join(dir, f));
+    return fs26.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().map((f) => path29.join(dir, f));
   } catch {
     return [];
   }
 }
 function claudeSettingsEnv(files) {
-  const list = files ?? [path28.join(claudeHome(), "settings.json"), ...managedSettingsPaths(), ...managedDropIns()];
+  const list = files ?? [path29.join(claudeHome(), "settings.json"), ...managedSettingsPaths(), ...managedDropIns()];
   const out = {};
   for (const f of list) {
     try {
@@ -8947,7 +9063,7 @@ function parsePairs(s) {
 }
 function repoSetsTallyOtel(cwd) {
   if (!cwd) return false;
-  for (const f of [path28.join(cwd, ".claude", "settings.json"), path28.join(cwd, ".claude", "settings.local.json")]) {
+  for (const f of [path29.join(cwd, ".claude", "settings.json"), path29.join(cwd, ".claude", "settings.local.json")]) {
     try {
       const env = JSON.parse(fs26.readFileSync(f, "utf8")).env ?? {};
       if (Object.keys(env).some((k) => k.startsWith("TALLY_OTEL_"))) return true;
@@ -9210,10 +9326,10 @@ var init_dashboard = __esm({
 // src/estimate/open.ts
 import fs27 from "node:fs";
 import os5 from "node:os";
-import path29 from "node:path";
+import path30 from "node:path";
 import { spawn as spawn2 } from "node:child_process";
 function dashboardPath(repoName2) {
-  return path29.join(os5.tmpdir(), `tally-dashboard-${repoName2.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 60) || "repo"}.html`);
+  return path30.join(os5.tmpdir(), `tally-dashboard-${repoName2.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 60) || "repo"}.html`);
 }
 function canOpenBrowser(env = process.env) {
   if (env.CI || env.TALLY_NO_OPEN || env.VITEST) return false;
@@ -9241,7 +9357,7 @@ var init_open = __esm({
 });
 
 // src/estimate/story.ts
-import path30 from "node:path";
+import path31 from "node:path";
 function storyMeta(session) {
   const task = loadTask(session);
   if (!task) return {};
@@ -9250,11 +9366,11 @@ function storyMeta(session) {
   return { ...key ? { key } : {}, ...s.url ? { url: s.url } : {}, ...task.estimate.story_points ? { story_points: task.estimate.story_points } : {} };
 }
 function repoName(cwd) {
-  return path30.basename(repoRoot(cwd) ?? cwd);
+  return path31.basename(repoRoot(cwd) ?? cwd);
 }
 function openDashboard(cwd, opts) {
   const root = repoRoot(cwd);
-  const html = renderDashboard({ repo: repoName(cwd), entries: readLedger(cwd), current: opts.current, estimate: opts.estimate, cli: cliCommand(), ledgerPath: root ? path30.relative(root, ledgerFile(root)) : void 0 });
+  const html = renderDashboard({ repo: repoName(cwd), entries: readLedger(cwd), current: opts.current, estimate: opts.estimate, cli: cliCommand(), ledgerPath: root ? path31.relative(root, ledgerFile(root)) : void 0 });
   return writeAndOpen(html, dashboardPath(repoName(cwd)), opts.open);
 }
 async function recordFinishedStory(session, cwd, opts = {}) {
@@ -9268,7 +9384,7 @@ async function recordFinishedStory(session, cwd, opts = {}) {
   const root = repoRoot(cwd) ?? cwd;
   const target = otlpTarget(process.env, cfg.cost.otel_endpoint, claudeSettingsEnv(), { repoSetsTally: repoSetsTallyOtel(root) });
   if (target) {
-    const r = await exportStory(entry, { repo: repoName(cwd), version: readJson(path30.join(packageRoot(), "package.json"), {}).version ?? "0.0.0", target });
+    const r = await exportStory(entry, { repo: repoName(cwd), version: readJson(path31.join(packageRoot(), "package.json"), {}).version ?? "0.0.0", target });
     out.otel = r.ok ? `sent to ${target.url}` : `failed (${r.status ?? r.error}) sending to ${target.url}`;
     log(`story metrics: ${out.otel}`);
   }
@@ -9358,11 +9474,11 @@ var cost_exports = {};
 __export(cost_exports, {
   run: () => run4
 });
-import path31 from "node:path";
+import path32 from "node:path";
 function pastTranscript(prefix) {
-  const hits2 = listTranscripts().filter((f) => path31.basename(f, ".jsonl").startsWith(prefix));
+  const hits2 = listTranscripts().filter((f) => path32.basename(f, ".jsonl").startsWith(prefix));
   if (hits2.length !== 1) return void 0;
-  return { session: path31.basename(hits2[0], ".jsonl"), file: hits2[0] };
+  return { session: path32.basename(hits2[0], ".jsonl"), file: hits2[0] };
 }
 async function run4(args) {
   const given = flag(args, "session") ?? args._[0];
@@ -9421,13 +9537,13 @@ __export(fix_exports, {
   run: () => run5
 });
 import fs28 from "node:fs";
-import path32 from "node:path";
+import path33 from "node:path";
 import { spawnSync as spawnSync9 } from "node:child_process";
 function checkWithFix(id, cwd) {
   const root = sessionsDir();
   if (!fs28.existsSync(root)) return null;
   const here3 = repoKey(cwd);
-  const found = fs28.readdirSync(root).map((s) => path32.join(root, s, "cost-check.json")).filter((f) => fs28.existsSync(f)).map((f) => ({ f, t: fs28.statSync(f).mtimeMs })).sort((a, b) => b.t - a.t);
+  const found = fs28.readdirSync(root).map((s) => path33.join(root, s, "cost-check.json")).filter((f) => fs28.existsSync(f)).map((f) => ({ f, t: fs28.statSync(f).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const { f } of found) {
     try {
       const c = JSON.parse(fs28.readFileSync(f, "utf8"));
@@ -9522,7 +9638,7 @@ var init_fix = __esm({
 
 // src/estimate/org.ts
 import fs29 from "node:fs";
-import path33 from "node:path";
+import path34 from "node:path";
 function readLedgerFile(file) {
   if (!fs29.existsSync(file)) return [];
   const bySession = /* @__PURE__ */ new Map();
@@ -9539,9 +9655,9 @@ function readLedgerFile(file) {
 function scanLedgers(root, depth = 2) {
   const out = [];
   const visit = (dir, d) => {
-    const f = path33.join(dir, ".tally", "ledger.jsonl");
+    const f = path34.join(dir, ".tally", "ledger.jsonl");
     if (fs29.existsSync(f)) {
-      out.push({ name: path33.basename(dir), root: dir, entries: readLedgerFile(f) });
+      out.push({ name: path34.basename(dir), root: dir, entries: readLedgerFile(f) });
       return;
     }
     if (d >= depth) return;
@@ -9551,9 +9667,9 @@ function scanLedgers(root, depth = 2) {
     } catch {
       return;
     }
-    for (const k of kids) if (k.isDirectory() && !k.name.startsWith(".") && k.name !== "node_modules") visit(path33.join(dir, k.name), d + 1);
+    for (const k of kids) if (k.isDirectory() && !k.name.startsWith(".") && k.name !== "node_modules") visit(path34.join(dir, k.name), d + 1);
   };
-  visit(path33.resolve(root), 0);
+  visit(path34.resolve(root), 0);
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 function stats(entries) {
@@ -9926,7 +10042,7 @@ var init_reconstruct = __esm({
 
 // src/judge/evidence.ts
 import fs30 from "node:fs";
-import path34 from "node:path";
+import path35 from "node:path";
 import { spawnSync as spawnSync10 } from "node:child_process";
 function collectGit(cwd, baseHead2, exec = gitExec, maxDiffChars = 6e4) {
   const out = { base_head: baseHead2, files_changed: [], diff_stat: "", insertions: 0, deletions: 0, diff_excerpt: "" };
@@ -9972,10 +10088,10 @@ function shellWrittenFiles(command, cwd) {
   const out = /* @__PURE__ */ new Set();
   for (const m of command.matchAll(PATH_TOKEN_RE)) {
     const tok = m[1];
-    if (/^(\d+(\.\d+)?|[a-z]+\.[a-z]+\.[a-z]+)$/i.test(tok) && !fs30.existsSync(path34.join(cwd, tok))) continue;
-    const abs = path34.isAbsolute(tok) ? tok : path34.join(cwd, tok);
+    if (/^(\d+(\.\d+)?|[a-z]+\.[a-z]+\.[a-z]+)$/i.test(tok) && !fs30.existsSync(path35.join(cwd, tok))) continue;
+    const abs = path35.isAbsolute(tok) ? tok : path35.join(cwd, tok);
     try {
-      if (fs30.statSync(abs).isFile()) out.add(path34.relative(cwd, abs).replace(/\\/g, "/"));
+      if (fs30.statSync(abs).isFile()) out.add(path35.relative(cwd, abs).replace(/\\/g, "/"));
     } catch {
     }
   }
@@ -10140,10 +10256,11 @@ function mechanicalSummary(input) {
   for (const r of input.waste.repeated_reads.slice(0, 1)) recs.push(`${r.file} was read ${r.reads} times ($${r.usd.toFixed(2)}); keep notes instead of re-reading.`);
   if (input.waste.dead_weight.usd > 0.05) recs.push(`First-turn context carries ${input.waste.dead_weight.overhead_tokens.toLocaleString("en-US")} tokens above baseline ($${input.waste.dead_weight.usd.toFixed(2)} this session); prune unused skills and MCP servers.`);
   if (input.waste.compaction_churn.compactions > 0) recs.push(`${input.waste.compaction_churn.compactions} compaction(s) re-cached ${input.waste.compaction_churn.usd > 0 ? "$" + input.waste.compaction_churn.usd.toFixed(2) : "context"}; write HANDOFF.md before /compact.`);
-  if (input.cost > input.budget) recs.push(`Spend $${input.cost.toFixed(2)} exceeded the $${input.budget.toFixed(2)} budget; re-scope earlier next time.`);
+  if (input.budget > 0 && input.cost > input.budget) recs.push(`Spend $${input.cost.toFixed(2)} exceeded the $${input.budget.toFixed(2)} budget; re-scope earlier next time.`);
+  if (input.budget <= 0) recs.push("No comparable past task priced this one; set a cap at the start next time (tally budget set <usd>).");
   if (!ver.ran) recs.push("Allow test re-runs (tally config consent on) so test criteria stop being unverifiable.");
   while (recs.length < 3) recs.push(["Link the ticket before starting so criteria freeze at intake.", "Run the full test suite once before pushing.", "State what is left undone in the final message."][recs.length]);
-  const verdict_reason = `Mechanical receipt: ${input.completion_pct}% of criteria resolved by checks (${input.counts.met} met, ${input.counts.partial} partial, ${input.counts.unmet} unmet, ${input.counts.unverifiable} unverifiable${input.unresolved ? `, ${input.unresolved} needed judgment but no model ran` : ""}). Independent tests ${ver.ran ? ver.passed ? "passed" : "failed" : "were not run"}. Spend $${input.cost.toFixed(2)} against a $${input.budget.toFixed(2)} budget with $${input.waste.total_usd.toFixed(2)} measured waste; ROI ${input.roi === null ? "n/a" : input.roi + "\xD7"}.`;
+  const verdict_reason = `Mechanical receipt: ${input.completion_pct}% of criteria resolved by checks (${input.counts.met} met, ${input.counts.partial} partial, ${input.counts.unmet} unmet, ${input.counts.unverifiable} unverifiable${input.unresolved ? `, ${input.unresolved} needed judgment but no model ran` : ""}). Independent tests ${ver.ran ? ver.passed ? "passed" : "failed" : "were not run"}. Spend $${input.cost.toFixed(2)}${input.budget > 0 ? ` against a $${input.budget.toFixed(2)} budget` : " with no budget set"} with $${input.waste.total_usd.toFixed(2)} measured waste; ROI ${input.roi === null ? "n/a" : input.roi + "\xD7"}.`;
   return { quality: { score, reason: why.join("; ") }, verdict_reason, recommendations: recs.slice(0, 3) };
 }
 var CORRECTNESS_RE, STEP_ORDER, TIER1_SYSTEM, ESCALATION_SYSTEM, TIER_SCHEMA;
@@ -10193,17 +10310,17 @@ Return only the JSON object with the criteria array; leave quality_score, verdic
 
 // src/judge/review.ts
 import fs31 from "node:fs";
-import path35 from "node:path";
+import path36 from "node:path";
 function looksLikeLibrary(cwd) {
   try {
-    const pj = path35.join(cwd, "package.json");
+    const pj = path36.join(cwd, "package.json");
     if (fs31.existsSync(pj)) {
       const p = JSON.parse(fs31.readFileSync(pj, "utf8"));
       if (p.private === true) return false;
       return !!(p.main || p.exports || p.bin || p.types || p.module);
     }
-    if (fs31.existsSync(path35.join(cwd, "Cargo.toml"))) return /\[lib\]|^\s*name\s*=/m.test(fs31.readFileSync(path35.join(cwd, "Cargo.toml"), "utf8"));
-    if (fs31.existsSync(path35.join(cwd, "pyproject.toml"))) return /\[project\]|\[tool\.poetry\]/.test(fs31.readFileSync(path35.join(cwd, "pyproject.toml"), "utf8"));
+    if (fs31.existsSync(path36.join(cwd, "Cargo.toml"))) return /\[lib\]|^\s*name\s*=/m.test(fs31.readFileSync(path36.join(cwd, "Cargo.toml"), "utf8"));
+    if (fs31.existsSync(path36.join(cwd, "pyproject.toml"))) return /\[project\]|\[tool\.poetry\]/.test(fs31.readFileSync(path36.join(cwd, "pyproject.toml"), "utf8"));
   } catch {
     return false;
   }
@@ -10220,7 +10337,7 @@ function shouldReview(mode, cwd, ev) {
 function buildReviewPrompt(task, ev, ver, cwd, tokenBudget) {
   let manifest = "";
   try {
-    const pj = path35.join(cwd, "package.json");
+    const pj = path36.join(cwd, "package.json");
     if (fs31.existsSync(pj)) {
       const p = JSON.parse(fs31.readFileSync(pj, "utf8"));
       manifest = `# PACKAGE
@@ -10321,7 +10438,7 @@ var init_events2 = __esm({
 
 // src/assurance/index.ts
 import fs32 from "node:fs";
-import path36 from "node:path";
+import path37 from "node:path";
 import { spawnSync as spawnSync11 } from "node:child_process";
 function effectiveStatus(c) {
   return c.override?.status ?? c.status;
@@ -10413,7 +10530,7 @@ function testProvenance(opts) {
     for (const f of added) {
       if (!untrackedList.includes(f)) continue;
       try {
-        casesAdded += (fs32.readFileSync(path36.join(cwd, f), "utf8").match(/^\s*(it|test)\s*\(|^\s*def test_|^\s*func Test/gm) ?? []).length;
+        casesAdded += (fs32.readFileSync(path37.join(cwd, f), "utf8").match(/^\s*(it|test)\s*\(|^\s*def test_|^\s*func Test/gm) ?? []).length;
       } catch {
       }
     }
@@ -10451,8 +10568,8 @@ function testFilesNaming(cwd, keywords, cache) {
     const files = (git(cwd, ["ls-files"]) ?? "").split("\n").filter((f) => f && TEST_PATH_RE.test(f)).slice(0, 200);
     for (const f of files) {
       try {
-        const st = fs32.statSync(path36.join(cwd, f));
-        if (st.size <= 200 * 1024) cache.set(f, fs32.readFileSync(path36.join(cwd, f), "utf8"));
+        const st = fs32.statSync(path37.join(cwd, f));
+        if (st.size <= 200 * 1024) cache.set(f, fs32.readFileSync(path37.join(cwd, f), "utf8"));
       } catch {
       }
     }
@@ -10691,9 +10808,9 @@ var init_assurance = __esm({
 // src/cost/otel.ts
 import fs33 from "node:fs";
 import http from "node:http";
-import path37 from "node:path";
+import path38 from "node:path";
 function otelFile() {
-  return path37.join(tallyHome(), "otel", "metrics.jsonl");
+  return path38.join(tallyHome(), "otel", "metrics.jsonl");
 }
 function attrValue(v) {
   if (!v) return "";
@@ -10726,7 +10843,7 @@ function parseOtlpMetrics(body, now = /* @__PURE__ */ new Date()) {
 }
 function recordOtelPoints(points, file = otelFile()) {
   if (!points.length) return;
-  ensureDir(path37.dirname(file));
+  ensureDir(path38.dirname(file));
   for (const p of points) appendLine(file, JSON.stringify(p));
 }
 function readOtelPoints(file = otelFile()) {
@@ -11112,7 +11229,7 @@ Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(", ")} (fl
     L.push(`Not run: ${j.verification.reason}.`);
   }
   L.push("");
-  L.push(`## Cost (${j.cost.label}) \u2014 ${fmtUsd(j.cost.total_usd)} of ${fmtUsd(j.cost.budget_usd)} budget (${j.cost.budget_used_pct}%)`);
+  L.push(`## Cost (${j.cost.label}) \u2014 ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` of ${fmtUsd(j.cost.budget_usd)} budget (${j.cost.budget_used_pct}%)` : ", no budget (no comparable past task, no cap set)"}`);
   L.push("");
   L.push(`Per completed criterion: ${j.cost.per_completed_criterion_usd === null ? "n/a (none met)" : fmtUsd(j.cost.per_completed_criterion_usd)} \xB7 Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, counted separately) \xB7 models: ${j.cost.models.join(", ")}`);
   if (j.cost.confidence === "partial") L.push(`
@@ -11204,7 +11321,7 @@ function renderSummary(j, color = true) {
   L.push(`Verification: ${j.verification.ran ? `${j.verification.command} \u2192 ${j.verification.passed ? c("32", "passed") : c("31", j.verification.timed_out ? "timed out" : "FAILED")} (independent run)` : c("90", `not run (${j.verification.reason})`)}${a ? c("90", ` \xB7 pre-existing tests ${a.verification.preexisting_files ?? "?"} file(s) \xB7 agent-created ${a.verification.agent_created.added_files.length} added, ${a.verification.agent_created.modified_files.length} modified, ${a.verification.agent_created.cases_added} case(s)`) : ""}`);
   if (a?.scope.unnamed_areas.length) L.push(c("33", `Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(", ")} (flagged, not judged wrong)`));
   if (j.review) for (const line of renderReview(j.review)) L.push(line);
-  L.push(`Cost (API-equivalent${j.cost.confidence === "partial" ? ", PARTIAL: transcript not fully parsed" : ""}): ${fmtUsd(j.cost.total_usd)} / budget ${fmtUsd(j.cost.budget_usd)} (${j.cost.budget_used_pct}%) \xB7 per met criterion ${j.cost.per_completed_criterion_usd === null ? "n/a" : fmtUsd(j.cost.per_completed_criterion_usd)} \xB7 waste ${fmtUsd(j.waste.total_usd)}`);
+  L.push(`Cost (API-equivalent${j.cost.confidence === "partial" ? ", PARTIAL: transcript not fully parsed" : ""}): ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` / budget ${fmtUsd(j.cost.budget_usd)} (${j.cost.budget_used_pct}%)` : " / no budget"} \xB7 per met criterion ${j.cost.per_completed_criterion_usd === null ? "n/a" : fmtUsd(j.cost.per_completed_criterion_usd)} \xB7 waste ${fmtUsd(j.waste.total_usd)}`);
   L.push(`  Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, separate)${j.cost.otel?.available ? ` \xB7 OTel cross-check ${fmtUsd(j.cost.otel.total_usd ?? 0)}` : ""}`);
   const avoidable = [];
   for (const l of j.waste.failed_loops) avoidable.push(`${fmtUsd(l.usd)}  ${l.repeats} identical failing runs of \`${l.command}\``);
@@ -11241,7 +11358,7 @@ var init_report = __esm({
 import fs34 from "node:fs";
 import { spawnSync as spawnSync12 } from "node:child_process";
 import { createHash } from "node:crypto";
-import path38 from "node:path";
+import path39 from "node:path";
 function isRegressionCriterion(text2) {
   return /\b(unchanged|no regressions?|not (be )?broken|still works?|remains? (the same|intact|unchanged)|preserv|backwards?[- ]compat|existing (behaviou?r|functionality) (is|are|still|remain))/i.test(text2);
 }
@@ -11255,7 +11372,7 @@ function otelCrossCheck(session, transcriptCost) {
   return void 0;
 }
 function judgeFile(session) {
-  return path38.join(sessionDir(session), "judge.json");
+  return path39.join(sessionDir(session), "judge.json");
 }
 function loadJudge(session) {
   const raw = readJson(judgeFile(session), null);
@@ -11417,8 +11534,8 @@ async function judgeSession(opts) {
     const touched = new Set([...ev.git.files_changed, ...ev.edited_files].map((f) => f.replace(/\\/g, "/")));
     const chk = c.check;
     const hasDiff = !!(ev.git.diff_excerpt || ev.reconstruction.diff_text);
-    const fileGuessMissed = chk.kind === "file_contains" && !fs34.existsSync(path38.join(opts.cwd, chk.path)) && hasDiff;
-    const fileTouchedButNoMatch = chk.kind === "file_contains" && fs34.existsSync(path38.join(opts.cwd, chk.path)) && [...touched].some((f) => f.endsWith(chk.path.replace(/\\/g, "/")));
+    const fileGuessMissed = chk.kind === "file_contains" && !fs34.existsSync(path39.join(opts.cwd, chk.path)) && hasDiff;
+    const fileTouchedButNoMatch = chk.kind === "file_contains" && fs34.existsSync(path39.join(opts.cwd, chk.path)) && [...touched].some((f) => f.endsWith(chk.path.replace(/\\/g, "/")));
     const patternMiss = r0.status === "unmet" && (chk.kind === "diff_contains" && hasDiff || fileGuessMissed || fileTouchedButNoMatch);
     if (patternMiss) {
       patternMisses.set(c.id, `[${c.check.kind}] ${r0.evidence}`);
@@ -11623,9 +11740,9 @@ function persistJudge(judge, task) {
   const dir = sessionDir(judge.session);
   ensureDir(dir);
   const file = judgeFile(judge.session);
-  if (fs34.existsSync(file)) fs34.copyFileSync(file, path38.join(dir, "judge.prev.json"));
+  if (fs34.existsSync(file)) fs34.copyFileSync(file, path39.join(dir, "judge.prev.json"));
   writeJson(file, judge);
-  fs34.writeFileSync(path38.join(dir, "report.md"), renderReport(judge));
+  fs34.writeFileSync(path39.join(dir, "report.md"), renderReport(judge));
   appendEvent({ ts: (/* @__PURE__ */ new Date()).toISOString(), type: "judge", session: judge.session, cwd: judge.cwd, data: { verdict: judge.verdict.verdict, completion_pct: judge.completion_pct, cost_usd: judge.cost.total_usd, reason: judge.reason } });
   const a = judge.assurance;
   if (a && judge.cwd && !judge.session.startsWith("ci-") && loadConfig().cost.ledger) {
@@ -11682,7 +11799,8 @@ function implicitTask(session, cwd, t, cfg) {
     spec_quality: { score: 0, missing: ["no linked task; criteria inferred from the first prompt"], questions: [] },
     needs_clarification: true,
     estimate: { hours: 1, basis: "default" },
-    budget_usd: Math.max(2, 1 * cfg.hourly_rate * 0.25),
+    budget_usd: 0,
+    budget_basis: "none",
     hourly_rate: cfg.hourly_rate,
     tally_cost_usd: 0,
     model: "none"
@@ -11762,7 +11880,7 @@ Return only the JSON object.`;
 
 // src/experiment/experiment.ts
 import fs35 from "node:fs";
-import path39 from "node:path";
+import path40 from "node:path";
 function loadExperiments() {
   return readJson(experimentsFile(), { experiments: [] });
 }
@@ -11794,17 +11912,17 @@ function stopExperiment(cwd) {
   return exp;
 }
 function localSettingsPath(cwd) {
-  return path39.join(cwd, ".claude", "settings.local.json");
+  return path40.join(cwd, ".claude", "settings.local.json");
 }
 function backupPath(exp) {
-  return path39.join(tallyHome(), "backups", `experiment-${exp.id}-settings.local.json`);
+  return path40.join(tallyHome(), "backups", `experiment-${exp.id}-settings.local.json`);
 }
 function applyArm(cwd, exp) {
   if (exp.applied) return;
   const file = localSettingsPath(cwd);
   const hadFile = fs35.existsSync(file);
   const bk = backupPath(exp);
-  ensureDir(path39.dirname(bk));
+  ensureDir(path40.dirname(bk));
   if (hadFile) fs35.copyFileSync(file, bk);
   else if (fs35.existsSync(bk)) fs35.unlinkSync(bk);
   const settings = hadFile ? JSON.parse(fs35.readFileSync(file, "utf8")) : {};
@@ -11824,7 +11942,7 @@ function applyArm(cwd, exp) {
   } else {
     settings._tally_experiment = { id: exp.id, arm: "on", note: "temporary marker; restored by tally at session end" };
   }
-  ensureDir(path39.dirname(file));
+  ensureDir(path40.dirname(file));
   fs35.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
   const db = loadExperiments();
   const target = db.experiments.find((e) => e.id === exp.id);
@@ -11882,23 +12000,23 @@ __export(finalize_exports, {
   waitForIntake: () => waitForIntake
 });
 import fs36 from "node:fs";
-import path40 from "node:path";
+import path41 from "node:path";
 async function waitForIntake(session, maxMs, pollMs = 2e3) {
   const dir = sessionDir(session);
   const started = Date.now();
-  while (fs36.existsSync(path40.join(dir, "task.pending")) && !fs36.existsSync(path40.join(dir, "task.json")) && Date.now() - started < maxMs) {
+  while (fs36.existsSync(path41.join(dir, "task.pending")) && !fs36.existsSync(path41.join(dir, "task.json")) && Date.now() - started < maxMs) {
     await new Promise((r) => setTimeout(r, pollMs));
   }
   return Date.now() - started;
 }
 function receiptPredatesTask(session) {
   const dir = sessionDir(session);
-  const jf = path40.join(dir, "judge.json");
-  const tf2 = path40.join(dir, "task.json");
-  if (!fs36.existsSync(jf) || !fs36.existsSync(tf2)) return false;
+  const jf = path41.join(dir, "judge.json");
+  const tf = path41.join(dir, "task.json");
+  if (!fs36.existsSync(jf) || !fs36.existsSync(tf)) return false;
   try {
     const judgedAt = Date.parse(JSON.parse(fs36.readFileSync(jf, "utf8")).judged_at ?? "");
-    return Number.isFinite(judgedAt) && fs36.statSync(tf2).mtimeMs > judgedAt;
+    return Number.isFinite(judgedAt) && fs36.statSync(tf).mtimeMs > judgedAt;
   } catch {
     return false;
   }
@@ -11935,7 +12053,7 @@ async function run8(args) {
   }
   const summary = { ts: (/* @__PURE__ */ new Date()).toISOString(), kind: "session", session, repo: repoKey(cwd), loaded, used: { skills: usedSkills, mcp: usedMcp }, first_turn_tokens: firstTurn, cost_usd: cost, cost_confidence: costConfidence, linked: !!loadTask(session), internal: false };
   appendLine(historyFile(), JSON.stringify(summary));
-  writeJson(path40.join(sessionDir(session), "summary.json"), summary);
+  writeJson(path41.join(sessionDir(session), "summary.json"), summary);
   try {
     restoreExperimentConfig(cwd, session);
     prepareNextArm(cwd);
@@ -11990,7 +12108,7 @@ __export(task_exports, {
   run: () => run9
 });
 import fs37 from "node:fs";
-import path41 from "node:path";
+import path42 from "node:path";
 import { spawn as spawn3 } from "node:child_process";
 async function run9(args) {
   const cfg = loadConfig();
@@ -12034,8 +12152,8 @@ async function run9(args) {
     process.stderr.write("Usage: tally task <url|path|text>\n");
     return 1;
   }
-  if (ref && !text2 && !/^https?:\/\//i.test(ref) && (/[\\/]/.test(ref) || /\.(md|txt|markdown)$/i.test(ref)) && !/\s/.test(ref) && !fs37.existsSync(path41.isAbsolute(ref) ? ref : path41.resolve(cwd, ref))) {
-    process.stderr.write(`File not found: ${path41.isAbsolute(ref) ? ref : path41.resolve(cwd, ref)}. Run from the project directory, pass an absolute path, or use --text "<task>" for a task written inline.
+  if (ref && !text2 && !/^https?:\/\//i.test(ref) && (/[\\/]/.test(ref) || /\.(md|txt|markdown)$/i.test(ref)) && !/\s/.test(ref) && !fs37.existsSync(path42.isAbsolute(ref) ? ref : path42.resolve(cwd, ref))) {
+    process.stderr.write(`File not found: ${path42.isAbsolute(ref) ? ref : path42.resolve(cwd, ref)}. Run from the project directory, pass an absolute path, or use --text "<task>" for a task written inline.
 `);
     return 1;
   }
@@ -12066,7 +12184,7 @@ var init_task = __esm({
 
 // src/judge/explain.ts
 import fs38 from "node:fs";
-import path42 from "node:path";
+import path43 from "node:path";
 import { spawnSync as spawnSync13 } from "node:child_process";
 function baseCommit(j, session) {
   if (j.historical?.start_head) return j.historical.start_head;
@@ -12075,7 +12193,7 @@ function baseCommit(j, session) {
   return typeof head === "string" && head ? head : void 0;
 }
 function diffFor(cwd, base, files, maxLines = 60) {
-  if (!base || !files.length || !fs38.existsSync(path42.join(cwd, ".git"))) return "";
+  if (!base || !files.length || !fs38.existsSync(path43.join(cwd, ".git"))) return "";
   const r = spawnSync13("git", ["diff", "--no-color", base, "--", ...files], { cwd, encoding: "utf8", windowsHide: true });
   if (r.status !== 0 || !r.stdout.trim()) return "";
   const lines = r.stdout.split("\n");
@@ -12278,14 +12396,14 @@ __export(telemetry_exports, {
   telemetryFile: () => telemetryFile
 });
 import fs39 from "node:fs";
-import path43 from "node:path";
+import path44 from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn as spawn4 } from "node:child_process";
 function telemetryFile() {
-  return path43.join(tallyHome(), "telemetry.json");
+  return path44.join(tallyHome(), "telemetry.json");
 }
 function queueFile() {
-  return path43.join(tallyHome(), "telemetry-queue.jsonl");
+  return path44.join(tallyHome(), "telemetry-queue.jsonl");
 }
 function readTelemetry() {
   return readJson(telemetryFile(), { enabled: false });
@@ -12339,7 +12457,7 @@ function shouldAskConsent(opts) {
   return !readTelemetry().asked;
 }
 function version() {
-  return readJson(path43.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
+  return readJson(path44.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
 }
 function makeEvent(fields, state) {
   const raw = { ...fields, schema: TELEMETRY_SCHEMA, ts: (/* @__PURE__ */ new Date()).toISOString(), installation_id: state.installation_id ?? "none", tally_version: version() };
@@ -12361,7 +12479,7 @@ function record(fields, opts = {}) {
   }
   if (opts.spawnFlush !== false && !process.env.TALLY_NO_SPAWN) {
     try {
-      const child = spawn4(process.execPath, [path43.join(packageRoot(), "dist", "cli.js"), "telemetry", "flush", "--auto"], { detached: true, stdio: "ignore", windowsHide: true, env: process.env });
+      const child = spawn4(process.execPath, [path44.join(packageRoot(), "dist", "cli.js"), "telemetry", "flush", "--auto"], { detached: true, stdio: "ignore", windowsHide: true, env: process.env });
       child.unref();
     } catch {
     }
@@ -12409,9 +12527,9 @@ var init_telemetry = __esm({
 
 // src/feedback/store.ts
 import fs40 from "node:fs";
-import path44 from "node:path";
+import path45 from "node:path";
 function feedbackFile(session) {
-  return path44.join(sessionDir(session), "feedback.jsonl");
+  return path45.join(sessionDir(session), "feedback.jsonl");
 }
 function recordFeedback(session, criterion, label, comment, version3) {
   const j = loadJudge(session);
@@ -12442,7 +12560,7 @@ function readFeedback(session) {
   return fs40.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
 function usefulnessFile() {
-  return path44.join(tallyHome(), "usefulness.json");
+  return path45.join(tallyHome(), "usefulness.json");
 }
 function readUsefulness() {
   return readJson(usefulnessFile(), { verifications: 0 });
@@ -12519,7 +12637,7 @@ __export(judge_exports, {
   run: () => run10
 });
 import fs41 from "node:fs";
-import path45 from "node:path";
+import path46 from "node:path";
 import readline2 from "node:readline";
 function askYesNo(question) {
   return new Promise((resolve) => {
@@ -12572,7 +12690,7 @@ async function run10(args) {
 `);
     return 1;
   }
-  const lock = path45.join(sessionDir(session), "judge.lock");
+  const lock = path46.join(sessionDir(session), "judge.lock");
   if (fs41.existsSync(lock) && Date.now() - fs41.statSync(lock).mtimeMs < 10 * 60 * 1e3) {
     if (!auto) process.stderr.write("A judge run is already in progress for this session.\n");
     return 1;
@@ -12594,7 +12712,7 @@ async function run10(args) {
     const judge = await judgeSession({ session, cwd, transcriptPath, cfg, llm, reason, consent, deep: has(args, "deep") });
     const plain = has(args, "plain");
     process.stdout.write(renderSummary(judge, !plain) + "\n");
-    process.stdout.write(`Receipt: ${path45.join(sessionDir(session), "report.md")}
+    process.stdout.write(`Receipt: ${path46.join(sessionDir(session), "report.md")}
 `);
     const state = countVerification(session);
     if (!auto && shouldAskUsefulness(state, { interactive: !!process.stdin.isTTY && !!process.stdout.isTTY })) await askUsefulness();
@@ -12627,9 +12745,9 @@ var init_judge2 = __esm({
 
 // src/calibrate/calibrate.ts
 import fs42 from "node:fs";
-import path46 from "node:path";
+import path47 from "node:path";
 function calibrationFile() {
-  return path46.join(tallyHome(), "calibration.jsonl");
+  return path47.join(tallyHome(), "calibration.jsonl");
 }
 function parseStatuses(s) {
   return s.split(/[,\s]+/).map((x) => x.trim().toLowerCase()).filter(Boolean).map((x) => {
@@ -12876,7 +12994,7 @@ __export(dispute_exports, {
   run: () => run11
 });
 import os7 from "node:os";
-import path47 from "node:path";
+import path48 from "node:path";
 function disputeCriterion(session, id, status2, reason, by) {
   const j = loadJudge(session);
   if (!j) throw new Error(`no receipt for session ${session}`);
@@ -12887,7 +13005,7 @@ function disputeCriterion(session, id, status2, reason, by) {
   c.override = { status: status2, reason: reason.trim(), by, ts: (/* @__PURE__ */ new Date()).toISOString(), original };
   const next = rescoreJudge(j, `disputed ${id}: ${original} \u2192 ${status2} by ${by}`);
   persistJudge(next, loadTask(session));
-  appendLine(path47.join(sessionDir(session), "disputes.jsonl"), JSON.stringify({ ts: c.override.ts, id, original, status: status2, reason: c.override.reason, by }));
+  appendLine(path48.join(sessionDir(session), "disputes.jsonl"), JSON.stringify({ ts: c.override.ts, id, original, status: status2, reason: c.override.reason, by }));
   appendEvent({ ts: c.override.ts, type: "dispute", session, cwd: j.cwd, data: { id, original, status: status2, by } });
   const entry = {
     ts: c.override.ts,
@@ -12964,7 +13082,7 @@ __export(verify_exports, {
   verifySession: () => verifySession
 });
 import fs43 from "node:fs";
-import path48 from "node:path";
+import path49 from "node:path";
 function agentOfSession(session) {
   const start = readEvents(session).find((e) => e.type === "session_start");
   return { product: String(start?.data.agent ?? "claude-code"), version: typeof start?.data.version === "string" ? start.data.version : void 0 };
@@ -12975,7 +13093,7 @@ async function verifySession(session, opts) {
   let judge = loadJudge(session);
   const recorded = judge?.cwd;
   const repoGone = !!recorded && !fs43.existsSync(recorded);
-  if (recorded && !repoGone && path48.resolve(recorded) !== path48.resolve(opts.cwd)) {
+  if (recorded && !repoGone && path49.resolve(recorded) !== path49.resolve(opts.cwd)) {
     if (!opts.quiet) process.stderr.write(`Using the receipt's repository ${recorded} (verify was run from ${opts.cwd}).
 `);
     opts = { ...opts, cwd: recorded };
@@ -12990,7 +13108,7 @@ async function verifySession(session, opts) {
       if (judge) log(`verify: ${session} no transcript; using the stored receipt`);
       else return null;
     } else {
-      const lock = path48.join(sessionDir(session), "judge.lock");
+      const lock = path49.join(sessionDir(session), "judge.lock");
       if (fs43.existsSync(lock) && Date.now() - fs43.statSync(lock).mtimeMs < 10 * 60 * 1e3) {
         if (!opts.quiet) process.stderr.write("A judge run is in progress for this session; showing the stored receipt.\n");
       } else {
@@ -13017,7 +13135,7 @@ async function run12(args) {
   }
   const ci = has(args, "ci");
   const cwd = sessionCwd(session) ?? process.cwd();
-  if (!has(args, "json") && path48.resolve(cwd) !== path48.resolve(process.cwd())) process.stderr.write(`Session ${session.slice(0, 8)} ran in ${cwd}; using that repository.
+  if (!has(args, "json") && path49.resolve(cwd) !== path49.resolve(process.cwd())) process.stderr.write(`Session ${session.slice(0, 8)} ran in ${cwd}; using that repository.
 `);
   const a = await verifySession(session, { cwd, deep: has(args, "deep"), fresh: has(args, "fresh"), quiet: has(args, "json") });
   if (!a) {
@@ -13076,7 +13194,7 @@ __export(check_exports, {
 });
 import fs44 from "node:fs";
 import os8 from "node:os";
-import path49 from "node:path";
+import path50 from "node:path";
 import { spawnSync as spawnSync14 } from "node:child_process";
 function git2(cwd, args) {
   const r = spawnSync14("git", args, { cwd, encoding: "utf8", windowsHide: true, timeout: 6e4, maxBuffer: 20 * 1024 * 1024 });
@@ -13097,8 +13215,8 @@ function readPullRequestEvent(env = process.env) {
 function taskRefFromPullRequest(pr, cwd) {
   const body = pr.body ?? "";
   for (const m of body.matchAll(/(?:^|[\s(`"'])((?:[\w-]+\/)*[\w-]+\.md)\b/gi)) {
-    const p = path49.resolve(cwd, m[1]);
-    if (p.startsWith(path49.resolve(cwd)) && fs44.existsSync(p)) return { ref: p, kind: "file" };
+    const p = path50.resolve(cwd, m[1]);
+    if (p.startsWith(path50.resolve(cwd)) && fs44.existsSync(p)) return { ref: p, kind: "file" };
   }
   const url = /https?:\/\/github\.com\/[^/\s]+\/[^/\s#?]+\/issues\/\d+/.exec(body)?.[0];
   if (url) return { ref: url, kind: "issue" };
@@ -13139,7 +13257,7 @@ function modelForCheck(session, cfg, env = process.env) {
 }
 function postComment(cwd, pr, body, say) {
   if (!pr.number || !pr.repo) return false;
-  const file = path49.join(fs44.mkdtempSync(path49.join(os8.tmpdir(), "tally-check-")), "comment.md");
+  const file = path50.join(fs44.mkdtempSync(path50.join(os8.tmpdir(), "tally-check-")), "comment.md");
   fs44.writeFileSync(file, body);
   const gh2 = (args) => spawnSync14("gh", args, { cwd, encoding: "utf8", windowsHide: true, timeout: 6e4 });
   try {
@@ -13153,11 +13271,11 @@ function postComment(cwd, pr, body, say) {
     say(`tally check: ${id ? "updated" : "posted"} the receipt comment on #${pr.number}`);
     return true;
   } finally {
-    fs44.rmSync(path49.dirname(file), { recursive: true, force: true });
+    fs44.rmSync(path50.dirname(file), { recursive: true, force: true });
   }
 }
 async function run13(args) {
-  const cwd = path49.resolve(flag(args, "cwd") ?? process.cwd());
+  const cwd = path50.resolve(flag(args, "cwd") ?? process.cwd());
   const json = has(args, "json");
   const say = (s) => {
     if (!json) process.stderr.write(s + "\n");
@@ -13174,7 +13292,7 @@ async function run13(args) {
     return 2;
   }
   const taskArg = flag(args, "task");
-  const taskRef = taskArg ? { ref: /\.md$/i.test(taskArg) && !/^https?:/.test(taskArg) ? path49.resolve(cwd, taskArg) : taskArg, kind: "given" } : pr ? taskRefFromPullRequest(pr, cwd) : null;
+  const taskRef = taskArg ? { ref: /\.md$/i.test(taskArg) && !/^https?:/.test(taskArg) ? path50.resolve(cwd, taskArg) : taskArg, kind: "given" } : pr ? taskRefFromPullRequest(pr, cwd) : null;
   if (!taskRef) {
     process.stderr.write('tally check: no task. Pass --task <issue url | tasks/x.md | "text">, or run in a pull_request workflow.\n');
     return 2;
@@ -13193,7 +13311,7 @@ async function run13(args) {
   const session = `ci-${head.slice(0, 12)}`;
   const dir = sessionDir(session);
   ensureDir(dir);
-  for (const f of ["task.json", "judge.json", "events.jsonl", "contract.json", "progress.json"]) fs44.rmSync(path49.join(dir, f), { force: true });
+  for (const f of ["task.json", "judge.json", "events.jsonl", "contract.json", "progress.json"]) fs44.rmSync(path50.join(dir, f), { force: true });
   const llm = has(args, "no-model") ? new NoModelLlm() : modelForCheck(session, cfg);
   appendEvent({ ts: (/* @__PURE__ */ new Date()).toISOString(), type: "session_start", session, cwd, data: { agent: "ci", git_head: base, source: "tally check", pr: pr?.number ?? null, head } });
   const range = `${base.slice(0, 8)}..${head.slice(0, 8)}`;
@@ -13201,7 +13319,7 @@ async function run13(args) {
   const isText = taskRef.kind === "text" || taskRef.kind === "given" && !/^https?:/.test(taskRef.ref) && !/\.md$/i.test(taskRef.ref) && !/^[A-Z][A-Z0-9]+-\d+$/.test(taskRef.ref);
   const { task } = await intake({ session, cwd, ref: isText ? void 0 : taskRef.ref, text: isText ? taskRef.ref : void 0, cfg, llm, force: true, noCache: true });
   say(`Task: ${task.title} \xB7 ${task.criteria.length} criteria (${task.criteria.filter((c) => c.kind === "mechanical").length} mechanical)${task.fetch_error ? ` \xB7 ${task.fetch_error}` : ""}`);
-  const j = await judgeSession({ session, cwd, transcriptPath: path49.join(dir, "no-transcript.jsonl"), cfg, llm, reason: "pr", consent: runTests, task });
+  const j = await judgeSession({ session, cwd, transcriptPath: path50.join(dir, "no-transcript.jsonl"), cfg, llm, reason: "pr", consent: runTests, task });
   const a = j.assurance ?? buildAssurance({ judge: j, task, cwd, agent: { product: "ci" } });
   const ok = passes(a, required);
   const md = renderVerifyMarkdown(a, { range, required, passed: ok, noModel: !!llm.noModel });
@@ -13262,7 +13380,7 @@ __export(audit_exports, {
   run: () => run14
 });
 import fs45 from "node:fs";
-import path50 from "node:path";
+import path51 from "node:path";
 function parseSince2(s, now = Date.now()) {
   const m = /^(\d+)\s*([dhm])$/i.exec((s ?? "30d").trim());
   const n = m ? Number(m[1]) : 30;
@@ -13273,9 +13391,9 @@ function collectAudit(opts) {
   const root = sessionsDir();
   if (!fs45.existsSync(root)) return [];
   const out = [];
-  const wanted = opts.repo ? path50.resolve(opts.repo) : void 0;
+  const wanted = opts.repo ? path51.resolve(opts.repo) : void 0;
   for (const id of fs45.readdirSync(root)) {
-    const dir = path50.join(root, id);
+    const dir = path51.join(root, id);
     let st;
     try {
       st = fs45.statSync(dir);
@@ -13285,8 +13403,8 @@ function collectAudit(opts) {
     if (!st.isDirectory() || st.mtimeMs < opts.since) continue;
     const events = readEvents(id);
     const cwd = events.find((e) => e.cwd)?.cwd;
-    if (wanted && (!cwd || path50.resolve(cwd) !== wanted)) continue;
-    const repo = cwd ? path50.basename(cwd) : void 0;
+    if (wanted && (!cwd || path51.resolve(cwd) !== wanted)) continue;
+    const repo = cwd ? path51.basename(cwd) : void 0;
     const isCheck = events.some((e) => e.type === "session_start" && e.data.agent === "ci");
     for (const e of events) {
       if (Date.parse(e.ts) < opts.since) continue;
@@ -13294,9 +13412,10 @@ function collectAudit(opts) {
       if (e.type === "judge") out.push({ ts: e.ts, session: id, repo, cwd, kind: isCheck ? "check" : "receipt", detail: `${String(d.verdict ?? "")} \xB7 ${String(d.completion_pct ?? "?")}% complete \xB7 $${Number(d.cost_usd ?? 0).toFixed(2)} (${String(d.reason ?? "")})` });
       else if (e.type === "dispute") out.push({ ts: e.ts, session: id, repo, cwd, kind: "dispute", detail: `${String(d.id)}: ${String(d.original)} \u2192 ${String(d.status)}`, by: d.by ? String(d.by) : void 0 });
       else if (e.type === "budget_approved") out.push({ ts: e.ts, session: id, repo, cwd, kind: "budget_approved", detail: `${d.lifted ? "hard stop lifted" : "over-budget approved"}${d.note ? `: ${String(d.note)}` : ""}`, by: d.by ? String(d.by) : void 0 });
+      else if (e.type === "budget_set") out.push({ ts: e.ts, session: id, repo, cwd, kind: "budget_set", detail: `cap set to $${Number(d.usd ?? 0).toFixed(2)}${d.clamped ? " (clamped to repo policy)" : ""}${d.note ? `: ${String(d.note)}` : ""}`, by: d.by ? String(d.by) : void 0 });
       else if (e.type === "hard_stop_denied") out.push({ ts: e.ts, session: id, repo, cwd, kind: "hard_stop", detail: `${String(d.tool_name ?? "tool call")} denied: over the repo budget` });
     }
-    const gate = readJson(path50.join(dir, "dod-gate.json"), null);
+    const gate = readJson(path51.join(dir, "dod-gate.json"), null);
     if (gate?.ts && Date.parse(gate.ts) >= opts.since) out.push({ ts: gate.ts, session: id, repo, cwd, kind: "gate_block", detail: `done gate blocked the stop ${gate.blocks ?? 1}\xD7${gate.unmet?.length ? ` (unmet: ${gate.unmet.slice(0, 4).join(", ")})` : ""}` });
   }
   return out.sort((a, b) => a.ts.localeCompare(b.ts));
@@ -13400,18 +13519,18 @@ var init_adapters = __esm({
 
 // src/eval/tasks.ts
 import fs47 from "node:fs";
-import path51 from "node:path";
+import path52 from "node:path";
 function tasksRoot(root = process.cwd()) {
-  return path51.join(root, "eval", "tasks");
+  return path52.join(root, "eval", "tasks");
 }
 function loadTasks(dir = tasksRoot()) {
   if (!fs47.existsSync(dir)) return [];
   return fs47.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().map((f) => {
-    const file = path51.join(dir, f);
+    const file = path52.join(dir, f);
     const spec = EvalTaskSchema.parse(JSON.parse(fs47.readFileSync(file, "utf8")));
     const isLocal = !/^(https?:|git@|ssh:)/.test(spec.repo);
-    const repoPath = isLocal ? path51.resolve(path51.dirname(file), spec.repo) : void 0;
-    const taskText = spec.task.endsWith(".md") && fs47.existsSync(path51.resolve(path51.dirname(file), spec.task)) ? fs47.readFileSync(path51.resolve(path51.dirname(file), spec.task), "utf8") : spec.task;
+    const repoPath = isLocal ? path52.resolve(path52.dirname(file), spec.repo) : void 0;
+    const taskText = spec.task.endsWith(".md") && fs47.existsSync(path52.resolve(path52.dirname(file), spec.task)) ? fs47.readFileSync(path52.resolve(path52.dirname(file), spec.task), "utf8") : spec.task;
     return { ...spec, file, repoPath, taskText };
   });
 }
@@ -13530,24 +13649,24 @@ var init_grader = __esm({
 
 // src/eval/ledger.ts
 import fs48 from "node:fs";
-import path52 from "node:path";
+import path53 from "node:path";
 function resultsRoot(root = process.cwd()) {
-  return path52.join(root, "eval", "results");
+  return path53.join(root, "eval", "results");
 }
 function writeResult(r, root = process.cwd()) {
-  const dir = path52.join(resultsRoot(root), r.task.class);
+  const dir = path53.join(resultsRoot(root), r.task.class);
   fs48.mkdirSync(dir, { recursive: true });
-  const file = path52.join(dir, `${r.date.slice(0, 10)}-${r.task.id}-${r.run_id}.json`);
+  const file = path53.join(dir, `${r.date.slice(0, 10)}-${r.task.id}-${r.run_id}.json`);
   if (r.work?.patch_file) {
-    r.work.patch_file = path52.basename(r.work.patch_file);
+    r.work.patch_file = path53.basename(r.work.patch_file);
   }
   fs48.writeFileSync(file, JSON.stringify(r, null, 2) + "\n");
-  const line = { run_id: r.run_id, date: r.date, tally: r.tally, task: { id: r.task.id, class: r.task.class }, agent: r.agent, grader: { model: r.grader.model }, agreement: r.agreement, tally_summary: r.tally_summary, grader_verdict: r.grader_verdict, cost_usd: r.agent.cost_usd, file: path52.relative(root, file).replace(/\\/g, "/") };
-  fs48.appendFileSync(path52.join(resultsRoot(root), "ledger.jsonl"), JSON.stringify(line) + "\n");
+  const line = { run_id: r.run_id, date: r.date, tally: r.tally, task: { id: r.task.id, class: r.task.class }, agent: r.agent, grader: { model: r.grader.model }, agreement: r.agreement, tally_summary: r.tally_summary, grader_verdict: r.grader_verdict, cost_usd: r.agent.cost_usd, file: path53.relative(root, file).replace(/\\/g, "/") };
+  fs48.appendFileSync(path53.join(resultsRoot(root), "ledger.jsonl"), JSON.stringify(line) + "\n");
   return file;
 }
 function readLedger2(root = process.cwd()) {
-  const f = path52.join(resultsRoot(root), "ledger.jsonl");
+  const f = path53.join(resultsRoot(root), "ledger.jsonl");
   if (!fs48.existsSync(f)) return [];
   return fs48.readFileSync(f, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
 }
@@ -13585,19 +13704,19 @@ var init_ledger2 = __esm({
 // src/eval/run.ts
 import fs49 from "node:fs";
 import os9 from "node:os";
-import path53 from "node:path";
+import path54 from "node:path";
 import { spawnSync as spawnSync16, spawn as spawn5 } from "node:child_process";
 function sh(cwd, cmd, args, env = process.env) {
   const r = spawnSync16(cmd, args, { cwd, encoding: "utf8", env, windowsHide: true, shell: false, maxBuffer: 50 * 1024 * 1024, timeout: 15 * 60 * 1e3 });
   return { ok: r.status === 0, out: `${r.stdout ?? ""}${r.stderr ?? ""}${r.error ? String(r.error) : ""}` };
 }
 function prepareRepo(task, dir, out) {
-  fs49.mkdirSync(path53.dirname(dir), { recursive: true });
+  fs49.mkdirSync(path54.dirname(dir), { recursive: true });
   if (task.repoPath) {
     fs49.cpSync(task.repoPath, dir, { recursive: true, filter: (src) => !/\.lock$/.test(src) && fs49.existsSync(src) });
     if (task.base) sh(dir, "git", ["checkout", "-q", task.base], GIT_ENV);
   } else {
-    const r = sh(path53.dirname(dir), "git", ["clone", "-q", task.repo, dir], GIT_ENV);
+    const r = sh(path54.dirname(dir), "git", ["clone", "-q", task.repo, dir], GIT_ENV);
     if (!r.ok) throw new Error(`clone failed: ${r.out.slice(0, 300)}`);
     if (task.base) {
       const c = sh(dir, "git", ["checkout", "-q", task.base], GIT_ENV);
@@ -13620,8 +13739,8 @@ ${r.out.slice(-500)}`);
 
 ${task.criteria.map((c) => `- ${c.text}`).join("\n")}
 ` : task.taskText;
-  fs49.writeFileSync(path53.join(dir, "task.md"), md);
-  if (task.test_command) fs49.writeFileSync(path53.join(dir, "tally.json"), JSON.stringify({ test_command: task.test_command, note: "written by tally eval" }, null, 2) + "\n");
+  fs49.writeFileSync(path54.join(dir, "task.md"), md);
+  if (task.test_command) fs49.writeFileSync(path54.join(dir, "tally.json"), JSON.stringify({ test_command: task.test_command, note: "written by tally eval" }, null, 2) + "\n");
   sh(dir, "git", ["add", "task.md", ...task.test_command ? ["tally.json"] : []], GIT_ENV);
   const staged = sh(dir, "git", ["diff", "--cached", "--quiet"], GIT_ENV);
   if (!staged.ok) {
@@ -13635,7 +13754,7 @@ function writeHookSettings(dir) {
   const hook = builtHookPath();
   const events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "PreCompact", "SessionEnd"];
   const hooks = Object.fromEntries(events.map((e) => [e, [{ hooks: [{ type: "command", command: `node "${hook}" ${e}`, timeout: 5 }] }]]));
-  const file = path53.join(dir, "tally-eval-settings.json");
+  const file = path54.join(dir, "tally-eval-settings.json");
   fs49.writeFileSync(file, JSON.stringify({ hooks }, null, 2));
   return file;
 }
@@ -13663,15 +13782,15 @@ async function runEvalTask(opts) {
   const out = opts.out ?? ((s) => process.stdout.write(s + "\n"));
   const cfg = loadConfig();
   const runId = Math.random().toString(36).slice(2, 8);
-  const root = opts.resume?.root ?? opts.root ?? fs49.mkdtempSync(path53.join(os9.tmpdir(), "tally-eval-"));
-  const dir = path53.join(root, opts.task.id);
+  const root = opts.resume?.root ?? opts.root ?? fs49.mkdtempSync(path54.join(os9.tmpdir(), "tally-eval-"));
+  const dir = path54.join(root, opts.task.id);
   const notes = [];
-  const version3 = readJson(path53.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
+  const version3 = readJson(path54.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
   const commit = sh(packageRoot(), "git", ["rev-parse", "--short", "HEAD"]).out.trim() || void 0;
   let base;
   let a;
   if (opts.resume) {
-    if (!fs49.existsSync(path53.join(dir, ".git"))) throw new Error(`resume: no repository at ${dir}`);
+    if (!fs49.existsSync(path54.join(dir, ".git"))) throw new Error(`resume: no repository at ${dir}`);
     base = sh(dir, "git", ["log", "--format=%H", "--grep=^eval: task contract$", "-1"]).out.trim() || sh(dir, "git", ["rev-list", "--max-parents=0", "HEAD"]).out.trim().split("\n")[0];
     a = { sessionId: opts.resume.session, costUsd: null, turns: null, durationS: 0 };
     notes.push(`resumed from ${dir} with session ${opts.resume.session.slice(0, 8)}; agent turns and duration are not known, cost is taken from the receipt`);
@@ -13693,7 +13812,7 @@ async function runEvalTask(opts) {
   const t0 = Date.now();
   if (!loadTask(session)) {
     out(`[${opts.task.id}] intake`);
-    await intake({ session, cwd: dir, ref: path53.join(dir, "task.md"), cfg, llm: makeLlm({ session }) });
+    await intake({ session, cwd: dir, ref: path54.join(dir, "task.md"), cfg, llm: makeLlm({ session }) });
   }
   const waitMs = opts.hookJudgeWaitMs ?? (opts.agent || opts.resume ? 0 : 10 * 60 * 1e3);
   const hookJudged = () => {
@@ -13713,14 +13832,14 @@ async function runEvalTask(opts) {
     if (!transcriptPath || !fs49.existsSync(transcriptPath)) notes.push("no transcript found for the session; cost and turns come from the agent envelope only");
     if (waitMs > 0) notes.push(`the hook's session-end judge did not produce a receipt within ${Math.round(waitMs / 6e4)} min; the runner judged`);
     out(`[${opts.task.id}] judge`);
-    judge = await judgeSession({ session, cwd: dir, transcriptPath: transcriptPath ?? path53.join(sessionDir(session), "missing.jsonl"), cfg, llm: makeLlm({ session }), reason: "manual", consent: true, events });
+    judge = await judgeSession({ session, cwd: dir, transcriptPath: transcriptPath ?? path54.join(sessionDir(session), "missing.jsonl"), cfg, llm: makeLlm({ session }), reason: "manual", consent: true, events });
   }
   const assurance = judge.assurance ?? buildAssurance({ judge, task: loadTask(session), cwd: dir });
   if (opts.resume && a.costUsd == null) a.costUsd = judge.cost.total_usd;
   const judgeS = Math.round((Date.now() - t0) / 1e3);
   out(`[${opts.task.id}] blind evaluator (${opts.graderModel ?? "opus"})`);
   const t1 = Date.now();
-  const graderInput = { taskText: fs49.readFileSync(path53.join(dir, "task.md"), "utf8"), criteria: judge.criteria.map((c) => ({ id: c.id, text: c.text })), repoPath: dir, base, testCommand: opts.task.test_command ?? judge.verification.command ?? "npm test", agentCost: a.costUsd, agentTurns: a.turns };
+  const graderInput = { taskText: fs49.readFileSync(path54.join(dir, "task.md"), "utf8"), criteria: judge.criteria.map((c) => ({ id: c.id, text: c.text })), repoPath: dir, base, testCommand: opts.task.test_command ?? judge.verification.command ?? "npm test", agentCost: a.costUsd, agentTurns: a.turns };
   const g = opts.grader ? opts.grader(graderInput) : runClaudeGrader(graderInput, { model: opts.graderModel, bin: opts.claudeBin });
   if (g.raw_error) notes.push(g.raw_error);
   const graderS = Math.round((Date.now() - t1) / 1e3);
@@ -13732,9 +13851,9 @@ async function runEvalTask(opts) {
   });
   const patch = sh(dir, "git", ["diff", base, head, "--", ".", ":(exclude)package-lock.json", ":(exclude)**/package-lock.json"]).out;
   const patchBytes = Buffer.byteLength(patch, "utf8");
-  const resultsDir = path53.join(resultsRoot(opts.resultsRoot), opts.task.class);
+  const resultsDir = path54.join(resultsRoot(opts.resultsRoot), opts.task.class);
   fs49.mkdirSync(resultsDir, { recursive: true });
-  const patchFile = patchBytes > 0 && patchBytes <= 400 * 1024 ? path53.join(resultsDir, `${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}-${opts.task.id}-${runId}.patch`) : void 0;
+  const patchFile = patchBytes > 0 && patchBytes <= 400 * 1024 ? path54.join(resultsDir, `${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}-${opts.task.id}-${runId}.patch`) : void 0;
   if (patchFile) fs49.writeFileSync(patchFile, patch);
   else if (patchBytes > 400 * 1024) notes.push(`patch not stored: ${patchBytes} bytes exceeds the 400 KB cap; commits and per-file counts are recorded`);
   const result = {
@@ -13762,7 +13881,7 @@ async function runEvalTask(opts) {
     ensureDir(tallyHome());
     appendLine(calibrationFile(), JSON.stringify({ ...entry, grader: "blind-eval" }));
   }
-  out(`[${opts.task.id}] ${agreement.exact}/${agreement.total} agree \xB7 false VERIFIED ${agreement.false_verified} \xB7 false UNMET ${agreement.false_unmet} \xB7 Tally ${judge.verdict.verdict} / grader ${g.verdict} \u2192 ${path53.relative(process.cwd(), file)}`);
+  out(`[${opts.task.id}] ${agreement.exact}/${agreement.total} agree \xB7 false VERIFIED ${agreement.false_verified} \xB7 false UNMET ${agreement.false_unmet} \xB7 Tally ${judge.verdict.verdict} / grader ${g.verdict} \u2192 ${path54.relative(process.cwd(), file)}`);
   if (!opts.keep && !opts.root) fs49.rmSync(root, { recursive: true, force: true, maxRetries: 5 });
   else log(`eval: kept ${root}`);
   return result;
@@ -13813,7 +13932,7 @@ var init_run = __esm({
 
 // src/eval/discover.ts
 import fs50 from "node:fs";
-import path54 from "node:path";
+import path55 from "node:path";
 function scoreIssue(i, repo) {
   const body = i.body ?? "";
   const reasons = [];
@@ -13922,7 +14041,7 @@ function writeCandidates(cands, dir) {
   fs50.mkdirSync(dir, { recursive: true });
   const files = [];
   for (const c of cands) {
-    const f = path54.join(dir, `${c.spec.id}.json`);
+    const f = path55.join(dir, `${c.spec.id}.json`);
     fs50.writeFileSync(f, JSON.stringify({ ...c.spec, _candidate: { score: c.score, reasons: c.reasons, title: c.title, comments: c.comments, updated: c.updated } }, null, 2) + "\n");
     files.push(f);
   }
@@ -13939,7 +14058,7 @@ var eval_exports = {};
 __export(eval_exports, {
   run: () => run16
 });
-import path55 from "node:path";
+import path56 from "node:path";
 async function run16(args) {
   const sub = args._[0];
   if (sub === "run") {
@@ -13947,7 +14066,7 @@ async function run16(args) {
     const cls = flag(args, "class");
     const tasks = loadTasks().filter((t) => (!only || only.includes(t.id)) && (!cls || t.class === cls));
     if (!tasks.length) {
-      process.stderr.write(`No eval tasks matched under ${path55.join(process.cwd(), "eval", "tasks")}. Add a spec (see docs/EVALUATION.md) or run \`tally eval discover\`.
+      process.stderr.write(`No eval tasks matched under ${path56.join(process.cwd(), "eval", "tasks")}. Add a spec (see docs/EVALUATION.md) or run \`tally eval discover\`.
 `);
       return 1;
     }
@@ -13960,7 +14079,7 @@ async function run16(args) {
     let failures = 0;
     for (const t of tasks) {
       try {
-        await runEvalTask({ task: t, agentModel: flag(args, "agent-model"), graderModel: flag(args, "grader-model"), maxTurns: flag(args, "max-turns") ? Number(flag(args, "max-turns")) : void 0, timeoutMin: flag(args, "timeout-min") ? Number(flag(args, "timeout-min")) : void 0, keep: has(args, "keep"), claudeBin: flag(args, "claude-bin"), resume: resumeRoot && resumeSession ? { root: path55.resolve(resumeRoot), session: resumeSession } : void 0 });
+        await runEvalTask({ task: t, agentModel: flag(args, "agent-model"), graderModel: flag(args, "grader-model"), maxTurns: flag(args, "max-turns") ? Number(flag(args, "max-turns")) : void 0, timeoutMin: flag(args, "timeout-min") ? Number(flag(args, "timeout-min")) : void 0, keep: has(args, "keep"), claudeBin: flag(args, "claude-bin"), resume: resumeRoot && resumeSession ? { root: path56.resolve(resumeRoot), session: resumeSession } : void 0 });
       } catch (err) {
         failures += 1;
         process.stderr.write(`[${t.id}] failed: ${err instanceof Error ? err.message : String(err)}
@@ -13976,10 +14095,10 @@ async function run16(args) {
       return 1;
     }
     const cands = await discover({ repos, limit: flag(args, "limit") ? Number(flag(args, "limit")) : void 0, out: (s) => process.stdout.write(s + "\n") });
-    const dir = path55.join(process.cwd(), "eval", "candidates");
+    const dir = path56.join(process.cwd(), "eval", "candidates");
     const files = writeCandidates(cands, dir);
     process.stdout.write(`
-${files.length} candidate(s) \u2192 ${path55.relative(process.cwd(), dir)}
+${files.length} candidate(s) \u2192 ${path56.relative(process.cwd(), dir)}
 `);
     for (const c of cands.slice(0, 20)) process.stdout.write(`  ${String(c.score).padStart(3)}  ${c.spec.id.padEnd(40)} ${c.title.slice(0, 70)}
 `);
@@ -14033,7 +14152,7 @@ var init_eval = __esm({
 });
 
 // src/followup/followup.ts
-import path56 from "node:path";
+import path57 from "node:path";
 function parseJson(s) {
   try {
     return JSON.parse(s);
@@ -14138,7 +14257,7 @@ function followupSession(session, deps = realFollowupDeps) {
   return updated;
 }
 function followupStateFile() {
-  return path56.join(tallyHome(), "followup-state.json");
+  return path57.join(tallyHome(), "followup-state.json");
 }
 function dueSessions(days, now = /* @__PURE__ */ new Date()) {
   const out = [];
@@ -14370,7 +14489,7 @@ var init_reread = __esm({
 });
 
 // src/coach/rules/context-pressure.ts
-import path57 from "node:path";
+import path58 from "node:path";
 function buildHandoff(ctx) {
   const task = ctx.task;
   const edits = [...new Set(postTools(ctx).filter((e) => ["Edit", "Write", "MultiEdit"].includes(toolName(e))).map((e) => shortPath(String(toolInput(e).file_path ?? ""), ctx.cwd)))];
@@ -14425,7 +14544,7 @@ var init_context_pressure = __esm({
           title: `Context at ${pct2.toFixed(0)}%`,
           message: `Context is ${ctx.contextTokensNow.toLocaleString("en-US")} of ${ctx.contextWindow.toLocaleString("en-US")} tokens (${pct2.toFixed(0)}%). Auto-compact will lose working state. Write HANDOFF.md now, then run /compact on your terms. Re-caching after compaction costs about $${recacheUsd.toFixed(2)}.`,
           usd_saved: recacheUsd + ctx.avgTurnCostUsd * 2,
-          action: { kind: "write_md", label: "Write HANDOFF.md, then suggest /compact", file: path57.join(ctx.cwd, "HANDOFF.md"), content: buildHandoff(ctx), mode: "replace" },
+          action: { kind: "write_md", label: "Write HANDOFF.md, then suggest /compact", file: path58.join(ctx.cwd, "HANDOFF.md"), content: buildHandoff(ctx), mode: "replace" },
           inject_note: `Tally observed the context at ${pct2.toFixed(0)}% of the window; HANDOFF.md in the repo root now holds the goal, current state, and next steps as of ${ctx.now.toISOString().slice(11, 16)} UTC.`
         };
         return [s];
@@ -14436,7 +14555,7 @@ var init_context_pressure = __esm({
 
 // src/coach/rules/claude-md.ts
 import fs51 from "node:fs";
-import path58 from "node:path";
+import path59 from "node:path";
 function instructionSentences(text2) {
   const out = [];
   for (const raw of text2.split(/(?<=[.!\n])\s+|;\s+/)) {
@@ -14466,11 +14585,11 @@ function repeatedInstructions(prompts, historyPrompts = []) {
   return [...seen.values()].filter((x) => x.count >= 2).sort((a, b) => b.count - a.count);
 }
 function detectStack(cwd) {
-  const has2 = (f) => fs51.existsSync(path58.join(cwd, f));
+  const has2 = (f) => fs51.existsSync(path59.join(cwd, f));
   const lines = [];
   if (has2("package.json")) {
     try {
-      const pkg = JSON.parse(fs51.readFileSync(path58.join(cwd, "package.json"), "utf8"));
+      const pkg = JSON.parse(fs51.readFileSync(path59.join(cwd, "package.json"), "utf8"));
       const s = pkg.scripts ?? {};
       if (s.test) lines.push(`- Test: \`npm test\` (${s.test})`);
       if (s.build) lines.push(`- Build: \`npm run build\``);
@@ -14501,7 +14620,7 @@ var init_claude_md = __esm({
         const prompts = ctx.events.filter((e) => e.type === "prompt").map((e) => String(e.data.prompt ?? ""));
         const historyPrompts = ctx.history.filter((h) => h.repo === repoKeyOf(ctx.cwd) && Array.isArray(h.prompts)).flatMap((h) => h.prompts ?? []);
         const repeated = repeatedInstructions(prompts, historyPrompts);
-        const claudeMdPath = path58.join(ctx.cwd, "CLAUDE.md");
+        const claudeMdPath = path59.join(ctx.cwd, "CLAUDE.md");
         const existing = ctx.claudeMd ?? "";
         for (const r of repeated.slice(0, 2)) {
           if (existing.toLowerCase().includes(r.text.toLowerCase().slice(0, 40))) continue;
@@ -14531,7 +14650,7 @@ var init_claude_md = __esm({
               label: "Create a starter CLAUDE.md",
               file: claudeMdPath,
               mode: "create",
-              content: `# ${path58.basename(ctx.cwd)}
+              content: `# ${path59.basename(ctx.cwd)}
 
 ## Commands
 ${stack.length ? stack.join("\n") : "- (fill in test/build/lint commands)"}
@@ -14758,7 +14877,7 @@ var init_mcp_errors = __esm({
 });
 
 // src/coach/rules/permission-friction.ts
-import path59 from "node:path";
+import path60 from "node:path";
 function commandPrefix(message) {
   const m = /Bash\(([^)]+)\)/.exec(message) ?? /`([^`]+)`/.exec(message) ?? /(?:run|execute|use)\s+(?:the\s+)?(?:command\s+)?[`"']?([^`"'\n]+)/i.exec(message);
   const cmd = (m?.[1] ?? "").trim();
@@ -14794,7 +14913,7 @@ var init_permission_friction = __esm({
             action: {
               kind: "settings",
               label: `Add ${rule} to .claude/settings.local.json`,
-              file: path59.join(ctx.cwd, ".claude", "settings.local.json"),
+              file: path60.join(ctx.cwd, ".claude", "settings.local.json"),
               patch: { permissions: { allow: [rule] } },
               snippet: JSON.stringify({ permissions: { allow: [rule] } }, null, 2)
             }
@@ -14843,15 +14962,16 @@ var init_burn_rate = __esm({
         const task = ctx.task;
         if (task && task.budget_usd > 0 && ctx.spendUsd > 0) {
           const pct2 = ctx.spendUsd / task.budget_usd * 100;
+          const from = task.budget_basis === "history" ? "what comparable past tasks cost" : task.budget_basis === "cap" ? "the cap set for this session" : task.budget_basis === "policy" ? "the repo policy" : "the repo's hours \xD7 rate rule";
           if (pct2 >= 100) {
             out.push({
               rule: this.id,
               key: "budget:100",
               severity: "critical",
               title: `Over budget: $${ctx.spendUsd.toFixed(2)} of $${task.budget_usd.toFixed(2)}`,
-              message: `Spend has passed the intake budget for "${task.title}" (${pct2.toFixed(0)}%). The budget was 25% of the human-equivalent value; beyond it the ROI verdict turns borderline. Wrap up or re-scope.`,
+              message: `Spend has passed the budget for "${task.title}" (${pct2.toFixed(0)}%), set from ${from}. Wrap up, re-scope, or raise the cap on purpose (tally budget set <usd>).`,
               usd_saved: ctx.avgTurnCostUsd * 5,
-              action: { kind: "inject", label: "Tell Claude to wrap up", note: `Tally observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget set at intake (${pct2.toFixed(0)}%).` }
+              action: { kind: "inject", label: "Tell Claude to wrap up", note: `Tally observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget from ${from} (${pct2.toFixed(0)}%).` }
             });
           } else if (pct2 >= 80) {
             out.push({
@@ -15043,9 +15163,9 @@ var init_rules = __esm({
 
 // src/coach/engine.ts
 import fs52 from "node:fs";
-import path60 from "node:path";
+import path61 from "node:path";
 function stateFile(session) {
-  return path60.join(sessionDir(session), "coach-state.json");
+  return path61.join(sessionDir(session), "coach-state.json");
 }
 function loadState(session) {
   return readJson(stateFile(session), { shown: 0, shown_keys: [], skips: {}, llm_events_seen: 0 });
@@ -15073,11 +15193,11 @@ function unmuteRule(cwd, rule) {
 function isMuted(cwd, rule, mutes = loadMutes()) {
   return !!mutes[repoKey(cwd)]?.[rule];
 }
-function rank(suggestions) {
+function rank2(suggestions) {
   return [...suggestions].sort((a, b) => SEV_RANK[b.severity] - SEV_RANK[a.severity] || b.usd_saved - a.usd_saved);
 }
 function readClaudeMd(cwd) {
-  const p = path60.join(cwd, "CLAUDE.md");
+  const p = path61.join(cwd, "CLAUDE.md");
   return fs52.existsSync(p) ? fs52.readFileSync(p, "utf8") : null;
 }
 var SEV_RANK, CoachEngine;
@@ -15113,7 +15233,7 @@ var init_engine = __esm({
         const sinceLast = this.state.last_shown_at ? (now - Date.parse(this.state.last_shown_at)) / 1e3 : Infinity;
         let quotaLeft = this.state.shown < this.cfg.coach.max_per_session;
         let intervalOk = sinceLast >= this.cfg.coach.min_interval_s;
-        for (const s of rank(candidates)) {
+        for (const s of rank2(candidates)) {
           if (isMuted(ctx.cwd, s.rule, this.mutes)) {
             result.suppressed.push({ suggestion: s, why: "muted" });
             continue;
@@ -15307,10 +15427,10 @@ function renderHeader(ctx, color = true) {
   ];
   return lines.join("\n");
 }
-function renderSuggestion(s, color = true, index) {
+function renderSuggestion(s, color = true, index2) {
   const sev = s.severity === "critical" ? paint(color, C.red, "!! ") : s.severity === "warn" ? paint(color, C.yellow, " ! ") : paint(color, C.blue, " \xB7 ");
   const saved = s.usd_saved > 0 ? paint(color, C.gray, `  ~${fmtUsd(s.usd_saved)} at stake`) : "";
-  const head = `${sev}${paint(color, C.bold, s.title)}${saved}${index !== void 0 ? paint(color, C.gray, `  #${index}`) : ""}`;
+  const head = `${sev}${paint(color, C.bold, s.title)}${saved}${index2 !== void 0 ? paint(color, C.gray, `  #${index2}`) : ""}`;
   const body = s.message.split("\n").map((l) => `    ${l}`).join("\n");
   const act = s.action.kind === "none" ? "" : `
     ${paint(color, C.gray, `[a]pply: ${s.action.label}`)}`;
@@ -15572,7 +15692,7 @@ var init_start = __esm({
 
 // src/judge/quickcheck.ts
 import fs55 from "node:fs";
-import path61 from "node:path";
+import path62 from "node:path";
 import { spawnSync as spawnSync18 } from "node:child_process";
 function safeRegex2(p) {
   try {
@@ -15582,7 +15702,7 @@ function safeRegex2(p) {
   }
 }
 function baseHead(session) {
-  const f = path61.join(sessionDir(session), "events.jsonl");
+  const f = path62.join(sessionDir(session), "events.jsonl");
   if (!fs55.existsSync(f)) return void 0;
   for (const line of fs55.readFileSync(f, "utf8").split("\n")) {
     if (!line.includes('"session_start"')) continue;
@@ -15595,7 +15715,7 @@ function baseHead(session) {
   return void 0;
 }
 function gitDiff(cwd, base) {
-  if (!fs55.existsSync(path61.join(cwd, ".git"))) return { files: [], text: "" };
+  if (!fs55.existsSync(path62.join(cwd, ".git"))) return { files: [], text: "" };
   const range = base ? [base] : ["HEAD"];
   const names = spawnSync18("git", ["diff", "--name-only", ...range], { cwd, encoding: "utf8", windowsHide: true, timeout: 3e3 });
   const untracked = spawnSync18("git", ["ls-files", "--others", "--exclude-standard"], { cwd, encoding: "utf8", windowsHide: true, timeout: 3e3 });
@@ -15604,7 +15724,7 @@ function gitDiff(cwd, base) {
   return { files, text: diff.stdout ?? "" };
 }
 function quickChecks(session, cwd) {
-  const task = readJson(path61.join(sessionDir(session), "task.json"), null);
+  const task = readJson(path62.join(sessionDir(session), "task.json"), null);
   const criteria = task?.criteria ?? [];
   const items = [];
   let diff = null;
@@ -15616,12 +15736,12 @@ function quickChecks(session, cwd) {
       continue;
     }
     if (ch.kind === "file_exists" && ch.path && cwd) {
-      const ok = fs55.existsSync(path61.join(cwd, ch.path));
+      const ok = fs55.existsSync(path62.join(cwd, ch.path));
       items.push({ id: c.id, text: c.text, kind: ch.kind, status: ok ? "met" : "unmet", why: `${ch.path} ${ok ? "exists" : "does not exist"}` });
     } else if (ch.kind === "file_contains" && ch.path && ch.pattern && cwd) {
-      const p = path61.join(cwd, ch.path);
+      const p = path62.join(cwd, ch.path);
       const re = safeRegex2(ch.pattern);
-      if (!fs55.existsSync(p)) items.push({ id: c.id, text: c.text, kind: ch.kind, status: fs55.existsSync(path61.dirname(p)) ? "unmet" : "unknown", why: `${ch.path} does not exist${fs55.existsSync(path61.dirname(p)) ? "" : " (nor its directory; the path may be a guess)"}` });
+      if (!fs55.existsSync(p)) items.push({ id: c.id, text: c.text, kind: ch.kind, status: fs55.existsSync(path62.dirname(p)) ? "unmet" : "unknown", why: `${ch.path} does not exist${fs55.existsSync(path62.dirname(p)) ? "" : " (nor its directory; the path may be a guess)"}` });
       else if (!re) items.push({ id: c.id, text: c.text, kind: ch.kind, status: "unknown", why: "invalid pattern" });
       else {
         const ok = re.test(fs55.readFileSync(p, "utf8"));
@@ -15644,13 +15764,13 @@ function quickChecks(session, cwd) {
   const checked = items.filter((i) => i.status !== "unknown").length;
   const progress = { ts: (/* @__PURE__ */ new Date()).toISOString(), met: items.filter((i) => i.status === "met").length, checked, total: items.length, items };
   try {
-    writeJson(path61.join(sessionDir(session), "progress.json"), progress);
+    writeJson(path62.join(sessionDir(session), "progress.json"), progress);
   } catch {
   }
   return progress;
 }
 function readProgress(session) {
-  return readJson(path61.join(sessionDir(session), "progress.json"), null);
+  return readJson(path62.join(sessionDir(session), "progress.json"), null);
 }
 var norm6;
 var init_quickcheck = __esm({
@@ -15671,12 +15791,12 @@ __export(statusline_exports, {
   run: () => run20
 });
 import fs56 from "node:fs";
-import path62 from "node:path";
+import path63 from "node:path";
 function orderedFlags(pending) {
   return [...pending].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
 }
 function flagsFile(session) {
-  return path62.join(sessionDir(session), "coach-flags.json");
+  return path63.join(sessionDir(session), "coach-flags.json");
 }
 function readFlags(session) {
   const f = flagsFile(session);
@@ -15702,20 +15822,22 @@ function renderStatusLine(input, color = true) {
     if (prog && prog.checked) parts.push(paint2(prog.met === prog.checked ? C2.green : C2.yellow, `${prog.met}/${prog.checked} \u2714`));
   }
   const est = session ? loadEstimate(session) : null;
-  if (est && est.usd > 0 && est.basis !== "none") {
+  if (task && task.budget_usd > 0) {
+    const pct2 = Math.round(spend / task.budget_usd * 100);
+    const s = `${fmtUsd(spend)} / ${fmtUsd(task.budget_usd)}${task.budget_basis === "cap" ? " cap" : ""} (${pct2}%)`;
+    parts.push(pct2 >= 100 ? paint2(C2.red, s) : pct2 >= 80 ? paint2(C2.yellow, s) : s);
+  } else if (isComparable(est)) {
     const pct2 = Math.round(spend / est.usd * 100);
     const s = `${fmtUsd(spend)} / ~${fmtUsd(est.usd)} est (${pct2}%)`;
     parts.push(pct2 >= 100 ? paint2(C2.red, s) : pct2 >= 80 ? paint2(C2.yellow, s) : s);
   } else if (task) {
-    const pct2 = task.budget_usd ? Math.round(spend / task.budget_usd * 100) : null;
-    const budgetStr = pct2 === null ? fmtUsd(spend) : `${fmtUsd(spend)}/${fmtUsd(task.budget_usd)} (${pct2}%)`;
-    parts.push(pct2 !== null && pct2 >= 100 ? paint2(C2.red, budgetStr) : pct2 !== null && pct2 >= 80 ? paint2(C2.yellow, budgetStr) : budgetStr);
+    parts.push(`${fmtUsd(spend)}${paint2(C2.dim, " \xB7 no cap")}`);
   } else {
     parts.push(paint2(C2.dim, `no task linked \xB7 ${fmtUsd(spend)}`));
   }
   if (session && spend > 0) {
     try {
-      const f = path62.join(sessionDir(session), "spend.json");
+      const f = path63.join(sessionDir(session), "spend.json");
       const prev = fs56.existsSync(f) ? JSON.parse(fs56.readFileSync(f, "utf8")).usd : void 0;
       if (prev === void 0 || Math.abs(prev - spend) >= 0.01) writeJson(f, { usd: spend, ts: (/* @__PURE__ */ new Date()).toISOString() });
     } catch {
@@ -15741,7 +15863,7 @@ function renderStatusLine(input, color = true) {
     const title = top.title.length > 44 ? top.title.slice(0, 43) + "\u2026" : top.title;
     parts.push(paint2(C2.cyan, `\u2691 ${flags} \xB7 ${title}${top.usd_saved ? ` (~$${top.usd_saved.toFixed(2)})` : ""} \xB7 ${enabledPluginIds().length ? "/tally:coach" : "tally coach"}`));
   }
-  if (session && fs56.existsSync(path62.join(sessionDir(session), "hard-stop.json"))) parts.push(paint2(C2.red, "HARD STOP: over the repo budget \xB7 tally budget approve"));
+  if (session && fs56.existsSync(path63.join(sessionDir(session), "hard-stop.json"))) parts.push(paint2(C2.red, "HARD STOP: over the repo budget \xB7 tally budget approve"));
   if (judge) parts.push(paint2(judge.verdict.verdict === "worth it" ? C2.green : judge.verdict.verdict === "not worth it" ? C2.red : C2.yellow, `receipt: ${judge.completion_pct}% \xB7 ${judge.verdict.verdict}`));
   return parts.join(paint2(C2.dim, " \xB7 "));
 }
@@ -15806,16 +15928,17 @@ __export(budget_exports, {
   hardStopFile: () => hardStopFile,
   isApproved: () => isApproved,
   readHardStop: () => readHardStop,
-  run: () => run21
+  run: () => run21,
+  setCap: () => setCap
 });
 import fs57 from "node:fs";
-import path63 from "node:path";
+import path64 from "node:path";
 import os10 from "node:os";
 function hardStopFile(session) {
-  return path63.join(sessionDir(session), "hard-stop.json");
+  return path64.join(sessionDir(session), "hard-stop.json");
 }
 function approvalFile(session) {
-  return path63.join(sessionDir(session), "budget-approved.json");
+  return path64.join(sessionDir(session), "budget-approved.json");
 }
 function readHardStop(session) {
   return readJson(hardStopFile(session), null);
@@ -15830,12 +15953,34 @@ function approveBudget(session, by, note, cwd) {
   appendEvent({ ts: (/* @__PURE__ */ new Date()).toISOString(), type: "budget_approved", session, cwd, data: { by, note: note ?? "", lifted } });
   return { lifted };
 }
+function setCap(session, usd, by, note, cwd) {
+  if (!(usd > 0)) throw new Error("the cap must be a positive dollar amount");
+  const cap = { usd: Math.round(usd * 100) / 100, by, ts: (/* @__PURE__ */ new Date()).toISOString(), ...note ? { note } : {} };
+  writeCap(session, cap);
+  const task = loadTask(session);
+  const pol = loadPolicy(cwd ?? task?.cwd);
+  const b = budgetFor({ cap, policy: pol.policy.budget, estimate: loadEstimate(session), hours: task?.estimate.hours ?? 0, rate: task?.hourly_rate ?? 0 });
+  if (task) writeJson(taskFile(session), { ...task, budget_usd: b.usd, budget_basis: b.basis });
+  appendEvent({ ts: cap.ts, type: "budget_set", session, cwd, data: { usd: b.usd, requested_usd: cap.usd, by, note: note ?? "", clamped: b.usd < cap.usd } });
+  return { usd: b.usd, clamped: b.usd < cap.usd, applied: !!task };
+}
 async function run21(args) {
   const sub = args._[0] ?? "status";
   const session = resolveSession(flag(args, "session"), process.cwd());
   if (!session) {
     process.stderr.write("No session found.\n");
     return 1;
+  }
+  if (sub === "set") {
+    const usd = Number(String(args._[1] ?? "").replace(/^\$/, ""));
+    if (!(usd > 0)) {
+      process.stderr.write('Usage: tally budget set <usd> [--note "why"]\n');
+      return 2;
+    }
+    const r = setCap(session, usd, flag(args, "by") ?? os10.userInfo().username, flag(args, "note"), process.cwd());
+    process.stdout.write(`Budget for session ${session.slice(0, 8)}: ${fmtUsd(r.usd)}${r.clamped ? " (clamped to the repo policy budget)" : ""}${r.applied ? "" : "; it applies once the task is linked"}. The status line and the Stop notices now run against it.
+`);
+    return;
   }
   if (sub === "approve") {
     const r = approveBudget(session, flag(args, "by") ?? os10.userInfo().username, flag(args, "note"), process.cwd());
@@ -15844,13 +15989,16 @@ async function run21(args) {
 `);
     return;
   }
+  const task = loadTask(session);
+  if (task) process.stdout.write(`Budget \xB7 ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}${task.budget_usd > 0 ? "" : " \u2192 tally budget set <usd>"}
+`);
   const stop = readHardStop(session);
   if (stop) process.stdout.write(`HARD STOP \xB7 session ${session.slice(0, 8)} spent ${fmtUsd(stop.spend_usd)} against a ${fmtUsd(stop.budget_usd)} budget${stop.policy_file ? ` (${stop.policy_file})` : ""}. Tool calls are denied until: tally budget approve --note "<why>"
 `);
   else process.stdout.write(`No hard stop active for session ${session.slice(0, 8)}${isApproved(session) ? " (budget overrun approved)" : ""}.
 `);
 }
-var init_budget = __esm({
+var init_budget2 = __esm({
   "src/commands/budget.ts"() {
     "use strict";
     init_cli();
@@ -15858,6 +16006,129 @@ var init_budget = __esm({
     init_paths();
     init_events();
     init_pricing();
+    init_intake();
+    init_budget();
+    init_policy();
+    init_estimate();
+  }
+});
+
+// src/recall/match.ts
+import fs58 from "node:fs";
+import path65 from "node:path";
+import { createHash as createHash2 } from "node:crypto";
+function recallSettings() {
+  const raw = readJson(configFile(), {});
+  const r = raw.recall ?? {};
+  return { enabled: r.enabled !== false, min: typeof r.min_similarity === "number" ? r.min_similarity : RECALL_MIN_SIMILARITY, dir: typeof r.dir === "string" && r.dir ? r.dir : void 0 };
+}
+function recallKey(cwd) {
+  const key = repoKey(cwd);
+  const slug2 = key.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(-60);
+  return `${slug2 || "repo"}-${createHash2("sha1").update(key).digest("hex").slice(0, 8)}`;
+}
+function recallDir(cwd, dir = recallSettings().dir) {
+  return path65.join(dir ?? path65.join(tallyHome(), "recall"), recallKey(cwd));
+}
+function cardFile(cwd, session) {
+  return path65.join(recallDir(cwd), `${session}.json`);
+}
+function readCards(cwd) {
+  const dir = recallDir(cwd);
+  if (!fs58.existsSync(dir)) return [];
+  const out = [];
+  for (const f of fs58.readdirSync(dir)) {
+    if (!f.endsWith(".json")) continue;
+    const c = readJson(path65.join(dir, f), null);
+    if (c && c.v === 1 && c.title && c.outcome) out.push(c);
+  }
+  return out.sort((a, b) => (b.updated ?? "").localeCompare(a.updated ?? ""));
+}
+function matchRecall(query, cards, opts = {}) {
+  const pool = cards.filter((c) => c.session !== opts.exclude);
+  if (!pool.length) return [];
+  const min = opts.min ?? RECALL_MIN_SIMILARITY;
+  return rank(query, pool.map((c) => `${c.title}
+${c.text}`)).filter((r) => r.sim >= min).slice(0, opts.limit ?? 3).map((r) => ({ card: pool[r.i], similarity: Math.round(r.sim * 100) / 100 }));
+}
+var RECALL_MIN_SIMILARITY;
+var init_match = __esm({
+  "src/recall/match.ts"() {
+    "use strict";
+    init_paths();
+    init_similarity();
+    RECALL_MIN_SIMILARITY = 0.35;
+  }
+});
+
+// src/recall/index.ts
+import path66 from "node:path";
+function relative(cwd, f) {
+  const r = path66.relative(cwd, f);
+  return (r && !r.startsWith("..") && !path66.isAbsolute(r) ? r : f).replace(/\\/g, "/");
+}
+function buildCard(opts) {
+  const t = opts.transcript;
+  const outcome = redact(t.finalAssistantText ?? "").trim();
+  if (!t.toolCalls.length || !outcome) return void 0;
+  const prompts = t.prompts.map((p) => p.text);
+  const title = (opts.task?.title ?? storyTitle(prompts, opts.cwd) ?? prompts[0]?.split("\n")[0] ?? "").trim();
+  if (!title) return void 0;
+  const text2 = redact(opts.task && !opts.task.inferred ? `${opts.task.title}
+${opts.task.body_excerpt}` : prompts.slice(0, 3).join("\n")).slice(0, 2e3);
+  const files = /* @__PURE__ */ new Set();
+  const tests = /* @__PURE__ */ new Set();
+  for (const c of t.toolCalls) {
+    if (c.agent !== "main") continue;
+    if (EDIT_TOOLS.has(c.name) && typeof c.input.file_path === "string") files.add(relative(opts.cwd, c.input.file_path));
+    if (c.name === "Bash" && typeof c.input.command === "string" && isTestCommand(c.input.command) && tests.size < 5) tests.add(redact(c.input.command).slice(0, 120));
+  }
+  const span = spanOf(t);
+  return {
+    v: 1,
+    session: opts.session,
+    repo: repoKey(opts.cwd),
+    cwd: opts.cwd,
+    title: title.slice(0, 200),
+    text: text2,
+    outcome: outcome.slice(0, 1500),
+    files: [...files].slice(0, 30),
+    tests: [...tests],
+    cost_usd: Math.round(t.cost * 100) / 100,
+    started: span.first ?? t.startedAt,
+    updated: (opts.now ?? /* @__PURE__ */ new Date()).toISOString(),
+    days: span.days,
+    ...opts.verdict ? { verdict: opts.verdict } : {}
+  };
+}
+function writeCard(opts) {
+  const card = buildCard(opts);
+  if (!card) return void 0;
+  const f = cardFile(opts.cwd, opts.session);
+  ensureDir(path66.dirname(f));
+  writeJson(f, card);
+  return card;
+}
+function renderCard(c) {
+  const L = [`${c.title}`, `  session ${c.session.slice(0, 8)} \xB7 ${(c.started ?? c.updated).slice(0, 10)}${c.days > 1 ? ` \xB7 ${c.days} days` : ""} \xB7 $${c.cost_usd.toFixed(2)}${c.verdict ? ` \xB7 ${c.verdict}` : ""}`, ""];
+  L.push("Asked for:", ...c.text.split("\n").slice(0, 12).map((l) => `  ${l}`), "");
+  L.push("Outcome:", ...c.outcome.split("\n").map((l) => `  ${l}`));
+  if (c.files.length) L.push("", `Files: ${c.files.join(", ")}`);
+  if (c.tests.length) L.push(`Tests run: ${c.tests.join(" \xB7 ")}`);
+  return L.join("\n");
+}
+var EDIT_TOOLS;
+var init_recall = __esm({
+  "src/recall/index.ts"() {
+    "use strict";
+    init_paths();
+    init_redact();
+    init_parse();
+    init_estimate();
+    init_variance();
+    init_match();
+    init_match();
+    EDIT_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
   }
 });
 
@@ -15867,7 +16138,7 @@ __export(coach_exports, {
   parseCoachArgs: () => parseCoachArgs,
   run: () => run22
 });
-import fs58 from "node:fs";
+import fs59 from "node:fs";
 async function run22(args) {
   const cfg = loadConfig();
   const session = resolveSession(flag(args, "session"), process.cwd());
@@ -15896,12 +16167,18 @@ async function run22(args) {
         computeCheck(session, { transcript: ctx.transcript, baselineTokens: cfg.baseline_context_tokens });
       } catch {
       }
+      if (cfg.recall.enabled) {
+        try {
+          writeCard({ session, cwd, transcript: ctx.transcript, task: ctx.task });
+        } catch {
+        }
+      }
     }
     const pol = loadPolicy(cwd);
     if (ctx.task && pol.policy.budget.hard_stop && ctx.task.budget_usd > 0) {
       const over = ctx.spendUsd >= ctx.task.budget_usd;
-      if (over && !isApproved(session) && !fs58.existsSync(hardStopFile(session))) writeJson(hardStopFile(session), { ts: (/* @__PURE__ */ new Date()).toISOString(), spend_usd: ctx.spendUsd, budget_usd: ctx.task.budget_usd, policy_file: pol.file });
-      else if (!over && fs58.existsSync(hardStopFile(session))) fs58.unlinkSync(hardStopFile(session));
+      if (over && !isApproved(session) && !fs59.existsSync(hardStopFile(session))) writeJson(hardStopFile(session), { ts: (/* @__PURE__ */ new Date()).toISOString(), spend_usd: ctx.spendUsd, budget_usd: ctx.task.budget_usd, policy_file: pol.file });
+      else if (!over && fs59.existsSync(hardStopFile(session))) fs59.unlinkSync(hardStopFile(session));
     }
     const flags = readFlags(session);
     const live = new Set(engine.evaluate(ctx).map((s) => s.key));
@@ -16009,7 +16286,8 @@ var init_coach = __esm({
     init_inject();
     init_policy();
     init_quickcheck();
-    init_budget();
+    init_budget2();
+    init_recall();
     init_variance();
   }
 });
@@ -16331,9 +16609,9 @@ __export(doctor_exports, {
   runChecks: () => runChecks,
   transcriptFormatCheck: () => transcriptFormatCheck
 });
-import fs59 from "node:fs";
+import fs60 from "node:fs";
 import os11 from "node:os";
-import path64 from "node:path";
+import path67 from "node:path";
 import { spawnSync as spawnSync19 } from "node:child_process";
 function semverNewer(a, b) {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
@@ -16346,22 +16624,22 @@ function semverNewer(a, b) {
 }
 function installChecks(opts) {
   const out = [];
-  const version3 = readJson(path64.join(packageRoot(), "package.json"), {}).version ?? "unknown";
+  const version3 = readJson(path67.join(packageRoot(), "package.json"), {}).version ?? "unknown";
   const here3 = packageRoot();
   const onPath = sh2(process.platform === "win32" ? "where" : "which", ["tally"]);
   const first = onPath.ok ? onPath.out.split("\n")[0].trim() : "";
   let resolvesHere = null;
   if (first) {
     try {
-      const real = fs59.realpathSync(first);
-      const text2 = real.endsWith(".js") ? "" : fs59.readFileSync(first, "utf8");
-      resolvesHere = real.startsWith(here3) || text2.includes(path64.basename(here3)) || text2.includes("@kru3ish/tally") || text2.includes("dist/cli.js") || text2.includes("dist\\cli.js");
+      const real = fs60.realpathSync(first);
+      const text2 = real.endsWith(".js") ? "" : fs60.readFileSync(first, "utf8");
+      resolvesHere = real.startsWith(here3) || text2.includes(path67.basename(here3)) || text2.includes("@kru3ish/tally") || text2.includes("dist/cli.js") || text2.includes("dist\\cli.js");
     } catch {
       resolvesHere = null;
     }
   }
   const prefix = sh2("npm", ["prefix", "-g"]);
-  const globalBin = prefix.ok ? process.platform === "win32" ? prefix.out.trim() : path64.join(prefix.out.trim(), "bin") : "";
+  const globalBin = prefix.ok ? process.platform === "win32" ? prefix.out.trim() : path67.join(prefix.out.trim(), "bin") : "";
   out.push({
     name: "tally",
     ok: first ? resolvesHere === false ? "warn" : true : "warn",
@@ -16386,9 +16664,9 @@ function agentChecks() {
   for (const id of AGENT_IDS) {
     const a = agent(id);
     const hooksFile = a.hooksFile();
-    const configDir = path64.dirname(hooksFile);
-    const binary = id === "claude-code" ? sh2("claude", ["--version"]).ok : id === "codex" ? sh2(process.platform === "win32" ? "where" : "which", ["codex"]).ok : id === "gemini" ? sh2(process.platform === "win32" ? "where" : "which", ["gemini"]).ok : sh2(process.platform === "win32" ? "where" : "which", ["cursor-agent"]).ok || fs59.existsSync(configDir);
-    const present = binary || fs59.existsSync(configDir);
+    const configDir = path67.dirname(hooksFile);
+    const binary = id === "claude-code" ? sh2("claude", ["--version"]).ok : id === "codex" ? sh2(process.platform === "win32" ? "where" : "which", ["codex"]).ok : id === "gemini" ? sh2(process.platform === "win32" ? "where" : "which", ["gemini"]).ok : sh2(process.platform === "win32" ? "where" : "which", ["cursor-agent"]).ok || fs60.existsSync(configDir);
+    const present = binary || fs60.existsSync(configDir);
     if (!present) {
       absent.push(a.label);
       continue;
@@ -16398,22 +16676,22 @@ function agentChecks() {
     if (id === "claude-code") {
       const settings = readJson(hooksFile, {});
       installed = isInstalled("user") || Object.entries(settings.enabledPlugins ?? {}).some(([k, v]) => v && k.startsWith("tally"));
-    } else if (fs59.existsSync(hooksFile)) {
+    } else if (fs60.existsSync(hooksFile)) {
       try {
-        const text2 = fs59.readFileSync(hooksFile, "utf8");
+        const text2 = fs60.readFileSync(hooksFile, "utf8");
         installed = /--agent[ =]/.test(text2) && /hook\.js|tally/.test(text2);
       } catch {
         installed = false;
       }
     }
     out.push({ name: `hooks: ${id}`, ok: installed ? true : "warn", detail: installed ? `Tally hooks in ${hooksFile}` : `${a.label} detected (${binary ? "binary on PATH" : configDir}) but Tally is not hooked in`, fix: installed ? void 0 : id === "claude-code" ? "`tally install` or /plugin install tally@tally" : `tally install --agent ${id}` });
-    const roots = id === "claude-code" ? [path64.join(claudeHome(), "projects")] : a.transcriptRoots?.() ?? [];
+    const roots = id === "claude-code" ? [path67.join(claudeHome(), "projects")] : a.transcriptRoots?.() ?? [];
     if (!roots.length) out.push({ name: `history: ${id}`, ok: true, detail: `${a.label} exposes no transcript to Tally; receipts say "unavailable" for tokens and cost (see tally adapters)` });
     else {
       const readable = roots.filter((r) => {
         try {
-          fs59.accessSync(r, fs59.constants.R_OK);
-          return fs59.statSync(r).isDirectory();
+          fs60.accessSync(r, fs60.constants.R_OK);
+          return fs60.statSync(r).isDirectory();
         } catch {
           return false;
         }
@@ -16423,8 +16701,8 @@ function agentChecks() {
         try {
           const walk = (d, depth) => {
             if (depth > 4 || files > 5e3) return;
-            for (const e of fs59.readdirSync(d, { withFileTypes: true })) {
-              if (e.isDirectory()) walk(path64.join(d, e.name), depth + 1);
+            for (const e of fs60.readdirSync(d, { withFileTypes: true })) {
+              if (e.isDirectory()) walk(path67.join(d, e.name), depth + 1);
               else if (e.name.endsWith(".jsonl")) files += 1;
             }
           };
@@ -16457,7 +16735,7 @@ function runChecks(opts = {}) {
   checks.push({ name: "gh", ok: gh2.ok ? true : "warn", detail: gh2.ok ? "authenticated" : `${gh2.reason}. Fix: ${gh2.fix}. Until then GitHub intake falls back to the prompt text, write-back and follow-up are skipped and say so.` });
   const user = isInstalled("user");
   const project = isInstalled("project", process.cwd());
-  const settings = readJson(path64.join(claudeHome(), "settings.json"), {});
+  const settings = readJson(path67.join(claudeHome(), "settings.json"), {});
   const plugin = Object.entries(settings.enabledPlugins ?? {}).some(([k, v]) => v && k.startsWith("tally"));
   const ways = [user && "user settings", project && "project settings", plugin && "plugin"].filter(Boolean);
   checks.push({ name: "hooks", ok: ways.length === 1 ? true : ways.length === 0 ? false : "warn", detail: ways.length === 0 ? `not installed (${settingsPath("user")})` : ways.length === 1 ? `installed via ${ways[0]}` : `installed ${ways.length} ways (${ways.join(", ")}); tool events are de-duplicated by tool_use_id but prompts and stops are recorded twice`, fix: ways.length === 0 ? "`tally install` (npm CLI) or /plugin install tally@tally (plugin)" : ways.length > 1 ? "keep one: `tally uninstall` removes the settings hooks, /plugin uninstall tally removes the plugin" : void 0 });
@@ -16467,22 +16745,22 @@ function runChecks(opts = {}) {
     const st = readJson(f, {});
     for (const groups of Object.values(st.hooks ?? {})) for (const g of groups) for (const h of g.hooks ?? []) if (isTallyHook(h)) referenced.push((h.args?.[0] ?? /"([^"]+hook\.js)"/.exec(h.command ?? "")?.[1] ?? "").replace(/^\$\{CLAUDE_PLUGIN_ROOT\}.*/, ""));
   }
-  const missing = [...new Set(referenced.filter((p) => p && !fs59.existsSync(p)))];
+  const missing = [...new Set(referenced.filter((p) => p && !fs60.existsSync(p)))];
   if (referenced.length) checks.push({ name: "hook script", ok: missing.length ? false : true, detail: missing.length ? `${missing.join(", ")} does not exist; every hook event is failing (non-blocking)` : `${[...new Set(referenced)].join(", ")} exists`, fix: missing.length ? `\`tally install\` repoints the hooks at ${builtHookPath()}` : void 0 });
   const hook = builtHookPath();
-  fs59.mkdirSync(tallyHome(), { recursive: true });
-  if (fs59.existsSync(hook)) {
+  fs60.mkdirSync(tallyHome(), { recursive: true });
+  if (fs60.existsSync(hook)) {
     const t0 = Date.now();
-    const r = spawnSync19(process.execPath, [hook, "Stop"], { input: "{}", encoding: "utf8", env: { ...process.env, TALLY_HOME: fs59.mkdtempSync(path64.join(tallyHome(), "doctor-")) } });
+    const r = spawnSync19(process.execPath, [hook, "Stop"], { input: "{}", encoding: "utf8", env: { ...process.env, TALLY_HOME: fs60.mkdtempSync(path67.join(tallyHome(), "doctor-")) } });
     const ms = Date.now() - t0;
     checks.push({ name: "hook runtime", ok: r.status === 0 && ms < 150 ? true : r.status === 0 ? "warn" : false, detail: `exit ${r.status}, ${ms} ms (limit 150)`, fix: r.status === 0 ? ms < 150 ? void 0 : "a slow disk or antivirus scan of node; run `tally doctor` again when the machine is idle" : `the hook crashed: run \`node "${hook}" Stop\` with input {} to see the error, then \`npm i -g @kru3ish/tally\` to reinstall` });
-    for (const d of fs59.readdirSync(tallyHome()).filter((x) => x.startsWith("doctor-"))) fs59.rmSync(path64.join(tallyHome(), d), { recursive: true, force: true });
+    for (const d of fs60.readdirSync(tallyHome()).filter((x) => x.startsWith("doctor-"))) fs60.rmSync(path67.join(tallyHome(), d), { recursive: true, force: true });
   } else {
     checks.push({ name: "hook runtime", ok: false, detail: "dist/hook.js missing", fix: "from a checkout: `npm run build`; from npm: `npm i -g @kru3ish/tally` again" });
   }
   try {
-    fs59.mkdirSync(tallyHome(), { recursive: true });
-    fs59.accessSync(tallyHome(), fs59.constants.W_OK);
+    fs60.mkdirSync(tallyHome(), { recursive: true });
+    fs60.accessSync(tallyHome(), fs60.constants.W_OK);
     checks.push({ name: "data dir", ok: true, detail: tallyHome() });
   } catch {
     checks.push({ name: "data dir", ok: false, detail: `${tallyHome()} not writable`, fix: `make it writable, or point TALLY_HOME at a directory you own` });
@@ -16493,14 +16771,14 @@ function runChecks(opts = {}) {
   checks.push({ name: "config", ok: cfgOk, detail: cfgOk ? `hourly_rate $${cfg.hourly_rate}, judge ${cfg.models.judge}, coach ${cfg.models.coach}, auto_apply ${cfg.auto_apply}, writeback ${cfg.writeback}` : `${configFile()} is invalid; defaults in use`, fix: cfgOk ? void 0 : `fix or delete ${configFile()}; \`tally config\` shows the valid keys` });
   const pricing = loadPricing();
   const age = (Date.now() - Date.parse(pricing.last_verified)) / 864e5;
-  checks.push({ name: "pricing", ok: age < 60 ? true : "warn", detail: `${fs59.existsSync(pricingFile()) ? pricingFile() : bundledPricingPath()} verified ${pricing.last_verified} (${Math.round(age)} days ago${age >= 60 ? "; re-check against the pricing page" : ""})` });
+  checks.push({ name: "pricing", ok: age < 60 ? true : "warn", detail: `${fs60.existsSync(pricingFile()) ? pricingFile() : bundledPricingPath()} verified ${pricing.last_verified} (${Math.round(age)} days ago${age >= 60 ? "; re-check against the pricing page" : ""})` });
   const jira = !!(cfg.jira.base_url && cfg.jira.email && cfg.jira.api_token);
   checks.push({ name: "jira", ok: jira ? true : "warn", detail: jira ? cfg.jira.base_url : "JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN not set (optional)" });
   checks.push({ name: "linear", ok: cfg.linear.api_key ? true : "warn", detail: cfg.linear.api_key ? "LINEAR_API_KEY set" : "LINEAR_API_KEY not set (optional)" });
   const tmux = sh2(process.platform === "win32" ? "where" : "which", ["tmux"]);
   checks.push({ name: "tmux", ok: tmux.ok ? true : "warn", detail: tmux.ok ? "available; `tally start` opens a split" : "not found; `tally start` prints the command to run in a second terminal" });
-  const transcripts = path64.join(claudeHome(), "projects");
-  checks.push({ name: "transcripts", ok: fs59.existsSync(transcripts) ? true : "warn", detail: fs59.existsSync(transcripts) ? transcripts : `${transcripts} not found yet (created by Claude Code on first session)` });
+  const transcripts = path67.join(claudeHome(), "projects");
+  checks.push({ name: "transcripts", ok: fs60.existsSync(transcripts) ? true : "warn", detail: fs60.existsSync(transcripts) ? transcripts : `${transcripts} not found yet (created by Claude Code on first session)` });
   const active = activeSessions();
   checks.push({ name: "sessions", ok: true, detail: `${active.length} active` });
   const receipts = loadHistory().filter((h) => typeof h.tally_share_pct === "number");
@@ -16511,25 +16789,25 @@ function runChecks(opts = {}) {
     checks.push({ name: "tally overhead", ok: true, detail: "no receipts yet; the share of session spend is reported on each receipt" });
   }
   checks.push(transcriptFormatCheck(process.cwd()));
-  const internalDirs = fs59.existsSync(transcripts) ? fs59.readdirSync(transcripts).filter((d) => isInternalCwd(d)).length : 0;
+  const internalDirs = fs60.existsSync(transcripts) ? fs60.readdirSync(transcripts).filter((d) => isInternalCwd(d)).length : 0;
   if (internalDirs) checks.push({ name: "internal runs", ok: true, detail: `${internalDirs} empty project dir(s) from Tally's own headless runs under ~/.claude/projects (no transcripts; safe to delete)` });
   return checks;
 }
 function transcriptFormatCheck(cwd) {
-  const dirs = [projectTranscriptsDir(cwd), path64.join(claudeHome(), "projects")];
+  const dirs = [projectTranscriptsDir(cwd), path67.join(claudeHome(), "projects")];
   const files = [];
   for (const d of dirs) {
-    if (!fs59.existsSync(d)) continue;
-    const entries = fs59.readdirSync(d).map((f) => path64.join(d, f));
+    if (!fs60.existsSync(d)) continue;
+    const entries = fs60.readdirSync(d).map((f) => path67.join(d, f));
     for (const e of entries) {
       if (e.endsWith(".jsonl")) files.push(e);
-      else if (fs59.statSync(e).isDirectory() && !isInternalCwd(e)) {
-        for (const f of fs59.readdirSync(e)) if (f.endsWith(".jsonl")) files.push(path64.join(e, f));
+      else if (fs60.statSync(e).isDirectory() && !isInternalCwd(e)) {
+        for (const f of fs60.readdirSync(e)) if (f.endsWith(".jsonl")) files.push(path67.join(e, f));
       }
     }
     if (files.length) break;
   }
-  const recent = files.map((f) => ({ f, m: fs59.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, 5);
+  const recent = files.map((f) => ({ f, m: fs60.statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, 5);
   if (!recent.length) return { name: "transcript format", ok: "warn", detail: "no transcripts found to check" };
   let unparseable = 0;
   let total = 0;
@@ -16556,7 +16834,7 @@ function transcriptFormatCheck(cwd) {
   };
 }
 function doctorJson(checks) {
-  const version3 = readJson(path64.join(packageRoot(), "package.json"), {}).version ?? "unknown";
+  const version3 = readJson(path67.join(packageRoot(), "package.json"), {}).version ?? "unknown";
   const rows = checks.map((c) => ({ name: c.name, status: c.ok === true ? "ok" : c.ok === "warn" ? "warn" : "fail", detail: c.detail, ...c.fix ? { fix: c.fix } : {} }));
   const problems = rows.filter((r) => r.status === "fail").length;
   return { schema: "tally.doctor.v1", version: version3, platform: `${process.platform} ${os11.release()}`, node: process.versions.node, ok: problems === 0, problems, warnings: rows.filter((r) => r.status === "warn").length, checks: rows };
@@ -16605,24 +16883,24 @@ var init_doctor = __esm({
 });
 
 // src/calibrate/eval.ts
-import fs60 from "node:fs";
+import fs61 from "node:fs";
 import os12 from "node:os";
-import path65 from "node:path";
+import path68 from "node:path";
 import { spawnSync as spawnSync20 } from "node:child_process";
 function fixturesRoot() {
-  return path65.join(packageRoot(), "test", "fixtures", "calibration");
+  return path68.join(packageRoot(), "test", "fixtures", "calibration");
 }
 function baselineFile() {
-  return path65.join(fixturesRoot(), "baseline.json");
+  return path68.join(fixturesRoot(), "baseline.json");
 }
 function loadFixtures(root = fixturesRoot()) {
-  if (!fs60.existsSync(root)) return [];
-  return fs60.readdirSync(root).filter((d) => fs60.existsSync(path65.join(root, d, "expected.json"))).sort().map((name) => {
-    const dir = path65.join(root, name);
-    const read2 = (f) => JSON.parse(fs60.readFileSync(path65.join(dir, f), "utf8"));
-    const recordedPath = path65.join(dir, "model-output.json");
+  if (!fs61.existsSync(root)) return [];
+  return fs61.readdirSync(root).filter((d) => fs61.existsSync(path68.join(root, d, "expected.json"))).sort().map((name) => {
+    const dir = path68.join(root, name);
+    const read2 = (f) => JSON.parse(fs61.readFileSync(path68.join(dir, f), "utf8"));
+    const recordedPath = path68.join(dir, "model-output.json");
     let recorded;
-    if (fs60.existsSync(recordedPath)) {
+    if (fs61.existsSync(recordedPath)) {
       const raw = read2("model-output.json");
       recorded = Array.isArray(raw.calls) ? { calls: raw.calls } : void 0;
     }
@@ -16635,33 +16913,33 @@ function git3(cwd, ...args) {
   return r.stdout.trim();
 }
 function materializeRepo(c, root) {
-  const cwd = path65.join(root, c.name);
-  fs60.mkdirSync(cwd, { recursive: true });
+  const cwd = path68.join(root, c.name);
+  fs61.mkdirSync(cwd, { recursive: true });
   git3(cwd, "init", "-q", "-b", "main");
   git3(cwd, "config", "user.email", "fixture@tally.local");
   git3(cwd, "config", "user.name", "tally fixture");
   for (const [f, content] of Object.entries(c.repo.base)) {
-    fs60.mkdirSync(path65.dirname(path65.join(cwd, f)), { recursive: true });
-    fs60.writeFileSync(path65.join(cwd, f), content);
+    fs61.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
+    fs61.writeFileSync(path68.join(cwd, f), content);
   }
   git3(cwd, "add", "-A");
   git3(cwd, "commit", "-q", "-m", "base");
   const base = git3(cwd, "rev-parse", "HEAD");
   for (const [f, content] of Object.entries(c.repo.after)) {
-    fs60.mkdirSync(path65.dirname(path65.join(cwd, f)), { recursive: true });
-    fs60.writeFileSync(path65.join(cwd, f), content);
+    fs61.mkdirSync(path68.dirname(path68.join(cwd, f)), { recursive: true });
+    fs61.writeFileSync(path68.join(cwd, f), content);
   }
-  for (const f of c.repo.delete ?? []) if (fs60.existsSync(path65.join(cwd, f))) fs60.unlinkSync(path65.join(cwd, f));
+  for (const f of c.repo.delete ?? []) if (fs61.existsSync(path68.join(cwd, f))) fs61.unlinkSync(path68.join(cwd, f));
   return { cwd, base };
 }
 async function runFixture(c, opts) {
   const cfg = opts.cfg ?? loadConfig();
   const ownRoot = !opts.workRoot;
-  const workRoot = opts.workRoot ?? fs60.mkdtempSync(path65.join(os12.tmpdir(), "tally-cal-"));
+  const workRoot = opts.workRoot ?? fs61.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
   try {
     return await runFixtureIn(c, { ...opts, cfg, workRoot });
   } finally {
-    if (ownRoot) fs60.rmSync(workRoot, { recursive: true, force: true, maxRetries: 3 });
+    if (ownRoot) fs61.rmSync(workRoot, { recursive: true, force: true, maxRetries: 3 });
   }
 }
 async function runFixtureIn(c, opts) {
@@ -16669,9 +16947,9 @@ async function runFixtureIn(c, opts) {
   const { cwd, base } = materializeRepo(c, workRoot);
   const session = c.task.session;
   ensureDir(sessionDir(session));
-  const transcriptPath = path65.join(sessionDir(session), "transcript.jsonl");
-  fs60.copyFileSync(path65.join(c.dir, "transcript.jsonl"), transcriptPath);
-  const events = readEventsFile(path65.join(c.dir, "events.jsonl")).map((e) => e.type === "session_start" ? { ...e, session, cwd, data: { ...e.data, git_head: base } } : { ...e, session, cwd });
+  const transcriptPath = path68.join(sessionDir(session), "transcript.jsonl");
+  fs61.copyFileSync(path68.join(c.dir, "transcript.jsonl"), transcriptPath);
+  const events = readEventsFile(path68.join(c.dir, "events.jsonl")).map((e) => e.type === "session_start" ? { ...e, session, cwd, data: { ...e.data, git_head: base } } : { ...e, session, cwd });
   const calls = [];
   let llm;
   if (opts.llm) llm = opts.llm;
@@ -16702,13 +16980,13 @@ async function runFixtureIn(c, opts) {
 async function runEval(opts) {
   const cases = loadFixtures().filter((c) => !opts.only?.length || opts.only.includes(c.name));
   if (!cases.length) throw new Error("no calibration fixtures found");
-  const workRoot = fs60.mkdtempSync(path65.join(os12.tmpdir(), "tally-cal-"));
+  const workRoot = fs61.mkdtempSync(path68.join(os12.tmpdir(), "tally-cal-"));
   const results = [];
   for (const c of cases) {
     const r = await runFixture(c, { cfg: opts.cfg, live: opts.live, llm: opts.llmFor?.(c), workRoot, deep: opts.deep });
     results.push(r);
   }
-  fs60.rmSync(workRoot, { recursive: true, force: true });
+  fs61.rmSync(workRoot, { recursive: true, force: true });
   const report = buildCalibrationReport(results.map((r) => r.entry));
   const fixtures = results.map((r) => ({
     name: r.name,
@@ -16744,13 +17022,13 @@ async function runEval(opts) {
   };
   if (opts.record || opts.rebaseline) {
     const old = loadBaseline();
-    const writeOutput = (r) => fs60.writeFileSync(path65.join(cases.find((c) => c.name === r.name).dir, "model-output.json"), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), calls: r.calls }, null, 2) + "\n");
+    const writeOutput = (r) => fs61.writeFileSync(path68.join(cases.find((c) => c.name === r.name).dir, "model-output.json"), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), calls: r.calls }, null, 2) + "\n");
     if (opts.record && opts.live) {
       for (const r of results) if (!cases.find((c) => c.name === r.name).recorded) writeOutput(r);
     }
     if (opts.rebaseline || !old || summary.criterion_agreement >= old.criterion_agreement - 1e-9) {
       if (opts.record && opts.live) for (const r of results) writeOutput(r);
-      if (!opts.only?.length) fs60.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, tally_usd: f.tally_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + "\n");
+      if (!opts.only?.length) fs61.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: (/* @__PURE__ */ new Date()).toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, tally_usd: f.tally_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + "\n");
       summary.baseline_updated = true;
     } else summary.baseline_updated = false;
   }
@@ -16758,8 +17036,8 @@ async function runEval(opts) {
 }
 function loadBaseline() {
   const f = baselineFile();
-  if (!fs60.existsSync(f)) return null;
-  return JSON.parse(fs60.readFileSync(f, "utf8"));
+  if (!fs61.existsSync(f)) return null;
+  return JSON.parse(fs61.readFileSync(f, "utf8"));
 }
 function renderOverheadTable(s) {
   const L = [];
@@ -16799,13 +17077,13 @@ var init_eval2 = __esm({
 });
 
 // src/demo/demo.ts
-import fs61 from "node:fs";
+import fs62 from "node:fs";
 import os13 from "node:os";
-import path66 from "node:path";
+import path69 from "node:path";
 import { spawnSync as spawnSync21 } from "node:child_process";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 function calibrationDir() {
-  for (const c of [path66.join(here2, "fixtures", "calibration"), path66.join(here2, "..", "..", "test", "fixtures", "calibration"), path66.join(here2, "..", "fixtures", "calibration")]) if (fs61.existsSync(path66.join(c, "adv-wrong-impl-matching-test", "expected.json"))) return c;
+  for (const c of [path69.join(here2, "fixtures", "calibration"), path69.join(here2, "..", "..", "test", "fixtures", "calibration"), path69.join(here2, "..", "fixtures", "calibration")]) if (fs62.existsSync(path69.join(c, "adv-wrong-impl-matching-test", "expected.json"))) return c;
   throw new Error("calibration fixture not found; run npm run build or run from a source checkout");
 }
 function visibleLength(s) {
@@ -16829,7 +17107,7 @@ function wrapLine(line, width) {
   return out;
 }
 function fixturesDir() {
-  for (const c of [path66.join(here2, "fixtures", "session-basic"), path66.join(here2, "..", "..", "test", "fixtures", "session-basic"), path66.join(here2, "..", "fixtures", "session-basic")]) if (fs61.existsSync(c)) return c;
+  for (const c of [path69.join(here2, "fixtures", "session-basic"), path69.join(here2, "..", "..", "test", "fixtures", "session-basic"), path69.join(here2, "..", "fixtures", "session-basic")]) if (fs62.existsSync(c)) return c;
   throw new Error("fixtures not found; run from a source checkout");
 }
 function git4(cwd, ...args) {
@@ -16838,29 +17116,29 @@ function git4(cwd, ...args) {
   return r.stdout.trim();
 }
 function makeRepo(root) {
-  const cwd = path66.join(root, "acme-app");
-  fs61.mkdirSync(path66.join(cwd, "src"), { recursive: true });
+  const cwd = path69.join(root, "acme-app");
+  fs62.mkdirSync(path69.join(cwd, "src"), { recursive: true });
   git4(cwd, "init", "-q", "-b", "main");
   git4(cwd, "config", "user.email", "demo@tally.local");
   git4(cwd, "config", "user.name", "tally demo");
-  fs61.writeFileSync(path66.join(cwd, "package.json"), JSON.stringify({ name: "acme-app", version: "1.0.0", scripts: { test: "node test.js" } }, null, 2));
-  fs61.writeFileSync(path66.join(cwd, "test.js"), `const login = require('./src/login');
+  fs62.writeFileSync(path69.join(cwd, "package.json"), JSON.stringify({ name: "acme-app", version: "1.0.0", scripts: { test: "node test.js" } }, null, 2));
+  fs62.writeFileSync(path69.join(cwd, "test.js"), `const login = require('./src/login');
 if (login(6) !== 429) { console.error('expected 429 after 5 attempts'); process.exit(1); }
 console.log('ok: 429 after 5 attempts');
 `);
-  fs61.writeFileSync(path66.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
+  fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
 `);
-  fs61.writeFileSync(path66.join(cwd, "README.md"), "# acme-app\n\nExpress API.\n");
+  fs62.writeFileSync(path69.join(cwd, "README.md"), "# acme-app\n\nExpress API.\n");
   git4(cwd, "add", "-A");
   git4(cwd, "commit", "-q", "-m", "base");
   const base = git4(cwd, "rev-parse", "HEAD");
   return { cwd, base };
 }
 function applyWork(cwd) {
-  fs61.writeFileSync(path66.join(cwd, "src", "rateLimit.js"), `const MAX = 5;
+  fs62.writeFileSync(path69.join(cwd, "src", "rateLimit.js"), `const MAX = 5;
 module.exports = function rateLimit(attempts) { return attempts > MAX; };
 `);
-  fs61.writeFileSync(path66.join(cwd, "src", "login.js"), `const rateLimit = require('./rateLimit');
+  fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `const rateLimit = require('./rateLimit');
 module.exports = function login(attempts) { return rateLimit(attempts) ? 429 : 200; };
 `);
   git4(cwd, "add", "-A");
@@ -16905,14 +17183,14 @@ async function runDemo(opts = {}) {
   const step = (n, s) => out(`
 ${bold(cyan(`[${n}] ${s}`))}`);
   const ownHome = !opts.home;
-  const home2 = opts.home ?? fs61.mkdtempSync(path66.join(os13.tmpdir(), "tally-demo-"));
+  const home2 = opts.home ?? fs62.mkdtempSync(path69.join(os13.tmpdir(), "tally-demo-"));
   const prev = { TALLY_HOME: process.env.TALLY_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, TALLY_NO_SPAWN: process.env.TALLY_NO_SPAWN, TALLY_LLM: process.env.TALLY_LLM };
-  process.env.TALLY_HOME = path66.join(home2, "tally");
-  process.env.CLAUDE_CONFIG_DIR = path66.join(home2, "claude");
+  process.env.TALLY_HOME = path69.join(home2, "tally");
+  process.env.CLAUDE_CONFIG_DIR = path69.join(home2, "claude");
   process.env.TALLY_NO_SPAWN = "1";
   process.env.TALLY_LLM = "stub";
-  fs61.mkdirSync(process.env.TALLY_HOME, { recursive: true });
-  fs61.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+  fs62.mkdirSync(process.env.TALLY_HOME, { recursive: true });
+  fs62.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
   try {
     const fx = fixturesDir();
     const session = "demo-" + Date.now().toString(36);
@@ -16921,8 +17199,8 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     cfg.coach.min_interval_s = 180;
     const hook = builtHookPath();
     ensureDir(sessionDir(session));
-    const transcriptPath = path66.join(sessionDir(session), "transcript.jsonl");
-    fs61.copyFileSync(path66.join(fx, "transcript.jsonl"), transcriptPath);
+    const transcriptPath = path69.join(sessionDir(session), "transcript.jsonl");
+    fs62.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
     out(bold("Tally demo") + dim(`  isolated data dir: ${process.env.TALLY_HOME}`));
     out(dim(`  fake repo: ${cwd}  \xB7  real ~/.claude and ~/.tally are not touched  \xB7  LLM calls are stubbed`));
     const repo = repoKey(cwd);
@@ -16962,12 +17240,12 @@ ${bold(cyan(`[${n}] ${s}`))}`);
       },
       session
     );
-    const { task } = await intake({ session, cwd, ref: path66.join(fx, "task.md"), cfg, llm });
+    const { task } = await intake({ session, cwd, ref: path69.join(fx, "task.md"), cfg, llm });
     out(renderTask(task));
     if (task.needs_clarification) out(yellow('  \u26A0 Spec quality below 5: Coach will say "Clarify the ticket first" and list the questions.'));
     step(2, "Replaying the session through the real hooks, with the Coach watching");
     out(dim("  each fixture event is fed to dist/hook.js on stdin; the Coach ticks on simulated time"));
-    const events = readEventsFile(path66.join(fx, "events.jsonl")).filter((e) => e.type !== "ship");
+    const events = readEventsFile(path69.join(fx, "events.jsonl")).filter((e) => e.type !== "ship");
     const engine = new CoachEngine(loadState(session), cfg, void 0, {});
     let shown = 0;
     const applied = [];
@@ -16976,7 +17254,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     let lastPromptDelivery = "";
     let llmCalls = 0;
     let transcriptCut = 0;
-    const transcriptLines = fs61.readFileSync(path66.join(fx, "transcript.jsonl"), "utf8").split("\n").filter(Boolean);
+    const transcriptLines = fs62.readFileSync(path69.join(fx, "transcript.jsonl"), "utf8").split("\n").filter(Boolean);
     const permissionEvents = [];
     const handle2 = (s, now) => {
       shown += 1;
@@ -17000,8 +17278,8 @@ ${bold(cyan(`[${n}] ${s}`))}`);
       const payload = hookPayload(e, session, cwd, transcriptPath);
       if (!payload) continue;
       if (e.type === "session_start") {
-        const fakeSettings = path66.join(process.env.CLAUDE_CONFIG_DIR, "settings.json");
-        fs61.writeFileSync(fakeSettings, JSON.stringify({ enabledPlugins: { "superpowers@official": true } }));
+        const fakeSettings = path69.join(process.env.CLAUDE_CONFIG_DIR, "settings.json");
+        fs62.writeFileSync(fakeSettings, JSON.stringify({ enabledPlugins: { "superpowers@official": true } }));
       }
       const r = spawnSync21(process.execPath, [hook, payload.event], { input: JSON.stringify(payload.input), encoding: "utf8", env: { ...process.env }, windowsHide: true });
       if (r.status !== 0) out(yellow(`  hook ${payload.event} exited ${r.status}`));
@@ -17032,7 +17310,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
         if (ts && ts > e.ts) break;
         transcriptCut += 1;
       }
-      fs61.writeFileSync(transcriptPath, transcriptLines.slice(0, Math.max(transcriptCut, 1)).join("\n") + "\n");
+      fs62.writeFileSync(transcriptPath, transcriptLines.slice(0, Math.max(transcriptCut, 1)).join("\n") + "\n");
       const ctx = buildContext({ session, cwd, cfg, now, transcriptPath });
       const tick = engine.tick(ctx);
       for (const s of tick.show) handle2(s, now);
@@ -17046,7 +17324,7 @@ ${bold(cyan(`[${n}] ${s}`))}`);
       saveState(session, engine.state);
       if (!opts.fast) await new Promise((res) => setTimeout(res, 15));
     }
-    fs61.copyFileSync(path66.join(fx, "transcript.jsonl"), transcriptPath);
+    fs62.copyFileSync(path69.join(fx, "transcript.jsonl"), transcriptPath);
     out(dim(`  ${shown} suggestions shown (noise limits: 1 non-critical per ${cfg.coach.min_interval_s}s, ${cfg.coach.max_per_session} per session; critical always)`));
     step(3, "Judge (stubbed judge model, real git diff, real independent test run)");
     applyWork(cwd);
@@ -17057,12 +17335,12 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     out(renderSummary(judge, color));
     const t = parseTranscriptFile(transcriptPath);
     out(dim(`  models in session: ${t.models.join(", ")} \xB7 subagent spend: ${Object.entries(judge.cost.by_subagent).filter(([k]) => k !== "main").map(([k, v]) => `${k} $${v.usd.toFixed(3)}`).join(", ") || "none"}`));
-    out(dim(`  full receipt: ${path66.join(sessionDir(session), "report.md")}`));
+    out(dim(`  full receipt: ${path69.join(sessionDir(session), "report.md")}`));
     step(4, "tally verify: what Tally can prove, criterion by criterion");
     out(dim("  deterministic evidence first; the model's reading is one item, labelled [model], and lifts nothing above SUPPORTED on its own"));
     if (judge.assurance) out(renderVerify(judge.assurance, { color }));
     step(5, "The agent fixes the forgotten criterion; verification becomes complete");
-    fs61.appendFileSync(path66.join(cwd, "README.md"), "\n## Rate limiting\n\nPOST /api/login answers 429 after 5 failed attempts from one IP within 15 minutes.\n");
+    fs62.appendFileSync(path69.join(cwd, "README.md"), "\n## Rate limiting\n\nPOST /api/login answers 429 after 5 failed attempts from one IP within 15 minutes.\n");
     git4(cwd, "add", "-A");
     git4(cwd, "commit", "-q", "-m", "docs: document the login rate limit");
     const llmFixed = new StubLlm(
@@ -17086,9 +17364,9 @@ ${bold(cyan(`[${n}] ${s}`))}`);
     if (judgeFixed.assurance) out(renderVerify(judgeFixed.assurance, { color, evidence: false }));
     step(6, "Follow-up 8 days later: the PR was merged, then reverted");
     const mergeSha = git4(cwd, "rev-parse", "HEAD");
-    fs61.writeFileSync(path66.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
+    fs62.writeFileSync(path69.join(cwd, "src", "login.js"), `module.exports = function login(attempts) { return 200; };
 `);
-    fs61.unlinkSync(path66.join(cwd, "src", "rateLimit.js"));
+    fs62.unlinkSync(path69.join(cwd, "src", "rateLimit.js"));
     git4(cwd, "add", "-A");
     git4(cwd, "commit", "-q", "-m", `Revert "add rate limiting to login (#57)"
 
@@ -17118,12 +17396,12 @@ This reverts commit ${mergeSha}. Locked out the QA team.`);
     } else out(yellow("  (fixture not bundled in this build)"));
     out("");
     out(bold("Done.") + ` ${shown} coach suggestions, ${applied.length} applied (${applied.join(", ")}), ${injected.length} injected (${injected.join(", ")}), ship detected: ${shipDetected ? "yes" : "no"}, verdict ${judge.verdict.verdict} \u2192 ${after.followup.final_verdict}.`);
-    const reportPath = path66.join(sessionDir(session), "report.md");
+    const reportPath = path69.join(sessionDir(session), "report.md");
     if (ownHome && !opts.keep) out(dim(`Temp files removed. \`tally demo --keep\` keeps the receipt and the fake repo for a look.`));
     else out(dim(`Demo data: ${home2}${opts.keep ? " (kept)" : ""}  \xB7  receipt: ${reportPath}`));
     return { home: home2, repo: cwd, session, suggestionsShown: shown, applied, injected, shipDetected, verdict: judge.verdict.verdict, finalVerdict: after.followup.final_verdict, reportPath, removed: ownHome && !opts.keep };
   } finally {
-    if (ownHome && !opts.keep) fs61.rmSync(home2, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    if (ownHome && !opts.keep) fs62.rmSync(home2, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     for (const [k, v] of Object.entries(prev)) {
       if (v === void 0) delete process.env[k];
       else process.env[k] = v;
@@ -17148,7 +17426,7 @@ var init_demo = __esm({
     init_parse();
     init_assurance();
     init_eval2();
-    here2 = path66.dirname(fileURLToPath3(import.meta.url));
+    here2 = path69.dirname(fileURLToPath3(import.meta.url));
     ANSI_RE = /\x1b\[[0-9;]*m/g;
   }
 });
@@ -17174,8 +17452,8 @@ var status_exports = {};
 __export(status_exports, {
   run: () => run28
 });
-import fs62 from "node:fs";
-import path67 from "node:path";
+import fs63 from "node:fs";
+import path70 from "node:path";
 async function run28(args) {
   const cfg = loadConfig();
   const session = resolveSession(flag(args, "session"), process.cwd());
@@ -17184,7 +17462,7 @@ async function run28(args) {
     process.stdout.write("No tracked sessions yet. Install with `tally install`, then start Claude Code.\n");
     return;
   }
-  if (!fs62.existsSync(sessionDir(session))) {
+  if (!fs63.existsSync(sessionDir(session))) {
     process.stderr.write(`No session ${session} on this machine (tally sessions lists them).
 `);
     return 1;
@@ -17197,7 +17475,7 @@ async function run28(args) {
 `);
   const task = loadTask(session);
   if (task) process.stdout.write(renderTask(task) + "\n\n");
-  if (fs62.existsSync(path67.join(sessionDir(session), "task.pending")) && !task) process.stdout.write("task intake is running in the background\u2026\n\n");
+  if (fs63.existsSync(path70.join(sessionDir(session), "task.pending")) && !task) process.stdout.write("task intake is running in the background\u2026\n\n");
   const judge = loadJudge(session);
   if (judge) process.stdout.write(renderSummary(judge, color) + "\n\n");
   const inj = pendingInjects(session);
@@ -17364,8 +17642,8 @@ var init_otel2 = __esm({
 });
 
 // src/calibrate/grade.ts
-import fs63 from "node:fs";
-import path68 from "node:path";
+import fs64 from "node:fs";
+import path71 from "node:path";
 function evidenceSummary(session) {
   const j = loadJudge(session);
   const task = loadTask(session);
@@ -17442,8 +17720,8 @@ These criteria were inferred from the prompts${task.context?.branch ? `, branch 
   }
   let verdict = null;
   while (!verdict) verdict = verdictFrom(await opts.ask("Your verdict: [w]orth it  [b]orderline  [n]ot worth it > "));
-  const replayPath = path68.join(sessionDir(session), "coach_replay.json");
-  const replay = fs63.existsSync(replayPath) ? JSON.parse(fs63.readFileSync(replayPath, "utf8")) : null;
+  const replayPath = path71.join(sessionDir(session), "coach_replay.json");
+  const replay = fs64.existsSync(replayPath) ? JSON.parse(fs64.readFileSync(replayPath, "utf8")) : null;
   const coach = [];
   if (replay?.shown.length) {
     opts.out(`
@@ -17488,9 +17766,9 @@ var calibrate_exports = {};
 __export(calibrate_exports, {
   run: () => run32
 });
-import fs64 from "node:fs";
+import fs65 from "node:fs";
 import os14 from "node:os";
-import path69 from "node:path";
+import path72 from "node:path";
 import readline4 from "node:readline";
 async function run32(args) {
   const sub = args._[0];
@@ -17570,7 +17848,7 @@ async function run32(args) {
     }
     const prevHome = process.env.TALLY_HOME;
     const keep = has(args, "keep");
-    if (!keep) process.env.TALLY_HOME = fs64.mkdtempSync(path69.join(os14.tmpdir(), "tally-cal-home-"));
+    if (!keep) process.env.TALLY_HOME = fs65.mkdtempSync(path72.join(os14.tmpdir(), "tally-cal-home-"));
     try {
       const only = flag(args, "only")?.split(",").filter(Boolean);
       const s = await runEval({ live, record: record2, rebaseline: has(args, "rebaseline"), only, deep: has(args, "deep") });
@@ -17618,7 +17896,7 @@ PASS: criterion agreement ${(s.criterion_agreement * 100).toFixed(1)}% \u2265 ${
 `);
     } finally {
       if (!keep) {
-        fs64.rmSync(process.env.TALLY_HOME, { recursive: true, force: true });
+        fs65.rmSync(process.env.TALLY_HOME, { recursive: true, force: true });
         if (prevHome === void 0) delete process.env.TALLY_HOME;
         else process.env.TALLY_HOME = prevHome;
       }
@@ -17643,9 +17921,9 @@ var init_calibrate2 = __esm({
 });
 
 // src/backfill/history.ts
-import fs65 from "node:fs";
+import fs66 from "node:fs";
 import os15 from "node:os";
-import path70 from "node:path";
+import path73 from "node:path";
 import { spawnSync as spawnSync22 } from "node:child_process";
 function revBefore(cwd, ref, ts, exec) {
   const r = exec("git", ["rev-list", "-1", `--before=${ts}`, ref], cwd);
@@ -17690,24 +17968,24 @@ function reconstructWindow(cwd, opts) {
   return { start_head, end_head, branch, commits_in_window, extended_to_pr, notes };
 }
 function addWorktree(cwd, sha, exec = gitExecRaw) {
-  const dir = fs65.mkdtempSync(path70.join(os15.tmpdir(), "tally-wt-"));
-  fs65.rmdirSync(dir);
+  const dir = fs66.mkdtempSync(path73.join(os15.tmpdir(), "tally-wt-"));
+  fs66.rmdirSync(dir);
   const r = exec("git", ["worktree", "add", "--detach", dir, sha], cwd);
   if (!r.ok) throw new Error(`git worktree add failed: ${r.stderr.trim().slice(0, 200)}`);
   return {
     path: dir,
     remove: () => {
       exec("git", ["worktree", "remove", "--force", dir], cwd);
-      if (fs65.existsSync(dir)) fs65.rmSync(dir, { recursive: true, force: true });
+      if (fs66.existsSync(dir)) fs66.rmSync(dir, { recursive: true, force: true });
       exec("git", ["worktree", "prune"], cwd);
     }
   };
 }
 async function prepareDeps(wt, timeoutMs) {
-  const has2 = (f) => fs65.existsSync(path70.join(wt, f));
+  const has2 = (f) => fs66.existsSync(path73.join(wt, f));
   if (has2("package.json")) {
     if (has2("node_modules")) return { ok: true, note: "node_modules present" };
-    const pkg = JSON.parse(fs65.readFileSync(path70.join(wt, "package.json"), "utf8"));
+    const pkg = JSON.parse(fs66.readFileSync(path73.join(wt, "package.json"), "utf8"));
     if (!Object.keys(pkg.dependencies ?? {}).length && !Object.keys(pkg.devDependencies ?? {}).length) return { ok: true, note: "no dependencies" };
     if (!has2("package-lock.json") && !has2("npm-shrinkwrap.json")) return { ok: false, note: "no lockfile; offline install not attempted" };
     const isWin = process.platform === "win32";
@@ -17715,7 +17993,7 @@ async function prepareDeps(wt, timeoutMs) {
     const r = await runProcess(isWin ? "cmd.exe" : "sh", isWin ? ["/d", "/s", "/c", `"${cmd}"`] : ["-c", cmd], { cwd: wt, timeoutMs, env: scrubEnv(), replaceEnv: true });
     return r.code === 0 ? { ok: true, note: "npm ci --offline succeeded" } : { ok: false, note: `npm ci --offline failed (${r.timedOut ? "timeout" : "exit " + r.code}); dependencies unavailable offline` };
   }
-  if (has2("requirements.txt") || has2("pyproject.toml")) return { ok: fs65.existsSync(path70.join(wt, ".venv")) || fs65.existsSync(path70.join(wt, "venv")), note: "python: runs only when a checked-in venv exists" };
+  if (has2("requirements.txt") || has2("pyproject.toml")) return { ok: fs66.existsSync(path73.join(wt, ".venv")) || fs66.existsSync(path73.join(wt, "venv")), note: "python: runs only when a checked-in venv exists" };
   return { ok: true, note: "no dependency step needed" };
 }
 async function runHistoricalTests(wt, opts) {
@@ -17892,21 +18170,21 @@ var init_ticket = __esm({
 });
 
 // src/backfill/run.ts
-import fs66 from "node:fs";
-import path71 from "node:path";
+import fs67 from "node:fs";
+import path74 from "node:path";
 function tier2Estimate(sessionCostUsd) {
   return Math.min(3, 0.15 + 4e-3 * sessionCostUsd);
 }
 function backfillSpendSince(hours = 24) {
   const f = tallySpendFile();
-  if (!fs66.existsSync(f)) return 0;
+  if (!fs67.existsSync(f)) return 0;
   const since = Date.now() - hours * 36e5;
   let sum2 = 0;
-  for (const line of fs66.readFileSync(f, "utf8").split("\n")) {
+  for (const line of fs67.readFileSync(f, "utf8").split("\n")) {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line);
-      if (Date.parse(e.ts ?? "") >= since && e.session && fs66.existsSync(path71.join(sessionDir(e.session), "backfill.json"))) sum2 += e.cost_usd ?? 0;
+      if (Date.parse(e.ts ?? "") >= since && e.session && fs67.existsSync(path74.join(sessionDir(e.session), "backfill.json"))) sum2 += e.cost_usd ?? 0;
     } catch {
     }
   }
@@ -17930,7 +18208,7 @@ async function backfillSession(c, opts) {
   const cwd = c.cwd;
   const t = parseTranscriptFile(c.transcript);
   if (t.internal) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "internal run" }, window: { commits_in_window: 0, notes: [] }, skipped: "internal Tally run", tally_spend_usd: 0 };
-  if (!cwd || !fs66.existsSync(cwd)) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "cwd missing" }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? "?"}`, tally_spend_usd: 0 };
+  if (!cwd || !fs67.existsSync(cwd)) return { session, link: { kind: "none", ref: "", confidence: 0, evidence: "cwd missing" }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? "?"}`, tally_spend_usd: 0 };
   const start = c.started ?? t.startedAt ?? (/* @__PURE__ */ new Date()).toISOString();
   const end = c.ended ?? t.endedAt ?? start;
   const link = opts.taskRef ? { kind: /^https?:\/\//.test(opts.taskRef) ? "url" : "key", ref: opts.taskRef, url: /^https?:\/\//.test(opts.taskRef) ? opts.taskRef : void 0, confidence: 1, evidence: "given with --task" } : detectTaskLink({ cwd, branch: c.branch, prompts: c.prompts, start, end }, deps.link ?? realLinkDeps);
@@ -17940,8 +18218,8 @@ async function backfillSession(c, opts) {
   if (noTree) window.notes.push("no commits inside the session window: evidence reconstructed from the transcript, tests not run");
   const dir = ensureDir(sessionDir(session)) ?? sessionDir(session);
   const events = eventsFromTranscript(t, session, cwd, c.transcript, window.start_head);
-  fs66.writeFileSync(eventsFile(session), events.map((e) => JSON.stringify(e)).join("\n") + "\n");
-  writeJson(path71.join(dir, "backfill.json"), { session, link, window, started: start, ended: end, repo: cwd, transcript: c.transcript, backfilled_at: (/* @__PURE__ */ new Date()).toISOString() });
+  fs67.writeFileSync(eventsFile(session), events.map((e) => JSON.stringify(e)).join("\n") + "\n");
+  writeJson(path74.join(dir, "backfill.json"), { session, link, window, started: start, ended: end, repo: cwd, transcript: c.transcript, backfilled_at: (/* @__PURE__ */ new Date()).toISOString() });
   let task = loadTask(session);
   if (!task) {
     const ref = link.url ?? (link.kind === "key" ? link.ref : void 0);
@@ -17972,13 +18250,13 @@ async function backfillSession(c, opts) {
   if (fu) judge = fu;
   log2(`  judged: ${judge.verdict.verdict} (${judge.completion_pct}%), tiers ${judge.tiers.ran.join("\u2192")}${judge.followup ? ` \xB7 follow-up: ${judge.followup.final_status} \u2192 ${judge.followup.final_verdict}` : ""}`);
   const replay = replayCoach({ session, cwd, cfg, events, transcript: t, history: loadHistory() });
-  writeJson(path71.join(dir, "coach_replay.json"), replay);
+  writeJson(path74.join(dir, "coach_replay.json"), replay);
   log2(`  coach replay: ${replay.shown.length} suggestion(s) would have shown (${replay.held} held by noise limits)`);
-  appendLine(path71.join(sessionDir(session), "backfill.log"), `${(/* @__PURE__ */ new Date()).toISOString()} backfilled`);
+  appendLine(path74.join(sessionDir(session), "backfill.log"), `${(/* @__PURE__ */ new Date()).toISOString()} backfilled`);
   return { session, link, window, task, judge, replay, tally_spend_usd: tallyOwnSpend(session) };
 }
 function isBackfilled(session) {
-  return fs66.existsSync(path71.join(sessionDir(session), "backfill.json")) && !!loadJudge(session);
+  return fs67.existsSync(path74.join(sessionDir(session), "backfill.json")) && !!loadJudge(session);
 }
 var init_run2 = __esm({
   "src/backfill/run.ts"() {
@@ -18005,8 +18283,8 @@ var backfill_exports = {};
 __export(backfill_exports, {
   run: () => run33
 });
-import fs67 from "node:fs";
-import path72 from "node:path";
+import fs68 from "node:fs";
+import path75 from "node:path";
 function shortRepo2(repo) {
   if (!repo) return "?";
   const parts = repo.split("/");
@@ -18020,7 +18298,7 @@ async function run33(args) {
   const plain = has(args, "plain");
   if (sub === "list" && flag(args, "suggest")) {
     const n = Math.max(1, Number(flag(args, "suggest")) || 20);
-    const cands = scanSessions({ since, repo }).filter((c) => c.cwd && fs67.existsSync(c.cwd) && c.cost >= 0.2);
+    const cands = scanSessions({ since, repo }).filter((c) => c.cwd && fs68.existsSync(c.cwd) && c.cost >= 0.2);
     const scored = cands.map((c) => {
       const link = detectTaskLink({ cwd: c.cwd, branch: c.branch, prompts: c.prompts, start: c.started, end: c.ended });
       const why = [];
@@ -18131,7 +18409,7 @@ ${linked}/${cands.length} with a detected task link. Projected cost to backfill 
         continue;
       }
       if (has(args, "force")) {
-        for (const f of ["judge.json", "task.json", "coach_replay.json"]) if (fs67.existsSync(path72.join(sessionDir(c.session), f))) fs67.unlinkSync(path72.join(sessionDir(c.session), f));
+        for (const f of ["judge.json", "task.json", "coach_replay.json"]) if (fs68.existsSync(path75.join(sessionDir(c.session), f))) fs68.unlinkSync(path75.join(sessionDir(c.session), f));
       }
       process.stdout.write(`${c.session.slice(0, 8)} ${(c.started ?? "").slice(0, 10)} ${shortRepo2(c.repo)} ${fmtUsd(c.cost)}
 `);
@@ -18284,12 +18562,12 @@ var feedback_exports = {};
 __export(feedback_exports, {
   run: () => run34
 });
-import fs68 from "node:fs";
-import path73 from "node:path";
+import fs69 from "node:fs";
+import path76 from "node:path";
 import readline5 from "node:readline";
 import { spawn as spawn6 } from "node:child_process";
 function version2() {
-  return readJson(path73.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
+  return readJson(path76.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
 }
 async function ask(q) {
   const rl = readline5.createInterface({ input: process.stdin, output: process.stdout });
@@ -18379,7 +18657,7 @@ async function run34(args) {
   }
   const out = flag(args, "out");
   if (out) {
-    fs68.writeFileSync(out, payload + "\n");
+    fs69.writeFileSync(out, payload + "\n");
     process.stdout.write(`Wrote ${out} (${payload.length} bytes). Excluded by construction: ${report.excluded.join(", ")}.
 `);
     return;
@@ -18400,8 +18678,8 @@ Excluded by construction: ${report.excluded.join(", ")}.
     process.stdout.write("Discarded.\n");
     return;
   }
-  const file = path73.join(cwd, `tally-wrong-verdict-${entry.criterion}-${session.slice(0, 8)}.json`);
-  fs68.writeFileSync(file, payload + "\n");
+  const file = path76.join(cwd, `tally-wrong-verdict-${entry.criterion}-${session.slice(0, 8)}.json`);
+  fs69.writeFileSync(file, payload + "\n");
   process.stdout.write(`Saved ${file}.
 `);
   if (has(args, "yes") && !process.stdin.isTTY) return;
@@ -18434,7 +18712,7 @@ var telemetry_exports2 = {};
 __export(telemetry_exports2, {
   run: () => run35
 });
-import fs69 from "node:fs";
+import fs70 from "node:fs";
 async function run35(args) {
   const sub = args._[0] ?? "status";
   if (sub === "on") {
@@ -18467,7 +18745,7 @@ ${JSON.stringify(exampleEvent(t.state), null, 2)}
 
 `);
     const q = queueFile();
-    const pending = fs69.existsSync(q) ? fs69.readFileSync(q, "utf8").split("\n").filter(Boolean) : [];
+    const pending = fs70.existsSync(q) ? fs70.readFileSync(q, "utf8").split("\n").filter(Boolean) : [];
     process.stdout.write(pending.length ? `Queued, not yet sent (${pending.length}):
 ${pending.map((l) => "  " + l).join("\n")}
 
@@ -18494,16 +18772,60 @@ var init_telemetry2 = __esm({
   }
 });
 
+// src/commands/recall.ts
+var recall_exports = {};
+__export(recall_exports, {
+  run: () => run36
+});
+async function run36(args) {
+  const cwd = process.cwd();
+  const cards = readCards(cwd);
+  const ref = args._.join(" ").trim();
+  if (!cards.length) {
+    process.stdout.write("No recall cards for this repository yet. The Coach writes one per session as it works (autopilot on), so the next task that looks like a past one starts from its outcome.\n");
+    return;
+  }
+  const byPrefix = /^[0-9a-f-]{6,}$/i.test(ref) ? cards.find((c) => c.session.startsWith(ref)) : void 0;
+  if (byPrefix) {
+    process.stdout.write(has(args, "json") ? JSON.stringify(byPrefix, null, 2) + "\n" : renderCard(byPrefix) + "\n");
+    return;
+  }
+  const rows = ref ? matchRecall(ref, cards, { min: 0.1, limit: has(args, "all") ? cards.length : 8 }).map((m) => ({ card: m.card, similarity: m.similarity })) : cards.slice(0, has(args, "all") ? cards.length : 12).map((card) => ({ card, similarity: void 0 }));
+  if (has(args, "json")) {
+    process.stdout.write(JSON.stringify(rows.map((r) => ({ ...r.card, similarity: r.similarity })), null, 2) + "\n");
+    return;
+  }
+  if (!rows.length) {
+    process.stdout.write(`Nothing in ${cards.length} past ${cards.length === 1 ? "task" : "tasks"} here looks like "${ref.slice(0, 60)}".
+`);
+    return;
+  }
+  const L = [ref ? `Past tasks in this repo most like "${ref.slice(0, 60)}":` : `Past tasks in this repo (${cards.length}):`, ""];
+  for (const r of rows) {
+    const c = r.card;
+    L.push(`  ${c.session.slice(0, 8)}  ${(c.started ?? c.updated).slice(0, 10)}  ${`$${c.cost_usd.toFixed(2)}`.padStart(8)}${r.similarity !== void 0 ? `  ${r.similarity.toFixed(2)}` : ""}  ${c.title.slice(0, 70)}`);
+  }
+  L.push("", "One card: tally recall <session-prefix>. Cards are local JSON (tally config: recall.dir to keep them somewhere shared).");
+  process.stdout.write(L.join("\n") + "\n");
+}
+var init_recall2 = __esm({
+  "src/commands/recall.ts"() {
+    "use strict";
+    init_cli();
+    init_recall();
+  }
+});
+
 // src/commands/playbook.ts
 var playbook_exports = {};
 __export(playbook_exports, {
   clusterLessons: () => clusterLessons,
   lessonKey: () => lessonKey,
   playbookSnippet: () => playbookSnippet,
-  run: () => run36
+  run: () => run37
 });
-import fs70 from "node:fs";
-import path74 from "node:path";
+import fs71 from "node:fs";
+import path77 from "node:path";
 function lessonKey(text2) {
   return text2.toLowerCase().replace(/`[^`]*`/g, (m) => m.replace(/[^a-z0-9]/g, "")).replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter((w) => w && !STOP2.has(w)).slice(0, 5).join(" ");
 }
@@ -18529,7 +18851,7 @@ function playbookSnippet(lessons, n) {
   const pick = top.length ? top : lessons.slice(0, 3);
   return ["## Lessons from Tally receipts", `<!-- tally playbook: ${n} receipt(s); regenerate with \`tally playbook\` -->`, ...pick.map((l) => `- ${l.text}${l.count > 1 ? ` (seen ${l.count}\xD7)` : ""}`), ""].join("\n");
 }
-async function run36(args) {
+async function run37(args) {
   const repo = has(args, "all") ? void 0 : repoKey(process.cwd());
   const history = loadHistory();
   const lessons = clusterLessons(history, repo);
@@ -18549,10 +18871,10 @@ CLAUDE.md snippet:
 ${snippet.split("\n").map((x) => "  " + x).join("\n")}
 `);
   if (has(args, "write")) {
-    const file = path74.join(process.cwd(), "CLAUDE.md");
-    const existing = fs70.existsSync(file) ? fs70.readFileSync(file, "utf8") : "";
+    const file = path77.join(process.cwd(), "CLAUDE.md");
+    const existing = fs71.existsSync(file) ? fs71.readFileSync(file, "utf8") : "";
     const cleaned = existing.replace(/\n?## Lessons from Tally receipts[\s\S]*?(?=\n## |$)/, "").trimEnd();
-    fs70.writeFileSync(file, (cleaned ? cleaned + "\n\n" : "") + snippet);
+    fs71.writeFileSync(file, (cleaned ? cleaned + "\n\n" : "") + snippet);
     process.stdout.write(`Written to ${file}${existing ? " (previous Tally section replaced, the rest untouched)" : ""}.
 `);
   } else process.stdout.write("Add it with: tally playbook --write\n");
@@ -18574,9 +18896,9 @@ __export(export_exports, {
   exportRow: () => exportRow,
   invoiceRows: () => invoiceRows,
   renderInvoice: () => renderInvoice,
-  run: () => run37
+  run: () => run38
 });
-import fs71 from "node:fs";
+import fs72 from "node:fs";
 function exportRow(h, titles) {
   const j = h.session ? loadJudge(h.session) : null;
   const row = {
@@ -18631,7 +18953,7 @@ function renderInvoice(rows, format) {
   const total = rows.reduce((s, r) => s + (Number(r.ai_cost_usd) || 0), 0);
   return [`| ${cols.join(" | ")} |`, `| ${cols.map(() => "---").join(" | ")} |`, ...rows.map((r) => `| ${cols.map((c) => String(r[c] ?? "").replace(/\|/g, "\\|")).join(" | ")} |`), "", `Total AI cost (API-equivalent): $${total.toFixed(2)} across ${rows.length} task(s). Generated locally by Tally; each line links to a receipt with the evidence.`].join("\n") + "\n";
 }
-async function run37(args) {
+async function run38(args) {
   const since = flag(args, "since");
   const cutoff = since ? parseSince(since) : 0;
   const repo = flag(args, "repo");
@@ -18641,7 +18963,7 @@ async function run37(args) {
     const entries = loadHistory().filter((e) => e.verdict && !e.internal && (!repo || e.repo === repo) && (!cutoff || Date.parse(e.ts ?? "") >= cutoff));
     const inv = renderInvoice(invoiceRows(entries), out?.endsWith(".csv") ? "csv" : "md");
     if (out) {
-      fs71.writeFileSync(out, inv);
+      fs72.writeFileSync(out, inv);
       process.stdout.write(`${entries.length} invoice line(s) \u2192 ${out}
 `);
     } else process.stdout.write(inv);
@@ -18649,7 +18971,7 @@ async function run37(args) {
   }
   const text2 = rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
   if (out) {
-    fs71.writeFileSync(out, text2);
+    fs72.writeFileSync(out, text2);
     process.stdout.write(`${rows.length} receipt(s) \u2192 ${out} (numbers, statuses and outcomes only${has(args, "titles") ? ", with task titles" : ""}).
 `);
   } else process.stdout.write(text2);
@@ -18668,9 +18990,18 @@ var init_export = __esm({
 function text(s) {
   return { content: [{ type: "text", text: s }] };
 }
-function callTool(name, cwd) {
+function callTool(name, cwd, args = {}) {
   const session = resolveSession(void 0, cwd);
   if (!session) return text("Tally: no active session for this directory (hooks not installed, or no prompt yet).");
+  if (name === "tally_budget") {
+    const usd = typeof args.usd === "number" ? args.usd : Number(args.usd);
+    if (usd > 0) {
+      const r = setCap(session, usd, "user via Claude", typeof args.note === "string" ? args.note : void 0, cwd);
+      return text(`Budget set to ${fmtUsd(r.usd)}${r.clamped ? " (clamped to the repo policy budget)" : ""}${r.applied ? "" : "; it applies once the task is linked"}. Tally now measures this task against it.`);
+    }
+    const task = loadTask(session);
+    return text(task ? `Budget: ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}.${task.budget_usd > 0 ? "" : " Ask the user for a cap and call tally_budget with usd."}` : "Tally: no task linked yet; the budget is decided at intake.");
+  }
   if (name === "tally_task" || name === "tally_unmet") {
     const task = loadTask(session);
     if (!task) return text("Tally: no task linked yet. Link one with /tally:task <url|text> (or it will be inferred from the first prompt).");
@@ -18707,7 +19038,7 @@ function handle(msg, cwd) {
     case "tools/call": {
       const name = String(msg.params?.name ?? "");
       try {
-        return reply(callTool(name, cwd));
+        return reply(callTool(name, cwd, msg.params?.arguments ?? {}));
       } catch (err) {
         return reply({ ...text(`Tally error: ${err instanceof Error ? err.message : String(err)}`), isError: true });
       }
@@ -18750,6 +19081,9 @@ var init_server = __esm({
     init_statusline();
     init_pricing();
     init_cli();
+    init_budget2();
+    init_budget();
+    init_estimate();
     TOOLS = [
       {
         name: "tally_task",
@@ -18770,6 +19104,11 @@ var init_server = __esm({
         name: "tally_flags",
         description: "Coach flags waiting for a decision from the user (consent, confirmation, a file to write), with the command that resolves each.",
         inputSchema: { type: "object", properties: {}, additionalProperties: false }
+      },
+      {
+        name: "tally_budget",
+        description: `Set the dollar cap for the current task when the user names one ("cap this at $40"). Without usd it reports the current budget and where it came from. The cap drives the status line, the Stop notices and any repo-policy hard stop; a repo policy's fixed budget is a ceiling it cannot raise.`,
+        inputSchema: { type: "object", properties: { usd: { type: "number", description: "the cap in API-equivalent dollars" }, note: { type: "string", description: "why, in the user\u2019s words" } }, additionalProperties: false }
       }
     ];
   }
@@ -18778,10 +19117,10 @@ var init_server = __esm({
 // src/commands/mcp.ts
 var mcp_exports = {};
 __export(mcp_exports, {
-  run: () => run38
+  run: () => run39
 });
 import { spawnSync as spawnSync23 } from "node:child_process";
-async function run38(args) {
+async function run39(args) {
   if (has(args, "install") || has(args, "uninstall")) {
     const claude = resolveClaudeBin(process.env.TALLY_CLAUDE_BIN);
     const cli = builtCliPath().replace(/\\/g, "/");
@@ -18810,9 +19149,9 @@ var ask_exports = {};
 __export(ask_exports, {
   ASK_SCHEMA: () => ASK_SCHEMA,
   ASK_SYSTEM: () => ASK_SYSTEM,
-  run: () => run39
+  run: () => run40
 });
-async function run39(args) {
+async function run40(args) {
   const question = args._.join(" ").trim();
   if (!question) {
     process.stderr.write('Usage: tally ask "why did spend jump in August?" [--titles] [--since 90d]\n');
@@ -18863,7 +19202,7 @@ var replay_exports = {};
 __export(replay_exports, {
   buildReplay: () => buildReplay,
   renderReplay: () => renderReplay,
-  run: () => run40
+  run: () => run41
 });
 function buildReplay(t, opts) {
   const M = [];
@@ -18921,7 +19260,7 @@ function renderReplay(session, markers, opts) {
   if (opts.verdict) L.push(`Receipt: ${opts.verdict}`);
   return L.join("\n");
 }
-async function run40(args) {
+async function run41(args) {
   const arg = args._[0];
   const session = arg ? resolveSessionPrefix(arg) : resolveSession(void 0, process.cwd());
   if (!session) {
@@ -18964,7 +19303,7 @@ var prompts_exports = {};
 __export(prompts_exports, {
   comparePrompts: () => comparePrompts,
   promptFeatures: () => promptFeatures,
-  run: () => run41
+  run: () => run42
 });
 function promptFeatures(text2) {
   return {
@@ -18991,7 +19330,7 @@ function comparePrompts(samples) {
   const template = ["<one line: what should be true when this is done>", "", "Files: <the files or module involved>", "Verify with: <the exact test or command>", "Do not: <what must stay unchanged / out of scope>", "Done when:", "- <acceptance point 1>", "- <acceptance point 2>"].join("\n");
   return { n: samples.length, findings, template: winners.length ? template : template, median_words: { good: median2(good), poor: median2(poor) } };
 }
-async function run41(args) {
+async function run42(args) {
   const repo = has(args, "all") ? void 0 : repoKey(process.cwd());
   const receipts = loadHistory().filter((e) => e.verdict && !e.internal && e.session && (!repo || e.repo === repo));
   const samples = [];
@@ -19071,9 +19410,9 @@ var init_consent = __esm({
 });
 
 // src/cli.ts
-import path75 from "node:path";
+import path78 from "node:path";
 function packageVersion() {
-  return readJson(path75.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
+  return readJson(path78.join(packageRoot(), "package.json"), {}).version ?? "0.0.0";
 }
 function parseArgs(argv) {
   const out = { _: [], flags: {} };
@@ -19199,7 +19538,8 @@ var init_cli = __esm({
       dispute: () => Promise.resolve().then(() => (init_dispute(), dispute_exports)),
       feedback: () => Promise.resolve().then(() => (init_feedback(), feedback_exports)),
       telemetry: () => Promise.resolve().then(() => (init_telemetry2(), telemetry_exports2)),
-      budget: () => Promise.resolve().then(() => (init_budget(), budget_exports)),
+      budget: () => Promise.resolve().then(() => (init_budget2(), budget_exports)),
+      recall: () => Promise.resolve().then(() => (init_recall2(), recall_exports)),
       playbook: () => Promise.resolve().then(() => (init_playbook(), playbook_exports)),
       export: () => Promise.resolve().then(() => (init_export(), export_exports)),
       mcp: () => Promise.resolve().then(() => (init_mcp(), mcp_exports)),
@@ -19246,7 +19586,10 @@ Judge
   judge <session> --explain <c1|all>   The evidence behind a status: diff hunks, test output, transcript moments
   dispute <session> <c#> --status s --reason ".."   Contest a criterion; the receipt keeps both and is re-scored
   feedback <c#> correct|wrong|unsure [--comment ..]   Label a criterion on the receipt (local); "feedback wrong <c#> --report" builds a sanitized issue report
-  budget status|approve       Repo-policy hard stop over budget (tally.json), and the approval that lifts it
+  budget [status]             The task's budget and where it came from: comparable past tasks, a cap, or repo policy
+  budget set <usd> [--note]   Cap this task when nothing comparable priced it (tell Claude "cap this at $40")
+  budget approve [--note]     Lift a repo-policy hard stop (tally.json budget.hard_stop) after a human decision
+  recall [query|<session>]    What past sessions in this repo already produced for a task like this (local, no model)
   playbook [--all] [--write]  Recurring lessons across receipts, as a CLAUDE.md snippet
   mcp [--install]             MCP server: Claude asks tally_task / tally_unmet / tally_receipt / tally_flags mid-task
   export [--since 30d] [--out f.jsonl] [--titles]   Numbers-only receipts for a team store

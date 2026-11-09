@@ -153,7 +153,7 @@ Tally started as a receipt for agent work and still does that: it freezes the ti
 - **Known limitations and published mistakes:** [`docs/EVALUATION.md`](docs/EVALUATION.md).
 - Maintained in spare time by one person. Tell me what you'd need in [Discussions](https://github.com/kru3ish/tally/discussions); `tally feedback wrong <c#> --report` builds a sanitized report for an issue.
 
-This is a **preview** (v0.12.0). Read the evidence lines before trusting a status, and the backtest before trusting an estimate.
+This is a **preview** (v0.13.0). Read the evidence lines before trusting a status, and the backtest before trusting an estimate.
 
 ## Did the agent actually finish? `tally verify`
 

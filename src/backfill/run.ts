@@ -5,11 +5,11 @@ import { testRerunConsent } from '../config.js';
 import type { LlmClient } from '../llm/client.js';
 import { parseTranscriptFile } from '../transcript/parse.js';
 import { sessionDir, ensureDir, writeJson, appendLine } from '../paths.js';
-import { tallySpendFile } from '../llm/client.js';
+import { sigilSpendFile } from '../llm/client.js';
 import { eventsFile } from '../store/events.js';
 import { intake, loadTask, type Task } from '../task/intake.js';
 import { fetchTask, type FetchDeps } from '../task/fetchers.js';
-import { judgeSession, tallyOwnSpend, loadJudge } from '../judge/judge.js';
+import { judgeSession, sigilOwnSpend, loadJudge } from '../judge/judge.js';
 import { followupSession, type FollowupDeps } from '../followup/followup.js';
 import type { Judge } from '../judge/schema.js';
 import { detectTaskLink, commitsInWindow, realLinkDeps, type LinkDeps, type TaskLink } from './link.js';
@@ -35,7 +35,7 @@ export interface BackfillResult {
   judge?: Judge;
   replay?: CoachReplay;
   skipped?: string;
-  tally_spend_usd: number;
+  sigil_spend_usd: number;
 }
 
 export interface CostProjection {
@@ -54,9 +54,9 @@ export function tier2Estimate(sessionCostUsd: number): number {
   return Math.min(3, 0.15 + 0.004 * sessionCostUsd);
 }
 
-/* Tally's own backfill spend in the last `hours`, across every invocation, so --max-spend is a real cap and not a per-run one. */
+/* Sigil's own backfill spend in the last `hours`, across every invocation, so --max-spend is a real cap and not a per-run one. */
 export function backfillSpendSince(hours = 24): number {
-  const f = tallySpendFile();
+  const f = sigilSpendFile();
   if (!fs.existsSync(f)) return 0;
   const since = Date.now() - hours * 3600e3;
   let sum = 0;
@@ -93,8 +93,8 @@ export async function backfillSession(c: SessionCandidate, opts: { cfg: Config; 
   const session = c.session;
   const cwd = c.cwd;
   const t = parseTranscriptFile(c.transcript);
-  if (t.internal) return { session, link: { kind: 'none', ref: '', confidence: 0, evidence: 'internal run' }, window: { commits_in_window: 0, notes: [] }, skipped: 'internal Tally run', tally_spend_usd: 0 };
-  if (!cwd || !fs.existsSync(cwd)) return { session, link: { kind: 'none', ref: '', confidence: 0, evidence: 'cwd missing' }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? '?'}`, tally_spend_usd: 0 };
+  if (t.internal) return { session, link: { kind: 'none', ref: '', confidence: 0, evidence: 'internal run' }, window: { commits_in_window: 0, notes: [] }, skipped: 'internal Sigil run', sigil_spend_usd: 0 };
+  if (!cwd || !fs.existsSync(cwd)) return { session, link: { kind: 'none', ref: '', confidence: 0, evidence: 'cwd missing' }, window: { commits_in_window: 0, notes: [] }, skipped: `repo directory no longer exists: ${cwd ?? '?'}`, sigil_spend_usd: 0 };
   const start = c.started ?? t.startedAt ?? new Date().toISOString();
   const end = c.ended ?? t.endedAt ?? start;
 
@@ -146,7 +146,7 @@ export async function backfillSession(c: SessionCandidate, opts: { cfg: Config; 
   writeJson(path.join(dir, 'coach_replay.json'), replay);
   log(`  coach replay: ${replay.shown.length} suggestion(s) would have shown (${replay.held} held by noise limits)`);
   appendLine(path.join(sessionDir(session), 'backfill.log'), `${new Date().toISOString()} backfilled`);
-  return { session, link, window, task, judge, replay, tally_spend_usd: tallyOwnSpend(session) };
+  return { session, link, window, task, judge, replay, sigil_spend_usd: sigilOwnSpend(session) };
 }
 
 export function isBackfilled(session: string): boolean {

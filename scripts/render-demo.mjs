@@ -1,4 +1,4 @@
-/* Renders a captured `tally demo --plain --fast` transcript into docs/demo.cast (asciinema v2) and docs/demo.svg
+/* Renders a captured `sigil demo --plain --fast` transcript into docs/demo.cast (asciinema v2) and docs/demo.svg
    (an animated SVG that plays in a README). The text is the real demo output; only the timing is synthetic and
    the throwaway temp paths are shortened. Usage: node scripts/render-demo.mjs <captured-output.txt> */
 import fs from 'node:fs';
@@ -11,8 +11,8 @@ if (!src) throw new Error('usage: node scripts/render-demo.mjs <captured demo ou
 
 const raw = fs
   .readFileSync(src, 'utf8')
-  .replace(/[A-Za-z]:\\Users\\[^\\\s]+\\AppData\\Local\\Temp\\(tally-demo-[A-Za-z0-9]+)/g, '/tmp/$1')
-  .replace(/[A-Za-z]:\/Users\/[^/\s]+\/AppData\/Local\/Temp\/(tally-demo-[A-Za-z0-9]+)/g, '/tmp/$1')
+  .replace(/[A-Za-z]:\\Users\\[^\\\s]+\\AppData\\Local\\Temp\\(sigil-demo-[A-Za-z0-9]+)/g, '/tmp/$1')
+  .replace(/[A-Za-z]:\/Users\/[^/\s]+\/AppData\/Local\/Temp\/(sigil-demo-[A-Za-z0-9]+)/g, '/tmp/$1')
   .replace(/\\/g, '/')
   .replace(/\r/g, '');
 const lines = raw.split('\n');
@@ -23,20 +23,20 @@ const cols = 110;
 const rows = 40;
 const events = [];
 let t = 0.3;
-events.push([t, 'o', '$ tally demo\r\n']);
+events.push([t, 'o', '$ sigil demo\r\n']);
 for (const line of lines) {
-  const heavy = /^\[\d\]|^Tally receipt|^BORDERLINE|^!!/.test(line);
+  const heavy = /^\[\d\]|^Sigil receipt|^BORDERLINE|^!!/.test(line);
   t += heavy ? 1.2 : /^\s+\d\d:\d\d:\d\d/.test(line) ? 0.18 : 0.32;
   events.push([Number(t.toFixed(2)), 'o', line + '\r\n']);
 }
 t += 2;
-const cast = [JSON.stringify({ version: 2, width: cols, height: rows, timestamp: 1789000000, title: 'tally demo (real output, synthetic timing)', env: { SHELL: '/bin/bash', TERM: 'xterm-256color' } }), ...events.map((e) => JSON.stringify(e))].join('\n') + '\n';
+const cast = [JSON.stringify({ version: 2, width: cols, height: rows, timestamp: 1789000000, title: 'sigil demo (real output, synthetic timing)', env: { SHELL: '/bin/bash', TERM: 'xterm-256color' } }), ...events.map((e) => JSON.stringify(e))].join('\n') + '\n';
 fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
 fs.writeFileSync(path.join(root, 'docs', 'demo.cast'), cast);
 
 /* animated SVG: a scrolling terminal, each frame shows the last `rows` lines at that time */
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const colour = (line) => (/^!!/.test(line) ? '#f87171' : /^ ! /.test(line) ? '#fbbf24' : /^ · /.test(line) ? '#60a5fa' : /^\[\d\]/.test(line) ? '#a78bfa' : /→ \[|✔|passed/.test(line) ? '#4ade80' : /✘|FAIL|reverted|NOT WORTH IT/.test(line) ? '#f87171' : /^Tally receipt|^BORDERLINE/.test(line) ? '#f9fafb' : /^\s+\d\d:\d\d:\d\d/.test(line) ? '#9ca3af' : '#d1d5db');
+const colour = (line) => (/^!!/.test(line) ? '#f87171' : /^ ! /.test(line) ? '#fbbf24' : /^ · /.test(line) ? '#60a5fa' : /^\[\d\]/.test(line) ? '#a78bfa' : /→ \[|✔|passed/.test(line) ? '#4ade80' : /✘|FAIL|reverted|NOT WORTH IT/.test(line) ? '#f87171' : /^Sigil receipt|^BORDERLINE/.test(line) ? '#f9fafb' : /^\s+\d\d:\d\d:\d\d/.test(line) ? '#9ca3af' : '#d1d5db');
 const lineH = 17;
 const charW = 7.2;
 const width = Math.round(cols * charW + 32);
@@ -61,11 +61,11 @@ frames.forEach((f, i) => {
   body += '</g>';
 });
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5">
-<title>tally demo: real output, animated</title>
+<title>sigil demo: real output, animated</title>
 <rect width="100%" height="100%" rx="8" fill="#0b0f19"/>
 <circle cx="18" cy="14" r="5" fill="#ef4444"/><circle cx="36" cy="14" r="5" fill="#f59e0b"/><circle cx="54" cy="14" r="5" fill="#22c55e"/>
-<text x="${Math.round(width / 2)}" y="18" text-anchor="middle" fill="#6b7280" font-size="11">tally demo · real output, timing compressed · ${Math.round(total)}s</text>
-<g><text x="16" y="34" fill="#d1d5db">$ tally demo</text><set attributeName="visibility" to="hidden" begin="${shown[0].at.toFixed(2)}s"/></g>
+<text x="${Math.round(width / 2)}" y="18" text-anchor="middle" fill="#6b7280" font-size="11">sigil demo · real output, timing compressed · ${Math.round(total)}s</text>
+<g><text x="16" y="34" fill="#d1d5db">$ sigil demo</text><set attributeName="visibility" to="hidden" begin="${shown[0].at.toFixed(2)}s"/></g>
 ${body}
 </svg>
 `;

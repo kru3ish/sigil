@@ -1,4 +1,4 @@
-/* `tally replay <session>`: the session as a timeline with the moments that mattered marked: each prompt, the first
+/* `sigil replay <session>`: the session as a timeline with the moments that mattered marked: each prompt, the first
    failing test, the point a retry loop started, when context passed 70%, each compaction, ship events, and the
    receipt's verdict. A learning tool for one person and a post-mortem for a team. */
 import { type Args, has } from '../cli.js';
@@ -82,7 +82,7 @@ export async function run(args: Args): Promise<number | void> {
   const arg = args._[0];
   const session = arg ? resolveSessionPrefix(arg) : resolveSession(undefined, process.cwd());
   if (!session) {
-    process.stderr.write('Usage: tally replay <session>\n');
+    process.stderr.write('Usage: sigil replay <session>\n');
     return 1;
   }
   const p = transcriptPathFor(session);

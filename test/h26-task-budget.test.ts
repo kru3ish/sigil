@@ -25,7 +25,7 @@ afterEach(() => iso.restore());
 
 const policy = (b: Record<string, unknown> = {}) => PolicySchema.parse({ budget: b }).budget;
 const est = (over: Partial<CostEstimate> = {}): CostEstimate => ({ usd: 20, low_usd: 12, high_usd: 31, basis: 'similar', confidence: 'medium', n: 4, corpus: 40, neighbours: [], computed_at: '', ...over });
-const task = (over: Record<string, unknown> = {}) => ({ session: 's', cwd: '/r', created_at: 'x', frozen: true, source: { kind: 'text', ref: 'x' }, title: 'Rate limit the login endpoint', body_excerpt: '', labels: [], criteria: [], spec_quality: { score: 7, missing: [], questions: [] }, needs_clarification: false, estimate: { hours: 3, basis: 'llm' }, budget_usd: 0, budget_basis: 'none', hourly_rate: 75, tally_cost_usd: 0, model: 'fixture', ...over });
+const task = (over: Record<string, unknown> = {}) => ({ session: 's', cwd: '/r', created_at: 'x', frozen: true, source: { kind: 'text', ref: 'x' }, title: 'Rate limit the login endpoint', body_excerpt: '', labels: [], criteria: [], spec_quality: { score: 7, missing: [], questions: [] }, needs_clarification: false, estimate: { hours: 3, basis: 'llm' }, budget_usd: 0, budget_basis: 'none', hourly_rate: 75, sigil_cost_usd: 0, model: 'fixture', ...over });
 
 describe('the task budget', () => {
   it('is the upper range of comparable past tasks, and nothing when there are none', () => {
@@ -46,13 +46,13 @@ describe('the task budget', () => {
     expect(describeBudget('history', 31, est())).toContain('4 comparable past tasks');
   });
 
-  it('`tally budget set` caps the live task, records the event, and the status line runs against it', () => {
+  it('`sigil budget set` caps the live task, records the event, and the status line runs against it', () => {
     const session = 'cap-0001';
-    const cwd = tmpDir('tally-cap-');
+    const cwd = tmpDir('sigil-cap-');
     writeJson(path.join(sessionDir(session), 'task.json'), task({ cwd }));
     writeJson(path.join(sessionDir(session), 'estimate.json'), est({ basis: 'all', usd: 1.5, high_usd: 3 }));
     expect(renderStatusLine({ session_id: session, cost: { total_cost_usd: 2 } }, false)).toContain('$2.00 · no cap');
-    const r = spawnSync(process.execPath, [CLI, 'budget', 'set', '40', '--session', session, '--note', 'one afternoon'], { cwd, encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, timeout: 20000 });
+    const r = spawnSync(process.execPath, [CLI, 'budget', 'set', '40', '--session', session, '--note', 'one afternoon'], { cwd, encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, timeout: 20000 });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('$40.00');
     expect(readCap(session)?.usd).toBe(40);
@@ -64,7 +64,7 @@ describe('the task budget', () => {
     expect(events).toContain('one afternoon');
     const line = renderStatusLine({ session_id: session, cost: { total_cost_usd: 34 } }, false);
     expect(line).toContain('$34.00 / $40.00 cap (85%)');
-    const status = spawnSync(process.execPath, [CLI, 'budget', '--session', session], { cwd, encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, timeout: 20000 });
+    const status = spawnSync(process.execPath, [CLI, 'budget', '--session', session], { cwd, encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, timeout: 20000 });
     expect(status.stdout).toContain('$40.00 cap set for this session');
   });
 
@@ -80,7 +80,7 @@ describe('the task budget', () => {
     expect(text).toContain('Why       main model claude-opus-5 (~$20.00) is the largest single reason');
     const none = renderCheck({ ...check, actual_usd: 5, budget_usd: 0, budget_basis: 'none', span: { days: 1, compactions: 0 }, estimate: est({ basis: 'all', usd: 1.54 }) });
     expect(none).toContain('no comparable past task');
-    expect(none).toContain('tally budget set <usd>');
+    expect(none).toContain('sigil budget set <usd>');
     expect(none).not.toContain('median session');
   });
 });
@@ -95,7 +95,7 @@ describe('recall: the past task this prompt is asking for again', () => {
     expect(m[0]!.similarity).toBeGreaterThan(0.35);
     expect(matchRecall('rewrite the billing invoices PDF export', cards)).toEqual([]);
     expect(matchRecall('the poller for workday postings is broken again', cards, { exclude: 'a1' })).toEqual([]);
-    expect(worthMatching('/tally:cost')).toBe(false);
+    expect(worthMatching('/sigil:cost')).toBe(false);
     expect(worthMatching('yes')).toBe(false);
     expect(worthMatching('ok go ahead and do it')).toBe(false);
     expect(worthMatching('the poller for workday postings is broken again')).toBe(true);
@@ -105,7 +105,7 @@ describe('recall: the past task this prompt is asking for again', () => {
     expect(note).toContain('$4.20');
     expect(note).toContain('Fix the Workday poller');
     expect(note).toContain('src/a.ts');
-    expect(note).toContain('tally recall a1');
+    expect(note).toContain('sigil recall a1');
   });
 
   it('builds a card from a transcript: task, outcome, files, tests, cost, span', () => {
@@ -120,7 +120,7 @@ describe('recall: the past task this prompt is asking for again', () => {
   });
 
   it('backfills cards from the sessions already on the machine for this repo, once', () => {
-    const cwd = tmpDir('tally-recall-bf-');
+    const cwd = tmpDir('sigil-recall-bf-');
     const projects = path.join(iso.claude, 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'));
     fs.mkdirSync(projects, { recursive: true });
     const base = { cwd, sessionId: 'bf-0001', version: '2.1.268', entrypoint: 'cli', isSidechain: false, userType: 'external' };
@@ -145,22 +145,22 @@ describe('recall: the past task this prompt is asking for again', () => {
   });
 
   it('the UserPromptSubmit hook offers the matching card once per session and records the event', () => {
-    const cwd = tmpDir('tally-recall-');
+    const cwd = tmpDir('sigil-recall-');
     const dir = recallDir(cwd);
     expect(dir.startsWith(path.join(iso.home, 'recall'))).toBe(true);
     fs.mkdirSync(dir, { recursive: true });
     writeJson(path.join(dir, 'past-0001.json'), card('past-0001', 'Fix the Workday poller', 'the scheduled poller crashed on an unknown ats value; page through all postings'));
     writeJson(path.join(dir, 'past-0002.json'), card('past-0002', 'Add dark mode', 'theme toggle, persist preference'));
     expect(readCards(cwd).length).toBe(2);
-    const run = (prompt: string) => spawnSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 'now-0001', cwd, prompt }), encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_NO_SPAWN: '1' }, timeout: 8000 });
+    const run = (prompt: string) => spawnSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 'now-0001', cwd, prompt }), encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_NO_SPAWN: '1' }, timeout: 8000 });
     const first = run('the workday poller is broken again: it only reads the first page of postings and the scheduled run crashes');
     expect(first.status).toBe(0);
-    expect(first.stdout).toContain('Tally recall');
+    expect(first.stdout).toContain('Sigil recall');
     expect(first.stdout).toContain('Fix the Workday poller');
     expect(first.stdout).toContain('$4.20');
     expect(first.stdout).not.toContain('dark mode');
     const again = run('the workday poller is broken again: it only reads the first page of postings');
-    expect(again.stdout).not.toContain('Tally recall');
+    expect(again.stdout).not.toContain('Sigil recall');
     const events = fs.readFileSync(path.join(sessionDir('now-0001'), 'events.jsonl'), 'utf8');
     expect(events.split('\n').filter((l) => l.includes('"type":"recall"')).length).toBe(1);
     expect(events).toContain('"ref":"past-0001"');

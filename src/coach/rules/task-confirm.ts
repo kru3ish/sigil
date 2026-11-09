@@ -14,7 +14,7 @@ export const taskConfirm: Rule = {
         key: `confirm:${t.cache_key ?? t.title}`,
         severity: 'info',
         title: `Inferred task (unconfirmed): ${t.title}`,
-        message: `No ticket was linked, so Tally inferred the task from your prompts${t.context?.branch ? `, branch "${t.context.branch}"` : ''}${t.context?.commits?.length ? ` and ${t.context.commits.length} commit(s)` : ''}:\n${t.criteria.map((c) => `   - ${c.id} ${c.text}`).join('\n')}\n   [c]onfirm keeps them · [e]dit rewrites the task in your words · [l]ink attaches a ticket URL (or: tally task --confirm | --edit "<text>" | --link <url>)`,
+        message: `No ticket was linked, so Sigil inferred the task from your prompts${t.context?.branch ? `, branch "${t.context.branch}"` : ''}${t.context?.commits?.length ? ` and ${t.context.commits.length} commit(s)` : ''}:\n${t.criteria.map((c) => `   - ${c.id} ${c.text}`).join('\n')}\n   [c]onfirm keeps them · [e]dit rewrites the task in your words · [l]ink attaches a ticket URL (or: sigil task --confirm | --edit "<text>" | --link <url>)`,
         usd_saved: t.budget_usd * 0.1,
         action: { kind: 'confirm', label: 'Confirm these criteria' },
       },

@@ -1,5 +1,5 @@
 /* The 5-hour and 7-day usage limits, from the numbers Claude Code hands the status line (persisted per session by
-   `tally statusline`). Warns at 80% with a burn-rate estimate of the minutes left, so a limit is not hit mid-task. */
+   `sigil statusline`). Warns at 80% with a burn-rate estimate of the minutes left, so a limit is not hit mid-task. */
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Rule, RuleContext, Suggestion } from '../types.js';
@@ -44,7 +44,7 @@ export const rateLimit: Rule = {
         title: `${name} usage limit at ${Math.round(pct)}%`,
         message: `${Math.round(pct)}% of the ${name} limit is used${resetMin !== undefined ? `; it resets in ${resetMin} min` : ''}${minutesLeft !== undefined ? `; at this session's pace it is reached in about ${minutesLeft} min` : ''}. Finish the piece in progress and leave the small fixes for after the reset.`,
         usd_saved: ctx.avgTurnCostUsd * 3,
-        action: { kind: 'inject', label: 'Tell Claude to sequence the remaining work', note: `Tally observed the ${name} usage limit at ${Math.round(pct)}%${resetMin !== undefined ? `, resetting in ${resetMin} minutes` : ''}${minutesLeft !== undefined ? `, about ${minutesLeft} minutes away at the current pace` : ''}.` },
+        action: { kind: 'inject', label: 'Tell Claude to sequence the remaining work', note: `Sigil observed the ${name} usage limit at ${Math.round(pct)}%${resetMin !== undefined ? `, resetting in ${resetMin} minutes` : ''}${minutesLeft !== undefined ? `, about ${minutesLeft} minutes away at the current pace` : ''}.` },
       });
     }
     return out;

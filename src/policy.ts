@@ -1,7 +1,7 @@
-/* Repo policy: a `tally.json` at the repo root that an org commits. Standing criteria are appended to every task's
+/* Repo policy: a `sigil.json` at the repo root that an org commits. Standing criteria are appended to every task's
    frozen checklist (checked mechanically where possible); the budget block can override the rate, the budget fraction
    or set a fixed budget, and `hard_stop` turns the Coach's over-budget warning into a real stop: the PreToolUse hook
-   denies tool calls until `tally budget approve` records an approval. */
+   denies tool calls until `sigil budget approve` records an approval. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -21,7 +21,7 @@ export const PolicySchema = z.object({
   /* the command the Judge runs for independent verification when `npm test` (or the detected runner) is not the right
      one for this repo: a pretest step that needs network, a monorepo, a suite that only works in CI */
   test_command: z.string().min(1).optional(),
-  /* the pull-request check (`tally check`, the GitHub Action): what the receipt must show before the check passes.
+  /* the pull-request check (`sigil check`, the GitHub Action): what the receipt must show before the check passes.
      no-unmet: nothing UNMET; sufficient: every criterion VERIFIED or SUPPORTED; verified: every criterion VERIFIED. */
   verification: z
     .object({
@@ -34,7 +34,8 @@ export const PolicySchema = z.object({
 });
 export type Policy = z.infer<typeof PolicySchema>;
 
-export const POLICY_FILES = ['tally.json', '.tally.json'];
+/* the two 0.13 names are read for one release when no sigil.json exists */
+export const POLICY_FILES = ['sigil.json', '.sigil.json', 'tally.json', '.tally.json'];
 
 export function policyFile(cwd: string): string | undefined {
   let dir = path.resolve(cwd);

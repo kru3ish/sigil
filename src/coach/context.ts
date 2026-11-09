@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Config } from '../config.js';
 import { historyFile, isInternalCwd } from '../paths.js';
-import { readEvents, type TallyEvent } from '../store/events.js';
+import { readEvents, type SigilEvent } from '../store/events.js';
 import { parseTranscriptFile, type Transcript } from '../transcript/parse.js';
 import { loadTask } from '../task/intake.js';
 import { isModel1M } from '../cost/pricing.js';
@@ -16,7 +16,7 @@ export function loadHistory(): HistoryEntry[] {
     if (!line.trim()) continue;
     try {
       const e = JSON.parse(line) as HistoryEntry;
-      /* entries from Tally's own headless runs never count toward any stat */
+      /* entries from Sigil's own headless runs never count toward any stat */
       if (e.internal || isInternalCwd(e.repo)) continue;
       out.push(e);
     } catch {
@@ -26,7 +26,7 @@ export function loadHistory(): HistoryEntry[] {
   return out;
 }
 
-export function buildContext(opts: { session: string; cwd: string; cfg: Config; now?: Date; events?: TallyEvent[]; transcript?: Transcript; transcriptPath?: string; history?: HistoryEntry[] }): RuleContext {
+export function buildContext(opts: { session: string; cwd: string; cfg: Config; now?: Date; events?: SigilEvent[]; transcript?: Transcript; transcriptPath?: string; history?: HistoryEntry[] }): RuleContext {
   const events = opts.events ?? readEvents(opts.session);
   let transcript = opts.transcript;
   if (!transcript && opts.transcriptPath && fs.existsSync(opts.transcriptPath)) {

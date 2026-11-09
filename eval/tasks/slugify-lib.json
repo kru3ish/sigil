@@ -1,9 +1,9 @@
 {
   "id": "slugify-lib",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/slugify-lib",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/slugify-lib",
   "base": "c8c8ac90bf05739f0d1f48cd4b6f38f8349f5761",
-  "task": "C:/Users/Mehta/dev/tally-eval/slugify-lib/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/slugify-lib/task.md",
   "setup": [],
   "tags": [
     "javascript",

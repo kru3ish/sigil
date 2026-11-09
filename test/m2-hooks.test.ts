@@ -4,18 +4,18 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { isolate, root, tmpDir } from './helpers.js';
 import { readEvents } from '../src/store/events.js';
-import { install, uninstall, isInstalled, settingsPath, HOOK_EVENTS, isTallyHook } from '../src/install/install.js';
+import { install, uninstall, isInstalled, settingsPath, HOOK_EVENTS, isSigilHook } from '../src/install/install.js';
 
 const HOOK = path.join(root, 'dist', 'hook.js');
 
 let iso: ReturnType<typeof isolate>;
 beforeEach(() => {
   iso = isolate();
-  process.env.TALLY_NO_SPAWN = '1';
+  process.env.SIGIL_NO_SPAWN = '1';
 });
 afterEach(() => {
   iso.restore();
-  delete process.env.TALLY_NO_SPAWN;
+  delete process.env.SIGIL_NO_SPAWN;
 });
 
 function runHook(event: string, stdin: string): { code: number | null; stdout: string; ms: number } {
@@ -44,7 +44,7 @@ describe('hook entry', () => {
     expect(times[2]!).toBeLessThan(150);
   });
 
-  it('makes no network calls and imports only builtins plus tally internals', () => {
+  it('makes no network calls and imports only builtins plus sigil internals', () => {
     const src = fs.readFileSync(HOOK, 'utf8');
     expect(src).not.toMatch(/\bfetch\(/);
     expect(src).not.toMatch(/from ['"](https?|net|dns|tls|http2)['"]/);
@@ -91,7 +91,7 @@ describe('hook entry', () => {
     expect(r1.code).toBe(0);
     const out = JSON.parse(r1.stdout) as { hookSpecificOutput: { hookEventName: string; additionalContext: string } };
     expect(out.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
-    expect(out.hookSpecificOutput.additionalContext).toBe('Tally: Run the tests before pushing.');
+    expect(out.hookSpecificOutput.additionalContext).toBe('Sigil: Run the tests before pushing.');
     const r2 = runHook('UserPromptSubmit', JSON.stringify({ session_id: 'sess-4', prompt: 'again' }));
     expect(r2.stdout).toBe('');
   });
@@ -99,7 +99,7 @@ describe('hook entry', () => {
   it('auto-detects a task URL in the first prompt and records the session start inventory', () => {
     fs.mkdirSync(path.join(iso.claude), { recursive: true });
     fs.writeFileSync(path.join(iso.claude, 'settings.json'), JSON.stringify({ enabledPlugins: { 'superpowers@official': true } }));
-    const repo = tmpDir('tally-repo-');
+    const repo = tmpDir('sigil-repo-');
     fs.mkdirSync(path.join(repo, '.git', 'refs', 'heads'), { recursive: true });
     fs.writeFileSync(path.join(repo, '.git', 'HEAD'), 'ref: refs/heads/main\n');
     fs.writeFileSync(path.join(repo, '.git', 'refs', 'heads', 'main'), 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\n');
@@ -163,7 +163,7 @@ describe('install / uninstall', () => {
   });
 
   it('supports project scope', () => {
-    const cwd = tmpDir('tally-proj-');
+    const cwd = tmpDir('sigil-proj-');
     const file = settingsPath('project', cwd);
     install({ scope: 'project', cwd });
     expect(fs.existsSync(file)).toBe(true);
@@ -195,7 +195,7 @@ describe('install / uninstall', () => {
 describe('plugin manifest', () => {
   it('has a valid plugin.json, marketplace.json, and hooks.json covering every event', () => {
     const plugin = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as { name: string; hooks?: string; commands?: string[] };
-    expect(plugin.name).toBe('tally');
+    expect(plugin.name).toBe('sigil');
     /* hooks/hooks.json and commands/ are loaded by convention; naming them again in the manifest makes the plugin fail to load ("Duplicate hooks file") */
     expect(plugin.hooks).toBeUndefined();
     expect(plugin.commands).toBeUndefined();
@@ -206,10 +206,10 @@ describe('plugin manifest', () => {
       /* exec form: no shell, so Windows can spawn it (a .cmd shim could not be) */
       expect(h.command).toBe('node');
       expect(h.args).toEqual(['${CLAUDE_PLUGIN_ROOT}/dist/hook.js', event]);
-      expect(isTallyHook(h)).toBe(true);
+      expect(isSigilHook(h)).toBe(true);
     }
     const market = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8')) as { plugins: Array<{ name: string }> };
-    expect(market.plugins[0]!.name).toBe('tally');
-    for (const c of ['tally.md', 'task.md', 'judge.md', 'report.md', 'coach.md', 'statusline.md', 'explain.md', 'dispute.md', 'budget.md']) expect(fs.existsSync(path.join(root, 'commands', c))).toBe(true);
+    expect(market.plugins[0]!.name).toBe('sigil');
+    for (const c of ['sigil.md', 'task.md', 'judge.md', 'report.md', 'coach.md', 'statusline.md', 'explain.md', 'dispute.md', 'budget.md']) expect(fs.existsSync(path.join(root, 'commands', c))).toBe(true);
   });
 });

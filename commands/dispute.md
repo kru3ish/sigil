@@ -8,4 +8,4 @@ allowed-tools: Bash(node *)
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.js" dispute --from-args "$ARGUMENTS" --plain
 ```
 
-Report the re-scored receipt above to the user. The dispute is recorded with their reason and feeds Tally's calibration.
+Report the re-scored receipt above to the user. The dispute is recorded with their reason and feeds Sigil's calibration.

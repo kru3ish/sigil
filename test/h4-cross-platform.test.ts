@@ -27,7 +27,7 @@ describe('H4 cross-platform', () => {
     const all = () => true;
     const print = startPlan({}, 'linux', false, none);
     expect(print.kind).toBe('print');
-    expect(print.message).toContain('tally watch');
+    expect(print.message).toContain('sigil watch');
     expect(startPlan({}, 'linux', false, all).kind).toBe('tmux-new');
     expect(startPlan({ TMUX: '/tmp/tmux-1000/default,1,0' }, 'linux', false, all).kind).toBe('tmux-split');
     const win = startPlan({}, 'win32', false, none);
@@ -36,10 +36,10 @@ describe('H4 cross-platform', () => {
     expect(startPlan({ WT_SESSION: 'abc' }, 'win32', false, all).kind).toBe('wt-split');
     expect(startPlan({}, 'win32', false, all).kind).toBe('print');
     const plain = startPlan({}, 'darwin', true, none);
-    expect(plain.cmd).toBe('tally watch --plain');
+    expect(plain.cmd).toBe('sigil watch --plain');
     const r = spawnSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'start'], { encoding: 'utf8', env: { ...process.env, TMUX: '', WT_SESSION: '', PATH: path.dirname(process.execPath) } });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('tally watch');
+    expect(r.stdout).toContain('sigil watch');
   });
 
   it('project dir encoding and package-root resolution work with both path styles', () => {
@@ -50,7 +50,7 @@ describe('H4 cross-platform', () => {
   });
 
   it('verification uses the platform shell and kills the process tree on timeout', async () => {
-    const cwd = tmpDir('tally-h4-');
+    const cwd = tmpDir('sigil-h4-');
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "setTimeout(()=>{},30000)"' } }));
     const t0 = Date.now();
     const r = await runVerification(cwd, { timeoutMs: 700, consent: true });
@@ -69,7 +69,7 @@ describe('H4 cross-platform', () => {
     expect(s.fix.length).toBeGreaterThan(5);
     expect(s.reason).toContain('gh');
 
-    const repo = tmpDir('tally-h4-repo-');
+    const repo = tmpDir('sigil-h4-repo-');
     const git = (...a: string[]) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
     git('init', '-q', '-b', 'main');
     git('config', 'user.email', 't@t');

@@ -77,9 +77,9 @@ export async function run(args: Args): Promise<number | void> {
     if (consent === undefined && !auto && process.stdin.isTTY && cfg.judge.run_tests) {
       const detected = detectTestCommand(cwd);
       if (detected) {
-        consent = await askYesNo(`Tally verifies claims by running \`${detected.command}\` itself in ${cwd} (scrubbed environment, ${Math.round(cfg.judge.test_timeout_ms / 1000)}s timeout). Allow this for this repo? [y/N] `);
+        consent = await askYesNo(`Sigil verifies claims by running \`${detected.command}\` itself in ${cwd} (scrubbed environment, ${Math.round(cfg.judge.test_timeout_ms / 1000)}s timeout). Allow this for this repo? [y/N] `);
         setTestRerunConsent(cwd, consent);
-        process.stdout.write(consent ? 'Saved: test re-runs allowed for this repo (tally config consent.test_rerun.<repo> false to revoke).\n' : 'Saved: tests will not be run here; test criteria will be marked unverifiable.\n');
+        process.stdout.write(consent ? 'Saved: test re-runs allowed for this repo (sigil config consent.test_rerun.<repo> false to revoke).\n' : 'Saved: tests will not be run here; test criteria will be marked unverifiable.\n');
       }
     }
     const judge = await judgeSession({ session, cwd, transcriptPath, cfg, llm, reason, consent, deep: has(args, 'deep') });

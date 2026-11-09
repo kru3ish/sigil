@@ -6,7 +6,7 @@
                  external evidence about intended behaviour (never the only valid implementation)
 
    A spec is one JSON file under eval/tasks/. It says where the repository comes from, which commit is the base, what
-   the agent is told, what Tally will freeze as criteria (or lets intake extract them), how the suite is run here, why
+   the agent is told, what Sigil will freeze as criteria (or lets intake extract them), how the suite is run here, why
    the task was selected, and whether the solution is likely to be in model training data. */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,9 +23,9 @@ export const EvalTaskSchema = z.object({
   issue: z.string().optional(),
   /* the task as the agent sees it: markdown text, or a path to a .md file relative to the spec */
   task: z.string(),
-  /* criteria Tally freezes verbatim (source explicit); when absent intake extracts them from the task text */
+  /* criteria Sigil freezes verbatim (source explicit); when absent intake extracts them from the task text */
   criteria: z.array(z.object({ text: z.string(), check: z.record(z.unknown()).optional() })).optional(),
-  /* what runs the suite on this machine when the detected runner is wrong (becomes tally.json test_command) */
+  /* what runs the suite on this machine when the detected runner is wrong (becomes sigil.json test_command) */
   test_command: z.string().optional(),
   /* commands to run once after cloning (npm install and the like); recorded, never network-free by assumption */
   setup: z.array(z.string()).default([]),

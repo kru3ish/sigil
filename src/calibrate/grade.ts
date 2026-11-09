@@ -1,10 +1,10 @@
-/* Blind grading: the grader sees the frozen criteria and a compact evidence summary, never Tally's statuses or verdict,
+/* Blind grading: the grader sees the frozen criteria and a compact evidence summary, never Sigil's statuses or verdict,
    until the grades are saved. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadJudge } from '../judge/judge.js';
 import { loadTask } from '../task/intake.js';
-import { sessionDir, appendLine, ensureDir, tallyHome } from '../paths.js';
+import { sessionDir, appendLine, ensureDir, sigilHome } from '../paths.js';
 import { calibrationFile, entryFromJudge, STATUSES, VERDICTS, type CalibrationEntry, type Status, type VerdictText } from './calibrate.js';
 import type { CoachReplay } from '../backfill/events.js';
 
@@ -18,7 +18,7 @@ export interface GradeResult {
 export function evidenceSummary(session: string): string {
   const j = loadJudge(session);
   const task = loadTask(session);
-  if (!j || !task) throw new Error(`session ${session} has no receipt; run tally backfill add or tally judge first`);
+  if (!j || !task) throw new Error(`session ${session} has no receipt; run sigil backfill add or sigil judge first`);
   const L: string[] = [];
   L.push(`Task: ${task.title}${task.source.url ? `  (${task.source.url})` : ''}`);
   if (task.historical) L.push(`  ${task.historical.note}`);
@@ -62,8 +62,8 @@ export async function gradeSession(session: string, opts: { grader: string; ask:
   const j = loadJudge(session)!;
   const summary = evidenceSummary(session);
   const task = loadTask(session)!;
-  if (j.criteria.length !== task.criteria.length) throw new Error(`the receipt for ${session.slice(0, 8)} has ${j.criteria.length} criteria but the task now has ${task.criteria.length}; re-run tally judge ${session.slice(0, 8)} before grading`);
-  opts.out(`Blind grading · session ${session.slice(0, 8)} · grader ${opts.grader}\n(Tally's own statuses and verdict stay hidden until you have graded.)\n`);
+  if (j.criteria.length !== task.criteria.length) throw new Error(`the receipt for ${session.slice(0, 8)} has ${j.criteria.length} criteria but the task now has ${task.criteria.length}; re-run sigil judge ${session.slice(0, 8)} before grading`);
+  opts.out(`Blind grading · session ${session.slice(0, 8)} · grader ${opts.grader}\n(Sigil's own statuses and verdict stay hidden until you have graded.)\n`);
   opts.out(summary);
   let criteria = task.criteria.map((c) => ({ id: c.id, text: c.text }));
   let taskEdited = false;
@@ -107,11 +107,11 @@ export async function gradeSession(session: string, opts: { grader: string; ask:
   }
   const base = entryFromJudge(j, human, verdict, 'backfill');
   const entry: CalibrationEntry = { ...base, criteria: base.criteria.map((c, i) => ({ ...c, text: criteria[i]!.text })), grader: opts.grader, coach, task_edited: taskEdited };
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   appendLine(calibrationFile(), JSON.stringify(entry));
   const R: string[] = [];
-  R.push(`\nSaved. Tally's judgment, side by side (${j.tiers.ran.join(' → ')}):`);
-  R.push(`  ${'criterion'.padEnd(12)} ${'you'.padEnd(13)} ${'tally'.padEnd(13)} evidence`);
+  R.push(`\nSaved. Sigil's judgment, side by side (${j.tiers.ran.join(' → ')}):`);
+  R.push(`  ${'criterion'.padEnd(12)} ${'you'.padEnd(13)} ${'sigil'.padEnd(13)} evidence`);
   for (const c of entry.criteria) R.push(`  ${c.id.padEnd(12)} ${c.human.padEnd(13)} ${c.judge.padEnd(13)} ${c.human === c.judge ? '' : '≠ '}${c.evidence.slice(0, 90).replace(/\n/g, ' ')}`);
   R.push(`  ${'verdict'.padEnd(12)} ${verdict.padEnd(13)} ${j.verdict.verdict.padEnd(13)} ${verdict === j.verdict.verdict ? '' : '≠'}`);
   if (j.followup) R.push(`  follow-up: ${j.followup.final_status} → ${j.followup.final_verdict}`);

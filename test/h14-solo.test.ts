@@ -48,7 +48,7 @@ describe('onboard (instant report, no model calls)', () => {
 
   it('runs from the CLI without a model and prints JSON on request', () => {
     seedProjects();
-    const r = spawnSync(process.execPath, [CLI, 'onboard', '--since', '3650d', '--json'], { encoding: 'utf8', env: { ...process.env, TALLY_LLM: 'stub' } });
+    const r = spawnSync(process.execPath, [CLI, 'onboard', '--since', '3650d', '--json'], { encoding: 'utf8', env: { ...process.env, SIGIL_LLM: 'stub' } });
     expect(r.status).toBe(0);
     const j = JSON.parse(r.stdout) as { sessions: number };
     expect(j.sessions).toBe(1);
@@ -173,9 +173,9 @@ describe('local-model provider (OpenAI-compatible)', () => {
 
 describe('handoff resume', () => {
   it('SessionStart surfaces a fresh HANDOFF.md as the state to resume from, and ignores a stale one', () => {
-    const cwd = tmpDir('tally-handoff-');
+    const cwd = tmpDir('sigil-handoff-');
     fs.writeFileSync(path.join(cwd, 'HANDOFF.md'), '# Handoff\nNext: wire the rate limiter into login.\n');
-    const run = () => spawnSync(process.execPath, [HOOK, 'SessionStart'], { input: JSON.stringify({ session_id: 'handoff-0001', cwd, source: 'startup' }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    const run = () => spawnSync(process.execPath, [HOOK, 'SessionStart'], { input: JSON.stringify({ session_id: 'handoff-0001', cwd, source: 'startup' }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
     let r = run();
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('HANDOFF.md');
@@ -234,12 +234,12 @@ describe('onboard (honest first result)', () => {
       expect(['high', 'medium', 'low']).toContain(f.confidence);
       expect(f.reason.length).toBeGreaterThan(10);
     }
-    expect(r.next.command).toMatch(/^tally (task|backfill add)/);
+    expect(r.next.command).toMatch(/^sigil (task|backfill add)/);
     expect(r.elapsed_ms).toBeLessThan(60000);
     const text = renderOnboard(r);
     expect(text).toContain('What history supports (read locally, nothing sent anywhere)');
     expect(text).toContain('VERIFIED needs a live session');
-    expect(text).toMatch(/Next: tally (task|backfill add)/);
+    expect(text).toMatch(/Next: sigil (task|backfill add)/);
     expect(text).not.toMatch(/\bVERIFIED\b(?! needs)/);
   });
 

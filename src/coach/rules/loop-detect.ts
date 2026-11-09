@@ -26,7 +26,7 @@ export const loopDetect: Rule = {
         action: {
           kind: 'inject',
           label: 'Tell Claude to stop and diagnose',
-          note: `Tally observed \`${cmd.slice(0, 120)}\` fail ${evs.length} times with the same result this session; each retry cost about $${ctx.avgTurnCostUsd.toFixed(2)} and produced no new information.`,
+          note: `Sigil observed \`${cmd.slice(0, 120)}\` fail ${evs.length} times with the same result this session; each retry cost about $${ctx.avgTurnCostUsd.toFixed(2)} and produced no new information.`,
         },
       });
     }
@@ -44,7 +44,7 @@ export const loopDetect: Rule = {
         title: `Same edit failed ${evs.length}×`,
         message: `The same edit to ${file} has failed ${evs.length} times (old_string not found?). Re-read the file before editing again.`,
         usd_saved: ctx.avgTurnCostUsd * evs.length,
-        action: { kind: 'inject', label: 'Tell Claude to re-read before editing', note: `Tally observed ${evs.length} failed edits to ${file} with the same old_string; the file's current contents differ from what the edits expect.` },
+        action: { kind: 'inject', label: 'Tell Claude to re-read before editing', note: `Sigil observed ${evs.length} failed edits to ${file} with the same old_string; the file's current contents differ from what the edits expect.` },
       });
     }
     return out;

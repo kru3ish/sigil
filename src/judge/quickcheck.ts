@@ -1,7 +1,7 @@
 /* Quick mechanical checks against the working tree, cheap enough for a hook and an MCP call: no model, no zod, no
    transcript. Reads task.json raw, resolves file_exists / file_contains / file_changed / diff_contains with fs and one
    `git diff` from the session's base commit, and writes progress.json for the status line. tests_pass, command and pr
-   are reported as "needs the Judge" here; only `tally judge` runs tests. */
+   are reported as "needs the Judge" here; only `sigil judge` runs tests. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -99,7 +99,7 @@ export function quickChecks(session: string, cwd: string | undefined): Progress 
       const ok = !!re && re.test(d.text);
       items.push({ id: c.id, text: c.text, kind: ch.kind, status: ok ? 'met' : 'unmet', why: ok ? `the diff matches /${ch.pattern}/` : `the diff does not match /${ch.pattern}/ yet` });
     } else {
-      items.push({ id: c.id, text: c.text, kind: ch.kind, status: 'unknown', why: ch.kind === 'tests_pass' ? 'tests are run by the Judge (tally judge), not here' : ch.kind === 'pr' ? 'decided by the push / PR events at judge time' : `${ch.kind} is run by the Judge` });
+      items.push({ id: c.id, text: c.text, kind: ch.kind, status: 'unknown', why: ch.kind === 'tests_pass' ? 'tests are run by the Judge (sigil judge), not here' : ch.kind === 'pr' ? 'decided by the push / PR events at judge time' : `${ch.kind} is run by the Judge` });
     }
   }
   const checked = items.filter((i) => i.status !== 'unknown').length;

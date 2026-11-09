@@ -1,7 +1,7 @@
 /* A local or self-hosted model behind the OpenAI-compatible chat API (Ollama, vLLM, LM Studio, llama.cpp server):
    air-gapped judging and coaching with no outbound traffic. Structured output is requested as JSON in the prompt and
    parsed leniently. Cost is zero unless config gives a price. */
-import { recordTallySpend, type LlmClient, type LlmRequest, type LlmResult } from './client.js';
+import { recordSigilSpend, type LlmClient, type LlmRequest, type LlmResult } from './client.js';
 import type { Usage } from '../cost/pricing.js';
 import { log } from '../paths.js';
 
@@ -57,7 +57,7 @@ export class OpenAICompatible implements LlmClient {
     const usage: Usage = { input: json.usage?.prompt_tokens ?? 0, output: json.usage?.completion_tokens ?? 0, cache_write: 0, cache_write_1h: 0, cache_read: 0 };
     const cost_usd = (usage.input * (this.opts.usdPerMillionInput ?? 0) + usage.output * (this.opts.usdPerMillionOutput ?? 0)) / 1e6;
     const model = `local:${json.model ?? req.model}`;
-    recordTallySpend({ kind: req.tier ? `${req.kind}:tier${req.tier}` : req.kind, model, cost_usd, usage, session: this.opts.session });
+    recordSigilSpend({ kind: req.tier ? `${req.kind}:tier${req.tier}` : req.kind, model, cost_usd, usage, session: this.opts.session });
     log(`llm(local) ${req.kind}${req.tier ? ':tier' + req.tier : ''} model=${model} tokens=${usage.input}+${usage.output} ms=${Date.now() - started}`);
     return { data, usage, cost_usd, model, duration_ms: Date.now() - started };
   }

@@ -18,7 +18,7 @@ export async function run(args: Args): Promise<number | void> {
     },
   });
   const env = otelSetupEnv(bound);
-  process.stdout.write(`Tally OTel receiver listening on http://127.0.0.1:${bound}/v1/metrics → ${otelFile()}\n\nStart Claude Code with these variables (put them in your shell profile or ~/.claude/settings.json "env"):\n`);
+  process.stdout.write(`Sigil OTel receiver listening on http://127.0.0.1:${bound}/v1/metrics → ${otelFile()}\n\nStart Claude Code with these variables (put them in your shell profile or ~/.claude/settings.json "env"):\n`);
   for (const [k, v] of Object.entries(env)) process.stdout.write(`  ${k}=${v}\n`);
   process.stdout.write('\nReceipts will then show an OTel cross-check next to the transcript cost. Ctrl-C to stop.\n');
   await new Promise(() => {});

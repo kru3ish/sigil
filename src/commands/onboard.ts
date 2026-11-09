@@ -1,5 +1,5 @@
-/* `tally onboard [--since 30d] [--budget 60] [--json]`: the honest first result the moment Tally is installed, from the
-   transcripts already on disk and no model calls. It says what Tally can and cannot reconstruct from history (counts,
+/* `sigil onboard [--since 30d] [--budget 60] [--json]`: the honest first result the moment Sigil is installed, from the
+   transcripts already on disk and no model calls. It says what Sigil can and cannot reconstruct from history (counts,
    not claims), shows at most three concrete findings each labelled with its confidence and the reason, keeps the spend
    and waste report, and ends with one next command. Retrospective work never produces VERIFIED: that needs a live session
    with an independent test run at the time; history can support UNVERIFIED, UNMET, or "cannot reconstruct". */
@@ -190,8 +190,8 @@ export function buildOnboard(since = '30d', now = Date.now(), opts: { budgetMs?:
   if (findings.length < 3 && firstTurnAvg > 40000) findings.push({ text: `Sessions start with ${firstTurnAvg.toLocaleString('en-US')} tokens of context before any work; that is paid on every turn.`, confidence: 'medium', reason: 'averaged from the first assistant turn of each transcript; the split between instructions, skills and MCP is not visible here' });
 
   const next = verifiable.length
-    ? { command: `tally backfill add ${verifiable[0]!.c.session.slice(0, 8)}`, why: `a retrospective receipt for ${verifiable[0]!.ref}; statuses from history are UNVERIFIED or UNMET at most, never VERIFIED` }
-    : { command: 'tally task "<what you are about to ask the agent to do>"', why: 'freeze the acceptance criteria before the next real task, then `tally verify` when the agent says done' };
+    ? { command: `sigil backfill add ${verifiable[0]!.c.session.slice(0, 8)}`, why: `a retrospective receipt for ${verifiable[0]!.ref}; statuses from history are UNVERIFIED or UNMET at most, never VERIFIED` }
+    : { command: 'sigil task "<what you are about to ask the agent to do>"', why: 'freeze the acceptance criteria before the next real task, then `sigil verify` when the agent says done' };
   return {
     since,
     sessions: rec.found,
@@ -213,7 +213,7 @@ export function renderOnboard(r: OnboardReport): string {
   const L: string[] = [];
   const monthly = r.days ? (r.spend_usd / r.days) * 30 : r.spend_usd;
   const rec = r.reconstruction;
-  L.push(`Tally · your last ${r.since}: ${r.sessions} session(s), ${fmtUsd(r.spend_usd)} API-equivalent (≈ ${fmtUsd(monthly)}/month)`);
+  L.push(`Sigil · your last ${r.since}: ${r.sessions} session(s), ${fmtUsd(r.spend_usd)} API-equivalent (≈ ${fmtUsd(monthly)}/month)`);
   L.push('');
   L.push('What history supports (read locally, nothing sent anywhere)');
   L.push(`  sessions found                         ${String(rec.found).padStart(5)}${rec.truncated_after_s !== undefined ? `   (${rec.scanned} scanned in ${rec.truncated_after_s}s; --budget for more)` : ''}`);

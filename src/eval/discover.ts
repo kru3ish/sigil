@@ -1,6 +1,6 @@
-/* `tally eval discover`: find public issues that make good evaluation tasks and write them as candidate specs for a
+/* `sigil eval discover`: find public issues that make good evaluation tasks and write them as candidate specs for a
    person (or a later Claude pass) to curate into eval/tasks/. Selection is scored and every reason is recorded, so the
-   corpus cannot quietly drift toward tasks Tally does well on. Read-only against GitHub; never posts. */
+   corpus cannot quietly drift toward tasks Sigil does well on. Read-only against GitHub; never posts. */
 import fs from 'node:fs';
 import path from 'node:path';
 import type { EvalTask } from './tasks.js';
@@ -70,7 +70,7 @@ export function scoreIssue(i: Issue, repo: { tests: boolean; language?: string }
 }
 
 async function gh<T>(url: string, token?: string): Promise<T> {
-  const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'tally-eval', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+  const r = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'sigil-eval', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   if (!r.ok) throw new Error(`${url} → ${r.status}`);
   return (await r.json()) as T;
 }

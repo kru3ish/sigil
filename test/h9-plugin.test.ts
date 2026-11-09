@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { isolate, tmpDir, root } from './helpers.js';
-import { install, isInstalled, isTallyHook, enabledPluginIds, PluginConflictError, settingsPath } from '../src/install/install.js';
+import { install, isInstalled, isSigilHook, enabledPluginIds, PluginConflictError, settingsPath } from '../src/install/install.js';
 import { run as runInstall } from '../src/commands/install.js';
 import { readEvents } from '../src/store/events.js';
 import { runChecks } from '../src/commands/doctor.js';
@@ -18,17 +18,17 @@ afterEach(() => iso.restore());
 
 function hook(event: string, input: Record<string, unknown>, env: Record<string, string> = {}): { status: number | null; stdout: string; ms: number } {
   const t0 = Date.now();
-  const r = spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1', ...env } });
+  const r = spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1', ...env } });
   return { status: r.status, stdout: r.stdout, ms: Date.now() - t0 };
 }
 
 describe('double-install guard', () => {
-  it('tally install refuses while the plugin is enabled, unless --force', async () => {
+  it('sigil install refuses while the plugin is enabled, unless --force', async () => {
     const settings = settingsPath('user');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'tally@tally': true, 'other@mp': true } }, null, 2) + '\n');
+    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'sigil@sigil': true, 'other@mp': true } }, null, 2) + '\n');
     const before = fs.readFileSync(settings, 'utf8');
-    expect(enabledPluginIds(tmpDir('tally-cwd-'))).toEqual(['tally@tally']);
+    expect(enabledPluginIds(tmpDir('sigil-cwd-'))).toEqual(['sigil@sigil']);
     expect(() => install({ scope: 'user' })).toThrow(PluginConflictError);
     expect(fs.readFileSync(settings, 'utf8')).toBe(before);
     expect(isInstalled('user')).toBe(false);
@@ -42,8 +42,8 @@ describe('double-install guard', () => {
       process.stderr.write = w;
     }
     expect(code).toBe(1);
-    expect(err).toContain('already enabled as a Claude Code plugin (tally@tally)');
-    expect(err).toContain('/plugin uninstall tally');
+    expect(err).toContain('already enabled as a Claude Code plugin (sigil@sigil)');
+    expect(err).toContain('/plugin uninstall sigil');
     const forced = install({ scope: 'user', force: true });
     expect(forced.added).toBeGreaterThan(0);
     expect(isInstalled('user')).toBe(true);
@@ -51,40 +51,41 @@ describe('double-install guard', () => {
     const hooks = checks.find((c) => c.name === 'hooks')!;
     expect(hooks.ok).toBe('warn');
     expect(hooks.detail).toContain('installed 2 ways (user settings, plugin)');
-    expect(hooks.fix).toContain('tally uninstall');
+    expect(hooks.fix).toContain('sigil uninstall');
   });
 
   it('a disabled plugin entry does not block install', () => {
     const settings = settingsPath('user');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'tally@tally': false } }) + '\n');
+    fs.writeFileSync(settings, JSON.stringify({ enabledPlugins: { 'sigil@sigil': false } }) + '\n');
     expect(enabledPluginIds()).toEqual([]);
     expect(install({ scope: 'user' }).added).toBeGreaterThan(0);
   });
 
-  it('recognises both hook forms as Tally hooks', () => {
-    expect(isTallyHook({ type: 'command', command: 'node "C:/Users/x/dev/tally/dist/hook.js" Stop' })).toBe(true);
-    expect(isTallyHook({ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/dist/hook.js', 'Stop'] })).toBe(true);
-    expect(isTallyHook({ type: 'command', command: 'node', args: ['/home/u/.claude/plugins/cache/tally/tally/0.1.0/dist/hook.js', 'PostToolUse'] })).toBe(true);
-    expect(isTallyHook({ type: 'command', command: 'node /usr/lib/node_modules/@kru3ish/tally/dist/hook.js SessionEnd' })).toBe(true);
-    expect(isTallyHook({ type: 'command', command: 'echo hi' })).toBe(false);
-    expect(isTallyHook({ type: 'command', command: 'node', args: ['/x/other-plugin/dist/hook.js'] })).toBe(false);
-    expect(isTallyHook('node tally/dist/hook.js')).toBe(false);
+  it('recognises both hook forms as Sigil hooks', () => {
+    expect(isSigilHook({ type: 'command', command: 'node "C:/Users/x/dev/sigil/dist/hook.js" Stop' })).toBe(true);
+    expect(isSigilHook({ type: 'command', command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/dist/hook.js', 'Stop'] })).toBe(true);
+    expect(isSigilHook({ type: 'command', command: 'node', args: ['/home/u/.claude/plugins/cache/sigil/sigil/0.1.0/dist/hook.js', 'PostToolUse'] })).toBe(true);
+    expect(isSigilHook({ type: 'command', command: 'node /usr/lib/node_modules/sigil/dist/hook.js SessionEnd' })).toBe(true);
+    expect(isSigilHook({ type: 'command', command: 'echo hi' })).toBe(false);
+    expect(isSigilHook({ type: 'command', command: 'node', args: ['/x/other-plugin/dist/hook.js'] })).toBe(false);
+    expect(isSigilHook('node sigil/dist/hook.js')).toBe(false);
   });
 });
 
 describe('moved hook script', () => {
-  it('doctor flags a hook whose script is gone and tally install repoints it', () => {
+  it('doctor flags a hook whose script is gone and sigil install repoints it', () => {
     const settings = settingsPath('user');
     fs.mkdirSync(path.dirname(settings), { recursive: true });
-    fs.writeFileSync(settings, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "C:/old/tally/dist/hooks/hook.js" Stop', timeout: 5 }] }] } }, null, 2) + '\n');
+    fs.writeFileSync(settings, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node "C:/old/sigil/dist/hooks/hook.js" Stop', timeout: 5 }] }] } }, null, 2) + '\n');
     const before = runChecks().find((c) => c.name === 'hook script')!;
     expect(before.ok).toBe(false);
     expect(before.detail).toContain('does not exist');
-    expect(before.fix).toContain('tally install');
+    expect(before.fix).toContain('sigil install');
     install({ scope: 'user' });
     const s = JSON.parse(fs.readFileSync(settings, 'utf8')) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
-    const stops = s.hooks.Stop.flatMap((g) => g.hooks).filter((h) => /tally/i.test(h.command));
+    /* the checkout's folder can carry any name (this one is still ~/dev/tally), so match the way the product does */
+    const stops = s.hooks.Stop.flatMap((g) => g.hooks).filter((h) => isSigilHook(h));
     expect(stops.length).toBe(1);
     expect(stops[0]!.command).toContain('dist/hook.js');
     expect(runChecks().find((c) => c.name === 'hook script')!.ok).toBe(true);
@@ -116,11 +117,11 @@ describe('hook de-duplication', () => {
 describe('SessionEnd within the shared 1.5 s budget', () => {
   it('records, spawns the detached finalize, and returns without waiting for it', () => {
     const session = 'end-session-0001';
-    const stub = path.join(tmpDir('tally-stub-'), 'slow-cli.mjs');
+    const stub = path.join(tmpDir('sigil-stub-'), 'slow-cli.mjs');
     const marker = path.join(path.dirname(stub), 'started.txt');
     fs.writeFileSync(stub, `import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join(' ')); await new Promise((r) => setTimeout(r, 3000));`);
     const t0 = Date.now();
-    const r = spawnSync(process.execPath, [HOOK, 'SessionEnd'], { input: JSON.stringify({ session_id: session, reason: 'exit', transcript_path: 'x.jsonl' }), encoding: 'utf8', env: { ...process.env, TALLY_HOOK_CLI: stub }, timeout: 10000 });
+    const r = spawnSync(process.execPath, [HOOK, 'SessionEnd'], { input: JSON.stringify({ session_id: session, reason: 'exit', transcript_path: 'x.jsonl' }), encoding: 'utf8', env: { ...process.env, SIGIL_HOOK_CLI: stub }, timeout: 10000 });
     const ms = Date.now() - t0;
     expect(r.status).toBe(0);
     expect(ms).toBeLessThan(1500);
@@ -152,8 +153,9 @@ describe('self-contained dist', () => {
     expect(fs.existsSync(path.join(root, 'dist', 'pricing.json'))).toBe(true);
     expect(fs.existsSync(path.join(root, 'dist', 'fixtures', 'session-basic', 'transcript.jsonl'))).toBe(true);
     const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as { name: string; bin: Record<string, string>; files: string[]; dependencies?: Record<string, string> };
-    expect(pkg.name).toBe('@kru3ish/tally');
-    expect(pkg.bin).toEqual({ tally: 'dist/cli.js', 'cc-tally': 'dist/cli.js' });
+    expect(pkg.name).toBe('sigil');
+    /* 0.14: `tally` is the old name, kept as an alias of the same binary for one release (CHANGELOG 0.14.0) */
+    expect(pkg.bin).toEqual({ sigil: 'dist/cli.js', tally: 'dist/cli.js' });
     expect(pkg.files).toEqual(['dist', 'README.md', 'LICENSE', 'CHANGELOG.md', '.claude-plugin', 'hooks', 'commands']);
     const plugin = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'plugin.json'), 'utf8')) as Record<string, unknown>;
     for (const k of ['name', 'version', 'author', 'homepage', 'repository', 'license']) expect(plugin[k], k).toBeTruthy();
@@ -163,7 +165,7 @@ describe('self-contained dist', () => {
     expect(market0.plugins[0]!.version).toBe(pkg.version);
     const market = JSON.parse(fs.readFileSync(path.join(root, '.claude-plugin', 'marketplace.json'), 'utf8')) as { name: string; description: string; plugins: Array<{ name: string; source: string; description: string }> };
     expect(market.description).toBeTruthy();
-    expect(market.plugins[0]).toMatchObject({ name: 'tally', source: './' });
+    expect(market.plugins[0]).toMatchObject({ name: 'sigil', source: './' });
     expect(fs.existsSync(path.join(root, 'bin'))).toBe(false);
   });
 });

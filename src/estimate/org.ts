@@ -1,4 +1,4 @@
-/* The organisation view: every repository's .tally/ledger.jsonl under one root, read together. Cost per story was the
+/* The organisation view: every repository's .sigil/ledger.jsonl under one root, read together. Cost per story was the
    first number; the ones a platform team asks for come from the receipt summary each judged story carries: how many
    stories ended with every criterion verified or supported and none unmet or unverified ("verified"), and what a
    verified story costs, by repository and by agent. Nothing here calls a model or leaves the machine. */
@@ -32,8 +32,8 @@ export function readLedgerFile(file: string): LedgerEntry[] {
 export function scanLedgers(root: string, depth = 2): RepoLedger[] {
   const out: RepoLedger[] = [];
   const visit = (dir: string, d: number): void => {
-    const f = path.join(dir, '.tally', 'ledger.jsonl');
-    if (fs.existsSync(f)) {
+    const f = [path.join(dir, '.sigil', 'ledger.jsonl'), path.join(dir, '.tally', 'ledger.jsonl')].find((p) => fs.existsSync(p));
+    if (f) {
       out.push({ name: path.basename(dir), root: dir, entries: readLedgerFile(f) });
       return;
     }
@@ -126,7 +126,7 @@ const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '
 export function renderOrgText(r: OrgReport): string {
   const L: string[] = [];
   const t = r.total;
-  L.push(`Tally · ${r.by_repo.length} repositor${r.by_repo.length === 1 ? 'y' : 'ies'} under ${r.root}`);
+  L.push(`Sigil · ${r.by_repo.length} repositor${r.by_repo.length === 1 ? 'y' : 'ies'} under ${r.root}`);
   L.push(`${t.stories} stories · ${$(t.spend_usd)} · median ${$(t.median_usd)} per story`);
   L.push(`${t.judged} judged · ${t.verified} verified (${pct(t.verified, t.judged)}) · ${t.no_unmet} with nothing unmet (${pct(t.no_unmet, t.judged)}) · cost per verified story ${$(t.cost_per_verified_usd)}`);
   if (t.mutation.checked) L.push(`mutation check: ${t.mutation.discriminating}/${t.mutation.checked} stories whose new tests fail without the change`);
@@ -157,7 +157,7 @@ export function renderOrgHtml(r: OrgReport): string {
     .map((x) => `<tr><td><b>${esc(x.label)}</b></td><td>${x.stories}</td><td>${$(x.spend_usd)}</td><td>${$(x.median_usd)}</td><td>${x.judged}</td><td class="${x.judged ? (x.verified / x.judged >= 0.8 ? 'good' : x.verified / x.judged >= 0.5 ? 'mid' : 'bad') : ''}">${pct(x.verified, x.judged)}</td><td>${pct(x.no_unmet, x.judged)}</td><td>${$(x.cost_per_verified_usd)}</td><td>${x.mutation.checked ? `${x.mutation.discriminating}/${x.mutation.checked}` : '–'}</td></tr>`)
     .join('')}</tbody></table></section>`;
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tally · organisation</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sigil · organisation</title>
 <style>
 :root{--bg:#fafaf8;--card:#fff;--ink:#16191d;--mute:#6b7280;--line:#e7e5e0;--soft:#f3f2ee;--accent:#2563eb;--good:#15803d;--mid:#b45309;--bad:#dc4a33}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1114;--card:#171a1f;--ink:#e9e7e2;--mute:#9aa1aa;--line:#262a31;--soft:#1d2127;--accent:#7aa2ff;--good:#4ade80;--mid:#fbbf24;--bad:#ff7a63}}
@@ -170,9 +170,9 @@ table{width:100%;border-collapse:collapse;background:var(--card);border:1px soli
 .good{color:var(--good);font-weight:600}.mid{color:var(--mid);font-weight:600}.bad{color:var(--bad);font-weight:600}
 .note{color:var(--mute);font-size:13px;line-height:1.5}
 </style></head><body><div class="wrap">
-<header><b>Tally</b><span>${esc(r.by_repo.length)} repositor${r.by_repo.length === 1 ? 'y' : 'ies'} under ${esc(r.root)} · generated ${esc(r.generated_at.replace('T', ' ').slice(0, 16))} UTC · nothing left this machine</span></header>
+<header><b>Sigil</b><span>${esc(r.by_repo.length)} repositor${r.by_repo.length === 1 ? 'y' : 'ies'} under ${esc(r.root)} · generated ${esc(r.generated_at.replace('T', ' ').slice(0, 16))} UTC · nothing left this machine</span></header>
 <h1>Was the work done, and what did a done story cost?</h1>
-<p class="sub">From each repository's committed <code>.tally/ledger.jsonl</code>: one line per story with its cost and, once judged, the receipt summary.</p>
+<p class="sub">From each repository's committed <code>.sigil/ledger.jsonl</code>: one line per story with its cost and, once judged, the receipt summary.</p>
 <div class="kpis">
 <div class="kpi"><div class="n">${t.stories}</div><div class="l">stories · ${esc($(t.spend_usd))}</div></div>
 <div class="kpi"><div class="n">${pct(t.verified, t.judged)}</div><div class="l">verified · every criterion verified or supported, none unmet or unverified (${t.verified} of ${t.judged} judged)</div></div>
@@ -184,6 +184,6 @@ table{width:100%;border-collapse:collapse;background:var(--card);border:1px soli
 ${table('By repository', r.by_repo.map((x) => ({ label: x.name, ...x })))}
 ${r.by_agent.length ? table('By agent', r.by_agent.map((x) => ({ label: x.agent, ...x }))) : ''}
 ${r.by_model.length ? table('By model', r.by_model.map((x) => ({ label: x.model, ...x }))) : ''}
-<p class="note">A story is <b>judged</b> when its session was judged and the receipt summary reached the ledger (sessions since Tally 0.12). <b>Verified</b> is the strict reading: no criterion UNMET or UNVERIFIED. A repository with few judged stories has a noisy rate; the counts are next to every percentage for that reason. Cost is the API-equivalent spend the agent exposed; agents that expose none show $0 and are left out of the per-story figures.</p>
+<p class="note">A story is <b>judged</b> when its session was judged and the receipt summary reached the ledger (sessions since Sigil 0.12). <b>Verified</b> is the strict reading: no criterion UNMET or UNVERIFIED. A repository with few judged stories has a noisy rate; the counts are next to every percentage for that reason. Cost is the API-equivalent spend the agent exposed; agents that expose none show $0 and are left out of the per-story figures.</p>
 </div></body></html>`;
 }

@@ -1,14 +1,14 @@
 {
-  "name": "tally",
-  "displayName": "Tally",
-  "version": "0.13.0",
+  "name": "sigil",
+  "displayName": "Sigil",
+  "version": "0.14.0",
   "description": "Per-task receipts and live coaching for Claude Code: ties a ticket's acceptance criteria to what shipped, what it cost, what was wasted, and whether it held up.",
   "author": {
     "name": "Krish Mehta",
     "url": "https://github.com/kru3ish"
   },
-  "homepage": "https://github.com/kru3ish/tally",
-  "repository": "https://github.com/kru3ish/tally",
+  "homepage": "https://github.com/kru3ish/sigil",
+  "repository": "https://github.com/kru3ish/sigil",
   "license": "MIT",
   "keywords": [
     "receipts",
@@ -18,7 +18,7 @@
     "judge"
   ],
   "mcpServers": {
-    "tally": {
+    "sigil": {
       "command": "node",
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/dist/cli.js",

@@ -1,5 +1,5 @@
-/* Fills the {{CALIBRATION_*}} placeholders in README.md and docs/launch/*.md from ~/.tally/calibration.jsonl
-   (blind-graded backfill sessions). Run after `tally calibrate grade …`:  npx tsx scripts/fill-calibration.ts [--dry-run] */
+/* Fills the {{CALIBRATION_*}} placeholders in README.md and docs/launch/*.md from ~/.sigil/calibration.jsonl
+   (blind-graded backfill sessions). Run after `sigil calibrate grade …`:  npx tsx scripts/fill-calibration.ts [--dry-run] */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ const values: Record<string, string> = {
   CALIBRATION_DATE: new Date().toISOString().slice(0, 10),
 };
 if (!entries.length) {
-  process.stderr.write('No blind-graded backfill sessions in ~/.tally/calibration.jsonl yet. Run: tally backfill list --since 60d; tally backfill add <session>; tally calibrate grade <session> --grader <you>\n');
+  process.stderr.write('No blind-graded backfill sessions in ~/.sigil/calibration.jsonl yet. Run: sigil backfill list --since 60d; sigil backfill add <session>; sigil calibrate grade <session> --grader <you>\n');
   process.exit(1);
 }
 const files = [path.join(root, 'README.md'), path.join(root, 'site', 'index.html'), ...fs.readdirSync(path.join(root, 'docs', 'launch')).filter((f) => f.endsWith('.md')).map((f) => path.join(root, 'docs', 'launch', f))];

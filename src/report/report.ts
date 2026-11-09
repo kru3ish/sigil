@@ -109,10 +109,10 @@ export function computeTrend(opts: { repo?: string; days?: number; history?: His
 export function renderTrend(t: Trend, opts: { repo?: string; days?: number } = {}): string {
   const L: string[] = [];
   const f = (x: number | null, fn: (n: number) => string) => (x === null ? 'n/a' : fn(x));
-  L.push(`Tally report${opts.repo ? ` · ${opts.repo}` : ' · all repos'}${opts.days ? ` · last ${opts.days} days` : ''}`);
+  L.push(`Sigil report${opts.repo ? ` · ${opts.repo}` : ' · all repos'}${opts.days ? ` · last ${opts.days} days` : ''}`);
   L.push(`${t.tasks} judged task(s) across ${t.sessions} session(s)`);
   if (!t.tasks) {
-    L.push('No receipts yet. Link a task with `tally task <url>` and ship; the receipt appears on push.');
+    L.push('No receipts yet. Link a task with `sigil task <url>` and ship; the receipt appears on push.');
     return L.join('\n');
   }
   L.push('');
@@ -140,7 +140,7 @@ export function renderTrend(t: Trend, opts: { repo?: string; days?: number } = {
   }
   if (t.payoff.length) {
     L.push('');
-    L.push('Skill / MCP payoff (correlational; run `tally experiment` for a controlled answer)');
+    L.push('Skill / MCP payoff (correlational; run `sigil experiment` for a controlled answer)');
     L.push('kind   name                        used  completion with/without   cost per criterion with/without');
     for (const p of t.payoff.slice(0, 12)) {
       L.push(`${p.kind.padEnd(6)} ${p.name.slice(0, 27).padEnd(27)} ${String(p.used_in).padStart(4)}  ${f(p.completion_with, (n) => n.toFixed(0) + '%').padStart(6)} / ${f(p.completion_without, (n) => n.toFixed(0) + '%').padEnd(6)}          ${f(p.cpc_with, fmtUsd).padStart(7)} / ${f(p.cpc_without, fmtUsd)}`);

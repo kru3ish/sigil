@@ -9,9 +9,9 @@ function binExists(bin: string): boolean {
 /* Opens the Coach beside Claude Code: a tmux split when inside tmux, a new tmux session when tmux exists,
    a Windows Terminal split when `wt` exists, otherwise the command to run in a second terminal. */
 export function startPlan(env: NodeJS.ProcessEnv = process.env, platform = process.platform, plain = false, exists: (bin: string) => boolean = binExists): { kind: 'tmux-split' | 'tmux-new' | 'wt-split' | 'print'; argv?: string[]; message: string; cmd: string } {
-  const cmd = `tally watch${plain ? ' --plain' : ''}`;
+  const cmd = `sigil watch${plain ? ' --plain' : ''}`;
   if (env.TMUX && exists('tmux')) return { kind: 'tmux-split', argv: ['tmux', 'split-window', '-h', '-l', '45%', cmd], message: 'Opened the Coach pane in tmux. Start or continue your Claude Code session in the left pane.', cmd };
-  if (platform !== 'win32' && exists('tmux')) return { kind: 'tmux-new', argv: ['tmux', 'new-session', '-d', '-s', 'tally', 'claude', ';', 'split-window', '-h', '-l', '45%', cmd, ';', 'select-pane', '-L'], message: 'Created tmux session "tally" with Claude Code on the left and the Coach on the right. Attach with: tmux attach -t tally', cmd };
+  if (platform !== 'win32' && exists('tmux')) return { kind: 'tmux-new', argv: ['tmux', 'new-session', '-d', '-s', 'sigil', 'claude', ';', 'split-window', '-h', '-l', '45%', cmd, ';', 'select-pane', '-L'], message: 'Created tmux session "sigil" with Claude Code on the left and the Coach on the right. Attach with: tmux attach -t sigil', cmd };
   if (platform === 'win32' && env.WT_SESSION && exists('wt')) return { kind: 'wt-split', argv: ['wt', '-w', '0', 'split-pane', '-V', '--size', '0.45', 'cmd', '/k', cmd], message: 'Opened the Coach pane in Windows Terminal next to this one.', cmd };
   return { kind: 'print', message: `No tmux${platform === 'win32' ? ' or Windows Terminal split' : ''} available. Open a second terminal next to Claude Code and run:\n\n    ${cmd}\n\nIt attaches to the latest active session automatically.`, cmd };
 }

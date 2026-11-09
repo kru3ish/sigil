@@ -29,7 +29,7 @@ const stub = {
 };
 
 function stop(session: string, cwd: string): Record<string, unknown> {
-  const r = spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd, last_assistant_message: 'done', transcript_path: '' }), env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_NO_SPAWN: '1' }, encoding: 'utf8', timeout: 8000 });
+  const r = spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd, last_assistant_message: 'done', transcript_path: '' }), env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_NO_SPAWN: '1' }, encoding: 'utf8', timeout: 8000 });
   expect(r.status).toBe(0);
   return r.stdout.trim() ? (JSON.parse(r.stdout) as Record<string, unknown>) : {};
 }
@@ -42,7 +42,7 @@ function seed(session: string, cwd: string, opts: { edit?: boolean } = {}): void
 
 describe('the definition-of-done gate has standing only for a real contract and real work', () => {
   it('does not block an inferred, unconfirmed task even when checks are unmet', async () => {
-    const cwd = tmpDir('tally-gate-');
+    const cwd = tmpDir('sigil-gate-');
     seed('gate-inferred', cwd, { edit: true });
     await intake({ session: 'gate-inferred', cwd, text: 'You are a judgment layer over an expected-points model', cfg: loadConfig(), llm: new StubLlm(stub, 'gate-inferred'), deps });
     expect(stop('gate-inferred', cwd).decision).toBeUndefined();
@@ -50,7 +50,7 @@ describe('the definition-of-done gate has standing only for a real contract and 
   });
 
   it('does not block a linked task when the session edited nothing', async () => {
-    const cwd = tmpDir('tally-gate-');
+    const cwd = tmpDir('sigil-gate-');
     fs.writeFileSync(path.join(cwd, 'task.md'), '# Write the thing\n\n## Acceptance criteria\n1. MISSING.md exists\n');
     seed('gate-noedit', cwd);
     await intake({ session: 'gate-noedit', cwd, ref: path.join(cwd, 'task.md'), cfg: loadConfig(), llm: new StubLlm(stub, 'gate-noedit') });
@@ -58,7 +58,7 @@ describe('the definition-of-done gate has standing only for a real contract and 
   });
 
   it('blocks once for a linked task with edits and an unmet mechanical check, then lets the next stop through', async () => {
-    const cwd = tmpDir('tally-gate-');
+    const cwd = tmpDir('sigil-gate-');
     fs.writeFileSync(path.join(cwd, 'task.md'), '# Write the thing\n\n## Acceptance criteria\n1. MISSING.md exists\n');
     seed('gate-real', cwd, { edit: true });
     await intake({ session: 'gate-real', cwd, ref: path.join(cwd, 'task.md'), cfg: loadConfig(), llm: new StubLlm(stub, 'gate-real') });
@@ -67,7 +67,7 @@ describe('the definition-of-done gate has standing only for a real contract and 
     expect(String(first.reason)).toMatch(/MISSING\.md/);
     expect(stop('gate-real', cwd).decision).toBeUndefined();
     /* a confirmed inferred task counts as real too */
-    const cwd2 = tmpDir('tally-gate-');
+    const cwd2 = tmpDir('sigil-gate-');
     seed('gate-confirmed', cwd2, { edit: true });
     await intake({ session: 'gate-confirmed', cwd: cwd2, text: 'Write the thing', cfg: loadConfig(), llm: new StubLlm(stub, 'gate-confirmed'), deps });
     confirmTask('gate-confirmed');
@@ -77,15 +77,15 @@ describe('the definition-of-done gate has standing only for a real contract and 
 
 describe('Coach flags reach the person at the terminal', () => {
   it('a pending flag is shown once as the hook message, with its command', () => {
-    const cwd = tmpDir('tally-flag-');
+    const cwd = tmpDir('sigil-flag-');
     seed('flag-1', cwd);
     writeJson(path.join(sessionDir('flag-1'), 'coach-flags.json'), { pending: [{ rule: 'dead-weight', key: 'dead-weight:mcp:context7', title: 'mcp "context7" unused in the last 5 sessions here', usd_saved: 0.42, label: 'remove from settings' }], announced: ['dead-weight:mcp:context7'] });
     const out = stop('flag-1', cwd);
     const msg = String(out.systemMessage);
     const lines = msg.split('\n');
-    expect(lines[0]).toBe('Tally Coach · 1 waiting for you');
+    expect(lines[0]).toBe('Sigil Coach · 1 waiting for you');
     expect(lines[1]).toMatch(/^  1  mcp "context7" unused in the last 5 sessions here\s+saves ~\$0\.42  new$/);
-    expect(lines[2]).toMatch(/^  Act: tell Claude "tally apply 1"/);
+    expect(lines[2]).toMatch(/^  Act: tell Claude "sigil apply 1"/);
     expect(out.decision).toBeUndefined();
     const flags = readJson<{ notified?: string[] }>(path.join(sessionDir('flag-1'), 'coach-flags.json'), {});
     expect(flags.notified).toEqual(['dead-weight:mcp:context7']);
@@ -94,7 +94,7 @@ describe('Coach flags reach the person at the terminal', () => {
 
   it('a Coach tick and an apply keep the record of what the person has already seen', async () => {
     const session = 'flag-tick';
-    const cwd = tmpDir('tally-flag-');
+    const cwd = tmpDir('sigil-flag-');
     for (const e of readEventsFile(path.join(basicFixture, 'events.jsonl'))) appendEvent({ ...e, session, cwd });
     await intake({ session, cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: new StubLlm(stub, session), deps });
     await coachRun({ _: [], flags: { tick: true, session, cwd, auto: true } });
@@ -113,7 +113,7 @@ describe('Coach flags reach the person at the terminal', () => {
   });
 });
 
-describe('/tally:coach arguments', () => {
+describe('/sigil:coach arguments', () => {
   it('parses apply/inject with a number or a rule id, defaulting to apply', async () => {
     const { parseCoachArgs } = await import('../src/commands/coach.js');
     expect(parseCoachArgs('apply 2')).toEqual({ verb: 'apply', target: '2' });

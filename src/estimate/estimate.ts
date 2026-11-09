@@ -1,5 +1,5 @@
 /* Puts a dollar number on a story before the agent starts: the cost of the most similar past sessions on this machine.
-   Every session Claude Code (or Codex) already left in ~/.claude/projects is a priced example; a session Tally linked
+   Every session Claude Code (or Codex) already left in ~/.claude/projects is a priced example; a session Sigil linked
    to a ticket is described by the ticket's title and body, any other by its first prompts. Similarity is TF-IDF
    cosine over those words with a small same-repo bonus. The estimate is the similarity-weighted median of the
    neighbours' cost, the range their 25th–75th percentile. With fewer than two neighbours it falls back to the repo's
@@ -48,7 +48,7 @@ export interface CorpusDoc {
 
 export { tokenize };
 
-/* a session is a story only if the agent did something; pure chats and Tally's own runs are not examples */
+/* a session is a story only if the agent did something; pure chats and Sigil's own runs are not examples */
 function isStory(c: SessionCandidate): boolean {
   return c.tool_calls > 0 && c.cost > 0.005;
 }
@@ -214,7 +214,7 @@ export function loadEstimate(session: string): CostEstimate | null {
 export function fmtEstimate(e: CostEstimate): string {
   const $ = (n: number) => `$${n.toFixed(2)}`;
   if (e.basis === 'none') return 'no past tasks on this machine to estimate from yet';
-  if (!isComparable(e)) return `no comparable past task (${e.corpus} on record, none similar enough); set a cap with: tally budget set <usd>`;
+  if (!isComparable(e)) return `no comparable past task (${e.corpus} on record, none similar enough); set a cap with: sigil budget set <usd>`;
   const what = e.basis === 'similar' ? `${e.n} similar past ${e.n === 1 ? 'task' : 'tasks'}` : `story points × the median cost per point of ${e.n} pointed tasks`;
   return `~${$(e.usd)} (typical ${$(e.low_usd)}–${$(e.high_usd)}; from ${what}; ${e.confidence} confidence)`;
 }

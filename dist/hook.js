@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { createRequire as __tallyCreateRequire } from "node:module";
-const require = __tallyCreateRequire(import.meta.url);
+import { createRequire as __sigilCreateRequire } from "node:module";
+const require = __sigilCreateRequire(import.meta.url);
 
 // src/hooks/hook.ts
 import fs5 from "node:fs";
@@ -15,8 +15,8 @@ function home() {
 function asRecord(v) {
   return v && typeof v === "object" && !Array.isArray(v) ? v : {};
 }
-function isTally(cmd) {
-  return typeof cmd === "string" && /hook\.js["']?\s|tally/.test(cmd) && /--agent|tally/.test(cmd);
+function isSigil(cmd) {
+  return typeof cmd === "string" && /hook\.js["']?\s|sigil|tally/.test(cmd) && /--agent|sigil|tally/.test(cmd);
 }
 var claudeCode = {
   id: "claude-code",
@@ -70,7 +70,7 @@ var codex = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => isSigil(h.command))));
       kept.push({ hooks: [{ type: "command", command: command(ev), timeout: 5 }] });
       hooks[ev] = kept;
     }
@@ -81,7 +81,7 @@ var codex = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -117,8 +117,8 @@ var gemini = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "tally" || isTally(h.command))));
-      kept.push({ matcher: "*", hooks: [{ name: "tally", type: "command", command: command(this.event(ev)), timeout: 5e3 }] });
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
+      kept.push({ matcher: "*", hooks: [{ name: "sigil", type: "command", command: command(this.event(ev)), timeout: 5e3 }] });
       hooks[ev] = kept;
     }
     return { ...doc, hooks };
@@ -128,7 +128,7 @@ var gemini = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "tally" || isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && g.hooks.some((h) => h.name === "sigil" || isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -180,7 +180,7 @@ var cursor = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const list = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = list.filter((h) => !isTally(h.command));
+      const kept = list.filter((h) => !isSigil(h.command));
       kept.push({ type: "command", command: command(this.event(ev)), timeout: 5 });
       hooks[ev] = kept;
     }
@@ -191,7 +191,7 @@ var cursor = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const list = Array.isArray(hooks[ev]) ? hooks[ev] : [];
-      const kept = list.filter((h) => !isTally(h.command));
+      const kept = list.filter((h) => !isSigil(h.command));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -204,7 +204,7 @@ function agent(id) {
 }
 function agentFromArgv(argv) {
   const rest = [];
-  let id = process.env.TALLY_AGENT;
+  let id = process.env.SIGIL_AGENT;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--agent" && argv[i + 1]) {
@@ -230,14 +230,22 @@ import { fileURLToPath } from "node:url";
 import os2 from "node:os";
 import path2 from "node:path";
 import fs from "node:fs";
-function tallyHome() {
-  return process.env.TALLY_HOME || path2.join(os2.homedir(), ".tally");
+for (const [k, v] of Object.entries(process.env)) {
+  if (k.startsWith("TALLY_") && process.env[`SIGIL_${k.slice(6)}`] === void 0) process.env[`SIGIL_${k.slice(6)}`] = v;
+}
+var LEGACY_HOME_NAME = ".tally";
+function sigilHome() {
+  if (process.env.SIGIL_HOME) return process.env.SIGIL_HOME;
+  const home2 = path2.join(os2.homedir(), ".sigil");
+  if (fs.existsSync(home2)) return home2;
+  const legacy = path2.join(os2.homedir(), LEGACY_HOME_NAME);
+  return fs.existsSync(legacy) ? legacy : home2;
 }
 function claudeHome() {
   return process.env.CLAUDE_CONFIG_DIR || path2.join(os2.homedir(), ".claude");
 }
 function sessionsDir() {
-  return path2.join(tallyHome(), "sessions");
+  return path2.join(sigilHome(), "sessions");
 }
 function sessionDir(id) {
   return path2.join(sessionsDir(), safeId(id));
@@ -249,13 +257,13 @@ function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
 function historyFile() {
-  return path2.join(tallyHome(), "history.jsonl");
+  return path2.join(sigilHome(), "history.jsonl");
 }
 function configFile() {
-  return path2.join(tallyHome(), "config.json");
+  return path2.join(sigilHome(), "config.json");
 }
 function activeFile() {
-  return path2.join(tallyHome(), "active.json");
+  return path2.join(sigilHome(), "active.json");
 }
 function readJson(file, fallback) {
   try {
@@ -399,7 +407,7 @@ function quickChecks(session, cwd) {
       const ok = !!re && re.test(d.text);
       items.push({ id: c.id, text: c.text, kind: ch.kind, status: ok ? "met" : "unmet", why: ok ? `the diff matches /${ch.pattern}/` : `the diff does not match /${ch.pattern}/ yet` });
     } else {
-      items.push({ id: c.id, text: c.text, kind: ch.kind, status: "unknown", why: ch.kind === "tests_pass" ? "tests are run by the Judge (tally judge), not here" : ch.kind === "pr" ? "decided by the push / PR events at judge time" : `${ch.kind} is run by the Judge` });
+      items.push({ id: c.id, text: c.text, kind: ch.kind, status: "unknown", why: ch.kind === "tests_pass" ? "tests are run by the Judge (sigil judge), not here" : ch.kind === "pr" ? "decided by the push / PR events at judge time" : `${ch.kind} is run by the Judge` });
     }
   }
   const checked = items.filter((i) => i.status !== "unknown").length;
@@ -477,7 +485,7 @@ function recallKey(cwd) {
   return `${slug || "repo"}-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
 }
 function recallDir(cwd, dir = recallSettings().dir) {
-  return path5.join(dir ?? path5.join(tallyHome(), "recall"), recallKey(cwd));
+  return path5.join(dir ?? path5.join(sigilHome(), "recall"), recallKey(cwd));
 }
 function readCards(cwd) {
   const dir = recallDir(cwd);
@@ -506,16 +514,16 @@ function findRecall(prompt, cwd, session, min) {
   return matchRecall(prompt, readCards(cwd), { exclude: session, min });
 }
 var cut = (s, n) => s.length > n ? s.slice(0, n - 1).trimEnd() + "\u2026" : s;
-function recallNote(m, cli = "tally") {
+function recallNote(m, cli = "sigil") {
   const c = m.card;
   const when = (c.started ?? c.updated).slice(0, 10);
   const files = c.files.length ? ` Files it touched: ${c.files.slice(0, 6).join(", ")}${c.files.length > 6 ? ` (+${c.files.length - 6})` : ""}.` : "";
-  return `Tally recall: a task like this ran in this repo on ${when} and cost $${c.cost_usd.toFixed(2)}: "${cut(c.title, 80)}". Outcome then: ${cut(c.outcome.replace(/\s+/g, " "), 400)}${files} Reuse that work before re-deriving it; the full card: ${cli} recall ${c.session.slice(0, 8)}`;
+  return `Sigil recall: a task like this ran in this repo on ${when} and cost $${c.cost_usd.toFixed(2)}: "${cut(c.title, 80)}". Outcome then: ${cut(c.outcome.replace(/\s+/g, " "), 400)}${files} Reuse that work before re-deriving it; the full card: ${cli} recall ${c.session.slice(0, 8)}`;
 }
 
 // src/hooks/hook.ts
 var here = path6.dirname(fileURLToPath(import.meta.url));
-var CLI = process.env.TALLY_HOOK_CLI || [path6.join(here, "cli.js"), path6.join(here, "..", "cli.js")].find((p) => fs5.existsSync(p)) || path6.join(here, "cli.js");
+var CLI = process.env.SIGIL_HOOK_CLI || [path6.join(here, "cli.js"), path6.join(here, "..", "cli.js")].find((p) => fs5.existsSync(p)) || path6.join(here, "cli.js");
 var SHIP_RE = /\bgit\s+push\b|\bgh\s+pr\s+(create|merge)\b|\bnpm\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/;
 var TASK_URL_RE = /https?:\/\/(github\.com\/[^\s/]+\/[^\s/]+\/(issues|pull)\/\d+|[^\s]+\.atlassian\.net\/browse\/[A-Z][A-Z0-9]+-\d+|linear\.app\/[^\s]+\/issue\/[A-Z0-9]+-\d+[^\s]*)/;
 var TASK_MD_RE = /(?:^|[\s`"'(])((?:[A-Za-z]:)?[^\s"'`]+?\.md)(?=[\s.,;:!?)"'`]|$)/;
@@ -551,8 +559,8 @@ function alreadySeen(session, event, toolUseId) {
   return false;
 }
 function spawnDetached(args) {
-  if (process.env.TALLY_NO_SPAWN) {
-    appendLine(path6.join(tallyHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
+  if (process.env.SIGIL_NO_SPAWN) {
+    appendLine(path6.join(sigilHome(), "spawn.log"), JSON.stringify({ ts: nowIso(), args }));
     return;
   }
   try {
@@ -645,7 +653,7 @@ function dodGate(session, cwd, stopHookActive) {
   if (!unmet.length || state.blocks >= max) return void 0;
   writeJson(marker, { blocks: state.blocks + 1, ts: nowIso(), unmet: unmet.map((u) => u.id) });
   record(session, "dod_gate", cwd, { unmet: unmet.map((u) => u.id), block: state.blocks + 1 });
-  const reason = `Tally: ${unmet.length} acceptance criteri${unmet.length === 1 ? "on is" : "a are"} still unmet by mechanical check: ${unmet.map((u) => `${u.id} "${u.text}" (${u.why})`).join("; ")}. Address ${unmet.length === 1 ? "it" : "them"}, or say why ${unmet.length === 1 ? "it is" : "they are"} out of scope.`;
+  const reason = `Sigil: ${unmet.length} acceptance criteri${unmet.length === 1 ? "on is" : "a are"} still unmet by mechanical check: ${unmet.map((u) => `${u.id} "${u.text}" (${u.why})`).join("; ")}. Address ${unmet.length === 1 ? "it" : "them"}, or say why ${unmet.length === 1 ? "it is" : "they are"} out of scope.`;
   return { decision: "block", reason };
 }
 function costNotice(session) {
@@ -667,12 +675,12 @@ function costNotice(session) {
     if (state.shown.includes("cap") || spend < 0.5) return void 0;
     key = "cap";
     const seen = est?.basis && est.basis !== "none" ? `${est.n ?? 0} past tasks on record, none like this one` : "no past tasks on record yet";
-    text = `Tally: no comparable past task to price "${(task.title ?? "this task").slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Tally can hold the line: tell Claude "cap this at $40" (it runs tally budget set 40), or /tally:budget set 40.`;
+    text = `Sigil: no comparable past task to price "${(task.title ?? "this task").slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Sigil can hold the line: tell Claude "cap this at $40" (it runs sigil budget set 40), or /sigil:budget set 40.`;
   } else {
     const shipped = fs5.existsSync(path6.join(dir, "events.jsonl")) && fs5.readFileSync(path6.join(dir, "events.jsonl"), "utf8").includes('"type":"ship"');
     const drivers = check?.drivers ?? [];
     const top = drivers.find((d) => d.fix && d.fix.apply.kind !== "advice");
-    const fixCmd = (id) => process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`;
+    const fixCmd = (id) => process.env.CLAUDE_PLUGIN_ROOT ? `/sigil:fix ${id}` : `sigil fix ${id}`;
     const lever = top ? ` Fix for next time: ${top.title.toLowerCase()} (~${money(top.usd)}) \u2192 ${fixCmd(top.fix.id)}.` : "";
     const why = drivers[0] ? ` Largest reason: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : "";
     const span = check?.span && check.span.days > 1 ? ` This transcript spans ${check.span.days} days, so it is probably more than one task.` : "";
@@ -681,18 +689,18 @@ function costNotice(session) {
     for (const t of [200, 150, 100]) {
       if (pct >= t && !state.shown.includes(`over${t}`)) {
         key = `over${t}`;
-        text = `Tally: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /tally:cost`;
+        text = `Sigil: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /sigil:cost`;
         for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
         break;
       }
     }
     if (!key && shipped && !state.shown.includes("ship")) {
       key = "ship";
-      text = spend > budget ? `Tally: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /tally:cost` : `Tally: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ""} Breakdown: /tally:cost`;
+      text = spend > budget ? `Sigil: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /sigil:cost` : `Sigil: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ""} Breakdown: /sigil:cost`;
     }
     if (!key && !state.shown.includes("estimate")) {
       key = "estimate";
-      text = basis === "history" && est ? `Tally: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}\u2013${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ""}` : `Tally: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ""} Change it: tally budget set <usd>`;
+      text = basis === "history" && est ? `Sigil: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}\u2013${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ""}` : `Sigil: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ""} Change it: sigil budget set <usd>`;
     }
   }
   if (!key) return void 0;
@@ -711,7 +719,7 @@ function flagNotice(session) {
   const width = Math.max(...ordered.map((f) => f.title.length), 20);
   const rows = ordered.map((f, i) => `  ${i + 1}  ${f.title.padEnd(Math.min(width, 56))}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ""}${notified.has(f.key) ? "" : "  new"}`);
   writeJson(file, { ...flags, notified: [...notified, ...fresh.map((f) => f.key)].filter((k) => (flags.pending ?? []).some((f) => f.key === k)) });
-  return [`Tally Coach \xB7 ${ordered.length} waiting for you`, ...rows, `  Act: tell Claude "tally apply 1" (it runs tally coach --apply 1), or /tally:coach for details`].join("\n");
+  return [`Sigil Coach \xB7 ${ordered.length} waiting for you`, ...rows, `  Act: tell Claude "sigil apply 1" (it runs sigil coach --apply 1), or /sigil:coach for details`].join("\n");
 }
 function autopilotEnabled() {
   const cfg = readJson(configFile(), {});
@@ -724,7 +732,7 @@ function handoffNote(cwd) {
   const age = Date.now() - fs5.statSync(f).mtimeMs;
   if (age > 24 * 3600 * 1e3) return "";
   const body = fs5.readFileSync(f, "utf8").split("\n").slice(0, 25).join("\n").slice(0, 1800);
-  return `Tally: HANDOFF.md in this repo was written ${Math.round(age / 6e4)} min ago and holds the state to resume from:
+  return `Sigil: HANDOFF.md in this repo was written ${Math.round(age / 6e4)} min ago and holds the state to resume from:
 ${body}`;
 }
 function lastReceipt(cwd) {
@@ -738,7 +746,7 @@ function lastReceipt(cwd) {
       const h = JSON.parse(line);
       if (h.repo !== key || !h.verdict || h.internal) continue;
       const money = (n) => `$${(n ?? 0).toFixed(2)}`;
-      return `Tally: last receipt in this repo: "${h.task_title ?? "task"}" ${h.completion_pct ?? 0}% complete, ${money(h.cost_usd)} spent, ${money(h.waste_usd)} waste, verdict ${h.final_verdict ?? h.verdict}${h.final_status && h.final_status !== "unknown" ? ` (${h.final_status})` : ""}.`;
+      return `Sigil: last receipt in this repo: "${h.task_title ?? "task"}" ${h.completion_pct ?? 0}% complete, ${money(h.cost_usd)} spent, ${money(h.waste_usd)} waste, verdict ${h.final_verdict ?? h.verdict}${h.final_status && h.final_status !== "unknown" ? ` (${h.final_status})` : ""}.`;
     } catch {
     }
   }
@@ -764,7 +772,7 @@ function historyLessons(cwd) {
     } catch {
     }
   }
-  return lessons.length ? `Tally: past receipts in this repo recorded these lessons:
+  return lessons.length ? `Sigil: past receipts in this repo recorded these lessons:
 - ${lessons.join("\n- ")}` : "";
 }
 function recallNotice(session, cwd, prompt) {
@@ -780,7 +788,7 @@ function recallNotice(session, cwd, prompt) {
     state.offered.push(m.card.session);
     writeJson(stateFile, state);
     record(session, "recall", cwd, { ref: m.card.session, similarity: m.similarity, prior_cost_usd: m.card.cost_usd, title: m.card.title.slice(0, 120) });
-    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? "/tally:recall" : "tally recall");
+    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? "/sigil:recall" : "sigil recall");
   } catch {
     return "";
   }
@@ -804,15 +812,15 @@ function deliverInjects(session) {
   }
   if (!pending.length) return "";
   fs5.writeFileSync(file, kept.join("\n") + "\n");
-  return pending.map((n) => `Tally: ${n}`).join("\n");
+  return pending.map((n) => `Sigil: ${n}`).join("\n");
 }
 function followupDue() {
-  const state = readJson(path6.join(tallyHome(), "followup-state.json"), {});
+  const state = readJson(path6.join(sigilHome(), "followup-state.json"), {});
   const last = state.last_run ? Date.parse(state.last_run) : 0;
   return Date.now() - last > 24 * 3600 * 1e3;
 }
 function main() {
-  if (process.env.TALLY_INTERNAL) return;
+  if (process.env.SIGIL_INTERNAL) return;
   const raw = readStdin();
   let parsed = {};
   try {
@@ -873,7 +881,7 @@ function main() {
       const cmd0 = typeof input.tool_input?.command === "string" ? input.tool_input.command : "";
       if (fs5.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
         const stop = readJson(stopFile, {});
-        out = { kind: "deny", reason: `Tally: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: tally budget approve --note "<why>"` };
+        out = { kind: "deny", reason: `Sigil: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: sigil budget approve --note "<why>"` };
         record(session, "hard_stop_denied", cwd, { tool_name: input.tool_name, tool_use_id: input.tool_use_id });
         break;
       }

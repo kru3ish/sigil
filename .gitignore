@@ -3,11 +3,11 @@ node_modules/
 !dist/
 *.log
 *.tgz
-.tally-demo/
-.tally/
+.sigil-demo/
+.sigil/
 coverage/
-# local Tally data that must never be committed (receipts, exports, grades, backfill outputs live in ~/.tally)
-tally-export*
+# local Sigil data that must never be committed (receipts, exports, grades, backfill outputs live in ~/.sigil)
+sigil-export*
 *.calibration.jsonl
 calibration.jsonl
 backfill-*.json
@@ -15,3 +15,7 @@ llm-debug/
 
 # release packet drafts (dev workflow only; the maintainer rewrites before posting)
 release/
+# the 0.13 names, still ignored for the one release they are read
+.tally-demo/
+.tally/
+tally-export*

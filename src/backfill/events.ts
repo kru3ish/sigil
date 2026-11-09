@@ -1,15 +1,15 @@
 /* Past sessions have no hook events, so they are synthesised from the transcript; the Coach rules then replay over them. */
 import { isShipCommand, type Transcript } from '../transcript/parse.js';
-import type { TallyEvent } from '../store/events.js';
+import type { SigilEvent } from '../store/events.js';
 import type { Config } from '../config.js';
 import { CoachEngine } from '../coach/engine.js';
 import { buildContext } from '../coach/context.js';
 import type { HistoryEntry, Suggestion } from '../coach/types.js';
 import { redact } from '../redact.js';
 
-export function eventsFromTranscript(t: Transcript, session: string, cwd: string, transcriptPath: string, gitHead?: string): TallyEvent[] {
-  const ev: TallyEvent[] = [];
-  const push = (ts: string, type: TallyEvent['type'], data: Record<string, unknown>) => ev.push({ ts, type, session, cwd, data });
+export function eventsFromTranscript(t: Transcript, session: string, cwd: string, transcriptPath: string, gitHead?: string): SigilEvent[] {
+  const ev: SigilEvent[] = [];
+  const push = (ts: string, type: SigilEvent['type'], data: Record<string, unknown>) => ev.push({ ts, type, session, cwd, data });
   const start = t.startedAt ?? new Date(0).toISOString();
   const end = t.endedAt ?? start;
   const mcp = [...new Set(t.mcpCalls.map((m) => m.server))];
@@ -58,7 +58,7 @@ export interface CoachReplay {
 
 /* Runs the deterministic rules over the synthesised events with simulated time and the normal noise limits.
    Spend and context size are recomputed from the transcript prefix at each tick. The LLM pass is never replayed. */
-export function replayCoach(opts: { session: string; cwd: string; cfg: Config; events: TallyEvent[]; transcript: Transcript; history?: HistoryEntry[] }): CoachReplay {
+export function replayCoach(opts: { session: string; cwd: string; cfg: Config; events: SigilEvent[]; transcript: Transcript; history?: HistoryEntry[] }): CoachReplay {
   const engine = new CoachEngine({ shown: 0, shown_keys: [], skips: {}, llm_events_seen: 0 }, opts.cfg, undefined, {});
   const base = buildContext({ session: opts.session, cwd: opts.cwd, cfg: opts.cfg, events: [], transcript: opts.transcript, history: opts.history ?? [] });
   const shown: ReplayedSuggestion[] = [];

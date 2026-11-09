@@ -90,37 +90,37 @@ const COMMANDS: Record<string, () => Promise<{ run: (args: Args) => Promise<numb
   prompts: () => import('./commands/prompts.js'),
 };
 
-const HELP = `tally — what a story should cost, what it did cost, and the one-line change that makes the next one cheaper
+const HELP = `sigil — what a story should cost, what it did cost, and the one-line change that makes the next one cheaper
 
-Usage: tally <command> [options]
+Usage: sigil <command> [options]
 
 Cost
   estimate "<story>"|<url>|<file.md>   What similar past stories cost on this machine (no model call, nothing sent)
   estimate --backtest         How far off the estimate has been on your own history
   estimate ... --open         The same as a page in the browser, with the past stories behind it
-  cost [session] [--json]     Estimate vs actual for this story, where the money went, the fixes (/tally:cost)
-  cost --open | --record      Open the dashboard with this story on top | write it to .tally/ledger.jsonl now
+  cost [session] [--json]     Estimate vs actual for this story, where the money went, the fixes (/sigil:cost)
+  cost --open | --record      Open the dashboard with this story on top | write it to .sigil/ledger.jsonl now
   catalog update|status       The official plugin marketplaces and awesome lists, cached weekly, used to recommend existing tools
   catalog search <words>      Search them: plugins, skills, subagents, MCP servers (--kind, --stars)
-  dashboard [--no-open]       The team's cost per story from .tally/ledger.jsonl: estimate vs actual, drivers, people, models
+  dashboard [--no-open]       The team's cost per story from .sigil/ledger.jsonl: estimate vs actual, drivers, people, models
   dashboard --org [<root>]    Every repository under a root: verified-completion rate and cost per verified story, by repo, agent, model
   audit [--since 30d] [--repo <path>] [--json]   The decision trail on this machine: receipts, PR checks, disputes, approvals, hard stops, gate blocks
   fix <id> [--global]         Apply one fix from the cost check to .claude/settings.json or CLAUDE.md (--global: ~/.claude)
   fix --list                  The fixes the cost check suggested for this session
 
 Setup
-  install [--project|--managed]   Add Tally hooks + status line to Claude Code settings (backs up first); --managed writes the
+  install [--project|--managed]   Add Sigil hooks + status line to Claude Code settings (backs up first); --managed writes the
                               machine's managed settings (administrator), which no user or project setting can remove
   install --agent <id>        Same for another agent: codex | gemini | cursor (writes its hook file, backed up)
-  adapters [--json]           Which agents Tally can observe here, and what each can and cannot tell it
+  adapters [--json]           Which agents Sigil can observe here, and what each can and cannot tell it
   uninstall [--project|--agent <id>]  Remove hooks; settings return byte-identical
-  doctor [--json] [--offline] Check node, Tally install and updates, agents and their hooks, history, pricing, config; --json for issues
+  doctor [--json] [--offline] Check node, Sigil install and updates, agents and their hooks, history, pricing, config; --json for issues
   config [key value]          Show or set config (hourly_rate, writeback, auto_apply, models.*)
 
 Judge
   task <url|path|text>        Link a task to the current session; freeze acceptance criteria
   task --show                 The Task Contract: goal, criteria, constraints, verification, unknowns, status, revisions
-  verify [session] [--json|--ci|--deep]   What Tally can prove: VERIFIED / SUPPORTED / UNVERIFIED / UNMET per criterion, with the evidence
+  verify [session] [--json|--ci|--deep]   What Sigil can prove: VERIFIED / SUPPORTED / UNVERIFIED / UNMET per criterion, with the evidence
   check [--task <issue|file.md|text>] [--base <ref>] [--require no-unmet|sufficient|verified] [--json] [--no-comment] [--no-tests]
                               The pull-request check: judge base..HEAD of this checkout with no session (tests run here, mutation check,
                               criteria, scope); CI step summary and one PR comment; exit 1 when the repo policy's bar is not met
@@ -130,11 +130,11 @@ Judge
   feedback <c#> correct|wrong|unsure [--comment ..]   Label a criterion on the receipt (local); "feedback wrong <c#> --report" builds a sanitized issue report
   budget [status]             The task's budget and where it came from: comparable past tasks, a cap, or repo policy
   budget set <usd> [--note]   Cap this task when nothing comparable priced it (tell Claude "cap this at $40")
-  budget approve [--note]     Lift a repo-policy hard stop (tally.json budget.hard_stop) after a human decision
+  budget approve [--note]     Lift a repo-policy hard stop (sigil.json budget.hard_stop) after a human decision
   recall [query|<session>]    What past sessions in this repo already produced for a task like this (local, no model)
   recall --backfill [--since 365d]   Write recall cards for the sessions already on this machine for this repo
   playbook [--all] [--write]  Recurring lessons across receipts, as a CLAUDE.md snippet
-  mcp [--install]             MCP server: Claude asks tally_task / tally_unmet / tally_receipt / tally_flags mid-task
+  mcp [--install]             MCP server: Claude asks sigil_task / sigil_unmet / sigil_receipt / sigil_flags mid-task
   export [--since 30d] [--out f.jsonl] [--titles]   Numbers-only receipts for a team store
   followup [session]          Post-merge truth: merged, reverted, reopened, review churn, CI
   report                      Trends: cost per task, completion, rework, skill/MCP payoff, estimate vs outcome
@@ -144,7 +144,7 @@ Judge
   prompts [--all]             What your best tasks' opening prompts had in common, and a template
   export --invoice [--out f.md|f.csv]   Invoice-ready lines: task, criteria met, test result, cost
   sessions                    List tracked sessions
-  status [--session id]       What Tally knows about a session
+  status [--session id]       What Sigil knows about a session
 
 Coach
   start                       Open the Coach pane (tmux split if available)
@@ -171,9 +171,9 @@ Calibration
   calibrate eval [--live] [--record] [--fail-below N]   Regression eval on the fixture sessions
 
 Evaluation (autonomous, blind)
-  eval run [--only id] [--class fixture|real|historical] [--agent-model m] [--grader-model m]   isolated repo → agent under Tally → Tally judges → blind evaluator → compare → eval/results
+  eval run [--only id] [--class fixture|real|historical] [--agent-model m] [--grader-model m]   isolated repo → agent under Sigil → Sigil judges → blind evaluator → compare → eval/results
   eval discover --repos o/r,o/r    candidate public issues, scored, as specs to curate into eval/tasks
-  eval report [--json|--markdown]  the ledger by class and Tally version: exact agreement, false VERIFIED, false UNMET
+  eval report [--json|--markdown]  the ledger by class and Sigil version: exact agreement, false VERIFIED, false UNMET
 
 Other
   telemetry show|status|on|off   Opt-in anonymous metrics: exactly what would be sent, and the switch (PRIVACY.md)
@@ -183,9 +183,9 @@ Other
 
 /* Printed after a command that ran from the plugin's slash commands (`--plugin`): what the npm CLI adds. */
 const PLUGIN_HINTS: Record<string, string> = {
-  coach: 'The live Coach pane with one-key actions needs the CLI: npm i -g @kru3ish/tally, then `tally watch` in a second terminal.',
-  status: 'For the live Coach pane, backfill and blind grading install the CLI: npm i -g @kru3ish/tally',
-  report: 'Receipts for past sessions and blind grading need the CLI: npm i -g @kru3ish/tally, then `tally backfill list` and `tally calibrate grade`.',
+  coach: 'The live Coach pane with one-key actions needs the CLI: npm i -g sigil, then `sigil watch` in a second terminal.',
+  status: 'For the live Coach pane, backfill and blind grading install the CLI: npm i -g sigil',
+  report: 'Receipts for past sessions and blind grading need the CLI: npm i -g sigil, then `sigil backfill list` and `sigil calibrate grade`.',
 };
 
 async function main(): Promise<void> {
@@ -193,7 +193,7 @@ async function main(): Promise<void> {
   const cmd = args._.shift();
   if (has(args, 'version') || cmd === 'version') {
     /* the version comes from package.json so the CLI, the plugin manifest and the marketplace can never disagree */
-    process.stdout.write(`tally ${packageVersion()}\n`);
+    process.stdout.write(`sigil ${packageVersion()}\n`);
     return;
   }
   if (!cmd || cmd === 'help' || cmd === '--help') {
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
     return;
   }
   if (has(args, 'help')) {
-    /* `tally verify --help`: only that command's lines from the help text */
+    /* `sigil verify --help`: only that command's lines from the help text */
     const own = HELP.split('\n').filter((l) => new RegExp(`^  ${cmd}( |$)`).test(l));
     process.stdout.write(own.length ? `Usage:\n${own.join('\n')}\n` : HELP);
     return;
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
     const msg = err instanceof Error ? err.stack ?? err.message : String(err);
     log(`command ${cmd} failed: ${msg}`);
     if (has(args, 'auto')) return;
-    process.stderr.write(`tally ${cmd}: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`sigil ${cmd}: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exitCode = 1;
   }
   if (METRIC_COMMANDS.has(cmd) && !has(args, 'auto')) {

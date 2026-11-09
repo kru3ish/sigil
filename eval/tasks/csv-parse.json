@@ -1,9 +1,9 @@
 {
   "id": "csv-parse",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/csv-parse",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/csv-parse",
   "base": "a3a8df5a5afe5a698aca2caca2dff0a2efa20b9f",
-  "task": "C:/Users/Mehta/dev/tally-eval/csv-parse/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/csv-parse/task.md",
   "setup": [],
   "tags": [
     "javascript",

@@ -1,10 +1,10 @@
-/* Feedback on Tally's own judgments, kept next to the receipt it is about. Everything here is local: a label per
-   criterion (correct / wrong / unsure) with an optional comment in ~/.tally/sessions/<id>/feedback.jsonl, a count of
+/* Feedback on Sigil's own judgments, kept next to the receipt it is about. Everything here is local: a label per
+   criterion (correct / wrong / unsure) with an optional comment in ~/.sigil/sessions/<id>/feedback.jsonl, a count of
    real verifications for the one-time usefulness question, and that question's answer. Nothing leaves the machine
    unless telemetry is on, and telemetry only ever counts labels (see src/telemetry). */
 import fs from 'node:fs';
 import path from 'node:path';
-import { appendLine, ensureDir, readJson, sessionDir, tallyHome, writeJson } from '../paths.js';
+import { appendLine, ensureDir, readJson, sessionDir, sigilHome, writeJson } from '../paths.js';
 import { loadJudge } from '../judge/judge.js';
 import { statusFromJudge } from '../assurance/index.js';
 import type { Judge } from '../judge/schema.js';
@@ -19,11 +19,11 @@ export interface FeedbackEntry {
   criterion: string;
   label: FeedbackLabel;
   comment?: string;
-  /* what Tally had said, so the entry stands on its own when the receipt is later re-judged */
+  /* what Sigil had said, so the entry stands on its own when the receipt is later re-judged */
   judge_status: 'met' | 'partial' | 'unmet' | 'unverifiable';
   assurance: 'VERIFIED' | 'SUPPORTED' | 'UNVERIFIED' | 'UNMET';
   resolved_by: string;
-  tally_version?: string;
+  sigil_version?: string;
   /* a wrong VERIFIED is the bug class the project treats as release-blocking */
   false_verified: boolean;
 }
@@ -34,7 +34,7 @@ export function feedbackFile(session: string): string {
 
 export function recordFeedback(session: string, criterion: string, label: FeedbackLabel, comment: string | undefined, version?: string): { entry: FeedbackEntry; judge: Judge } {
   const j = loadJudge(session);
-  if (!j) throw new Error(`no receipt for session ${session}; run tally verify or tally judge first`);
+  if (!j) throw new Error(`no receipt for session ${session}; run sigil verify or sigil judge first`);
   const c = j.criteria.find((x) => x.id === criterion);
   if (!c) throw new Error(`no criterion ${criterion} on this receipt (${j.criteria.map((x) => x.id).join(', ')})`);
   const assurance = j.assurance?.criteria.find((a) => a.id === criterion)?.status ?? statusFromJudge(c);
@@ -47,7 +47,7 @@ export function recordFeedback(session: string, criterion: string, label: Feedba
     judge_status: c.override?.status ?? c.status,
     assurance,
     resolved_by: c.resolved_by,
-    tally_version: version,
+    sigil_version: version,
     false_verified: label === 'wrong' && assurance === 'VERIFIED',
   };
   ensureDir(sessionDir(session));
@@ -77,25 +77,25 @@ export interface UsefulnessState {
 }
 
 export function usefulnessFile(): string {
-  return path.join(tallyHome(), 'usefulness.json');
+  return path.join(sigilHome(), 'usefulness.json');
 }
 
 export function readUsefulness(): UsefulnessState {
   return readJson<UsefulnessState>(usefulnessFile(), { verifications: 0 });
 }
 
-/* count a real verification; demo sessions and Tally's own internal runs never count */
+/* count a real verification; demo sessions and Sigil's own internal runs never count */
 export function countVerification(session: string): UsefulnessState {
-  if (session.startsWith('demo-') || process.env.TALLY_INTERNAL === '1' || process.env.TALLY_LLM === 'stub') return readUsefulness();
+  if (session.startsWith('demo-') || process.env.SIGIL_INTERNAL === '1' || process.env.SIGIL_LLM === 'stub') return readUsefulness();
   const s = readUsefulness();
   s.verifications += 1;
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   writeJson(usefulnessFile(), s);
   return s;
 }
 
 export const USEFULNESS_AFTER = 5;
-export const USEFULNESS_QUESTION = 'Has Tally caught something you would otherwise have missed? [y/n/skip] ';
+export const USEFULNESS_QUESTION = 'Has Sigil caught something you would otherwise have missed? [y/n/skip] ';
 
 /* whether to ask now: after the fifth real verification, once, only in an interactive terminal, never in CI */
 export function shouldAskUsefulness(state: UsefulnessState, opts: { interactive: boolean; ci?: boolean }): boolean {
@@ -108,7 +108,7 @@ export function recordUsefulness(answer: 'yes' | 'no' | 'skip'): UsefulnessState
   const s = readUsefulness();
   s.asked = new Date().toISOString();
   s.answer = answer;
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   writeJson(usefulnessFile(), s);
   record({ command: 'usefulness', success: true, usefulness_answer: answer });
   return s;

@@ -1,4 +1,4 @@
-/* `tally estimate "<story>"`: what a story like this has cost before, from the sessions already on this machine.
+/* `sigil estimate "<story>"`: what a story like this has cost before, from the sessions already on this machine.
    `--backtest` estimates every past story from all the others and reports how far off the method is here. */
 import { type Args, flag, has } from '../cli.js';
 import { backtest, buildCorpus, estimateFromCorpus, fmtEstimate } from '../estimate/estimate.js';
@@ -31,7 +31,7 @@ export async function run(args: Args): Promise<number | void> {
   }
   const ref = args._.join(' ').trim();
   if (!ref) {
-    process.stderr.write('Usage: tally estimate "<story text>" | <github/jira/linear url> | <file.md>   [--backtest] [--json]\n');
+    process.stderr.write('Usage: sigil estimate "<story text>" | <github/jira/linear url> | <file.md>   [--backtest] [--json]\n');
     return 2;
   }
   /* a tracker link or a file is read the same way task intake reads it, so the estimate sees the story's words */

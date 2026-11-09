@@ -1,4 +1,4 @@
-/* `tally catalog`: the list of plugins, skills, subagents and MCP servers that already exist (Anthropic's official
+/* `sigil catalog`: the list of plugins, skills, subagents and MCP servers that already exist (Anthropic's official
    marketplaces and the curated awesome lists), cached locally and used by the cost check to recommend an existing
    tool before writing one. `update` fetches it (plain GETs, nothing about you is sent), `search` queries it. */
 import { type Args, flag, has } from '../cli.js';
@@ -16,13 +16,13 @@ export async function run(args: Args): Promise<number | void> {
   }
   const c = loadCatalog();
   if (!c) {
-    process.stderr.write('No catalog yet. Run: tally catalog update\n');
+    process.stderr.write('No catalog yet. Run: sigil catalog update\n');
     return 1;
   }
   if (sub === 'search') {
     const terms = args._.slice(1).join(' ').toLowerCase().split(/[,\s]+/).filter((t) => t.length > 1);
     if (!terms.length) {
-      process.stderr.write('Usage: tally catalog search <words> [--kind plugin|skill|mcp|agent|tool]\n');
+      process.stderr.write('Usage: sigil catalog search <words> [--kind plugin|skill|mcp|agent|tool]\n');
       return 2;
     }
     const stack = stackOf(repoRoot(process.cwd()));
@@ -40,7 +40,7 @@ export async function run(args: Args): Promise<number | void> {
     return;
   }
   const age = catalogAgeDays(c);
-  process.stdout.write(`Catalog: ${c.entries.length} entries, fetched ${age === 0 ? 'today' : `${age} day(s) ago`}${(age ?? 0) > 7 ? ' (stale: tally catalog update)' : ''}\n`);
+  process.stdout.write(`Catalog: ${c.entries.length} entries, fetched ${age === 0 ? 'today' : `${age} day(s) ago`}${(age ?? 0) > 7 ? ' (stale: sigil catalog update)' : ''}\n`);
   for (const s of c.sources) process.stdout.write(`  ${s.name.padEnd(22)} ${String(s.entries).padStart(5)}${s.error ? `  last fetch failed: ${s.error}` : ''}\n`);
   const stack = stackOf(repoRoot(process.cwd()));
   if (stack.languages.length) process.stdout.write(`This repo: ${stack.languages.join(', ')}${stack.deps.length ? `; ${stack.deps.length} dependencies` : ''}\n`);

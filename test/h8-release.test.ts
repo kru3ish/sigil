@@ -91,7 +91,7 @@ describe('transcript-based diffs', () => {
 describe('inferred tasks and receipts without a git tree', () => {
   /* a repo whose only commit lands after the session, so the window has no tree to check out and no link to find */
   function laterRepo(): string {
-    const cwd = tmpDir('tally-inf-');
+    const cwd = tmpDir('sigil-inf-');
     git(cwd, ['init', '-q', '-b', 'feature/rate-limit']);
     git(cwd, ['config', 'user.email', 't@t']);
     git(cwd, ['config', 'user.name', 't']);
@@ -156,7 +156,7 @@ describe('inferred tasks and receipts without a git tree', () => {
     expect(s).toBeTruthy();
     expect(s!.action.kind).toBe('confirm');
     expect(s!.message).toContain('[c]onfirm');
-    expect(s!.message).toContain('tally task --confirm');
+    expect(s!.message).toContain('sigil task --confirm');
     expect(isAutoApplicable(s!)).toBe(false);
     expect(renderSuggestion(s!, false)).toContain('[c]onfirm  [e]dit  [l]ink  [s]kip');
 
@@ -191,7 +191,7 @@ describe('inferred tasks and receipts without a git tree', () => {
   });
 
   it('edit rewrites the task in the user\'s words and confirms it; the Coach [c] key confirms in place', async () => {
-    const cwd = tmpDir('tally-edit-');
+    const cwd = tmpDir('sigil-edit-');
     const cfg = loadConfig();
     const session = 'edit-session-0001';
     const llm = new StubLlm({ intake: (req) => ({ title: req.prompt.includes('my words') ? 'Rewritten task' : 'Inferred task', criteria: [{ text: 'thing', source: 'inferred', check: { kind: 'none' } }], spec_quality: { score: 8, missing: [], questions: [] }, estimate_hours: 1, rationale: '' }) }, session);
@@ -244,7 +244,7 @@ describe('report breakdown by task source', () => {
 });
 
 describe('inject wording', () => {
-  it('every note handed to Claude is an observation prefixed "Tally observed", delivered under "Tally:"', () => {
+  it('every note handed to Claude is an observation prefixed "Sigil observed", delivered under "Sigil:"', () => {
     const t = parseTranscriptFile(path.join(basicFixture, 'transcript.jsonl'));
     const ev = eventsFromTranscript(t, 'inj', 'C:/repo', 'x.jsonl', 'abc');
     const cfg = loadConfig();
@@ -252,10 +252,10 @@ describe('inject wording', () => {
     const all = RULES.flatMap((rule) => rule.evaluate(ctx));
     const notes = all.map((s) => (s.action.kind === 'inject' ? s.action.note : s.inject_note)).filter((n): n is string => !!n);
     expect(notes.length).toBeGreaterThan(1);
-    for (const n of notes) expect(n).toMatch(/^Tally observed /);
+    for (const n of notes) expect(n).toMatch(/^Sigil observed /);
     expect(replayCoach({ session: 'inj', cwd: 'C:/repo', cfg, events: ev, transcript: t, history: [] }).shown.length).toBeGreaterThan(0);
     injectSuggestion({ rule: 'x', key: 'k', severity: 'info', title: 'Scope creep', message: 'Stick to the ticket.\nmore', usd_saved: 0, action: { kind: 'none', label: '' } }, { session: 'inj', cwd: 'C:/repo' });
-    expect(pendingInjects('inj')[0]!.note).toBe('Tally observed: Scope creep. Stick to the ticket.');
+    expect(pendingInjects('inj')[0]!.note).toBe('Sigil observed: Scope creep. Stick to the ticket.');
   });
 });
 
@@ -264,7 +264,7 @@ describe('mechanical checks without a git tree', () => {
     const t = { toolCalls: [{ id: 'w1', name: 'Write', input: { file_path: 'C:\\repo\\src\\a.ts', content: 'export const limit = 429;\n' }, ts: '2026-09-10T14:05:00Z', agent: 'main', messageId: 'm', turn: 1, phase: 'work' as const, result: { isError: false, chars: 1, text: '' } }] } as unknown as Transcript;
     const rec = reconstructChanges(t, [], 'C:\\repo');
     const ev = { git: { files_changed: [], diff_excerpt: '' }, ship_events: [], reconstruction: rec } as unknown as Parameters<typeof resolveCheck>[1]['evidence'];
-    const ctx = { cwd: tmpDir('tally-notree-'), evidence: ev, verification: { ran: false, reason: 'no tree' }, timeoutMs: 1000, noTree: true } as unknown as Parameters<typeof resolveCheck>[1];
+    const ctx = { cwd: tmpDir('sigil-notree-'), evidence: ev, verification: { ran: false, reason: 'no tree' }, timeoutMs: 1000, noTree: true } as unknown as Parameters<typeof resolveCheck>[1];
     expect((await resolveCheck({ kind: 'file_changed', path: 'src/a.ts' }, ctx)).status).toBe('met');
     expect((await resolveCheck({ kind: 'file_changed', path: 'src/a.ts' }, ctx)).evidence).toContain('reconstructed');
     expect((await resolveCheck({ kind: 'file_changed', path: '.' }, ctx)).status).toBe('met');
@@ -284,7 +284,7 @@ describe('mechanical checks without a git tree', () => {
 describe('calibrate rescore', () => {
   it('refreshes the judge side of graded entries from the current receipt and leaves human grades alone', async () => {
     const session = 'rescore-session-0001';
-    const cwd = tmpDir('tally-rescore-');
+    const cwd = tmpDir('sigil-rescore-');
     const cfg = loadConfig();
     const llm = new StubLlm({ intake: () => ({ title: 'Rate limit', criteria: [{ text: 'Login returns 429', source: 'explicit', check: { kind: 'none' } }, { text: 'README updated', source: 'explicit', check: { kind: 'file_changed', path: 'README.md' } }], spec_quality: { score: 7, missing: [], questions: [] }, estimate_hours: 1, rationale: '' }), judge: () => ({ criteria: [{ id: 'c1', status: 'met', evidence: 'ok', files: [], confidence: 0.9 }], quality_score: 7, quality_reason: 'r', verdict_reason: 'v', recommendations: ['a', 'b', 'c'] }) }, session);
     await intake({ session, cwd, text: 'rate limit the login endpoint', cfg, llm });

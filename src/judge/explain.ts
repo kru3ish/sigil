@@ -1,4 +1,4 @@
-/* `tally judge <session> --explain <criterion|all>`: the evidence behind a status, so a reader can audit it in seconds:
+/* `sigil judge <session> --explain <criterion|all>`: the evidence behind a status, so a reader can audit it in seconds:
    the cited evidence line, any override, the diff hunks for the files involved (from the session's base commit), the
    independent test run's output, and the transcript moments that touched those files. */
 import fs from 'node:fs';
@@ -80,7 +80,7 @@ export function explainCriterion(session: string, id: string): string {
     for (const x of m) L.push('  ' + x);
   }
   L.push('');
-  L.push(`Disagree? tally dispute ${session.slice(0, 8)} ${c.id} --status <met|partial|unmet|unverifiable> --reason "<why>"`);
+  L.push(`Disagree? sigil dispute ${session.slice(0, 8)} ${c.id} --status <met|partial|unmet|unverifiable> --reason "<why>"`);
   return L.join('\n');
 }
 

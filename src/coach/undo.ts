@@ -46,7 +46,7 @@ export function undoLast(n = 1): UndoEntry[] {
     const current = fs.existsSync(e.file) ? fs.readFileSync(e.file, 'utf8') : null;
     if (current !== e.after) {
       /* file changed since; still restore but keep a copy so nothing is lost */
-      if (current !== null) fs.writeFileSync(e.file + `.tally-undo-${e.id}.bak`, current);
+      if (current !== null) fs.writeFileSync(e.file + `.sigil-undo-${e.id}.bak`, current);
     }
     if (e.before === null) {
       if (fs.existsSync(e.file)) fs.unlinkSync(e.file);

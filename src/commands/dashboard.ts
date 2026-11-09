@@ -1,4 +1,4 @@
-/* `tally dashboard`: the team's cost per story from the repo's ledger, with the current session's story on top when
+/* `sigil dashboard`: the team's cost per story from the repo's ledger, with the current session's story on top when
    there is one. A self-contained HTML file in the temp directory, opened in the browser. */
 import { type Args, flag, has } from '../cli.js';
 import { resolveSession } from '../session.js';
@@ -16,12 +16,12 @@ export async function run(args: Args): Promise<number | void> {
     const root = typeof org === 'string' && org ? org : cwd;
     const repos = scanLedgers(root);
     if (!repos.length) {
-      process.stdout.write(`No .tally/ledger.jsonl under ${root} (two directories deep). Repositories record stories there when sessions end; commit the file to share.\n`);
+      process.stdout.write(`No .sigil/ledger.jsonl under ${root} (two directories deep). Repositories record stories there when sessions end; commit the file to share.\n`);
       return 1;
     }
     const report = aggregateOrg(root, repos);
     if (has(args, 'json')) {
-      process.stdout.write(JSON.stringify({ schema: 'tally.org.v1', ...report }, null, 2) + '\n');
+      process.stdout.write(JSON.stringify({ schema: 'sigil.org.v1', ...report }, null, 2) + '\n');
       return;
     }
     process.stdout.write(renderOrgText(report) + '\n');
@@ -38,5 +38,5 @@ export async function run(args: Args): Promise<number | void> {
   }
   const r = openDashboard(cwd, { current, open: !has(args, 'no-open') });
   const n = readLedger(cwd).length;
-  process.stdout.write(`${r.opened ? 'Opened' : 'Wrote'} ${r.file}\n${n} ${n === 1 ? 'story' : 'stories'} in the team ledger${current ? ', plus this session' : ''}.${n ? '' : ' Stories are recorded in .tally/ledger.jsonl when a session ends; commit it to share.'}\n`);
+  process.stdout.write(`${r.opened ? 'Opened' : 'Wrote'} ${r.file}\n${n} ${n === 1 ? 'story' : 'stories'} in the team ledger${current ? ', plus this session' : ''}.${n ? '' : ' Stories are recorded in .sigil/ledger.jsonl when a session ends; commit it to share.'}\n`);
 }

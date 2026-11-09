@@ -6,7 +6,7 @@ import { scoreCounts, computeVerdict } from '../src/judge/judge.js';
 import { sanitiseCheck } from '../src/task/intake.js';
 import { tier2Estimate, backfillSpendSince, projectCost } from '../src/backfill/run.js';
 import { loadConfig } from '../src/config.js';
-import { recordTallySpend } from '../src/llm/client.js';
+import { recordSigilSpend } from '../src/llm/client.js';
 import { sessionDir, ensureDir } from '../src/paths.js';
 import { BURN_MIN_USD, BURN_MIN_CALLS, BURN_WINDOW_MIN } from '../src/coach/rules/burn-rate.js';
 
@@ -63,8 +63,8 @@ describe('0.1.1 intake and backfill guards', () => {
     /* spend recorded for a backfilled session counts; a live session's does not */
     ensureDir(sessionDir('bf-1'));
     fs.writeFileSync(path.join(sessionDir('bf-1'), 'backfill.json'), '{}');
-    recordTallySpend({ kind: 'judge:tier2', model: 'm', cost_usd: 1.25, usage: { input: 1, output: 1, cache_write: 0, cache_write_1h: 0, cache_read: 0 }, session: 'bf-1' });
-    recordTallySpend({ kind: 'judge:tier1', model: 'm', cost_usd: 0.5, usage: { input: 1, output: 1, cache_write: 0, cache_write_1h: 0, cache_read: 0 }, session: 'live-1' });
+    recordSigilSpend({ kind: 'judge:tier2', model: 'm', cost_usd: 1.25, usage: { input: 1, output: 1, cache_write: 0, cache_write_1h: 0, cache_read: 0 }, session: 'bf-1' });
+    recordSigilSpend({ kind: 'judge:tier1', model: 'm', cost_usd: 0.5, usage: { input: 1, output: 1, cache_write: 0, cache_write_1h: 0, cache_read: 0 }, session: 'live-1' });
     expect(backfillSpendSince(24)).toBeCloseTo(1.25, 2);
     void tmpDir;
   });

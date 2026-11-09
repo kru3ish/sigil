@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in Tally misbehaved (a hook error, a wrong receipt, a Coach note that made no sense)
+about: Something in Sigil misbehaved (a hook error, a wrong receipt, a Coach note that made no sense)
 title: ''
 labels: bug
 assignees: ''
@@ -10,7 +10,7 @@ assignees: ''
 
 **What you expected**
 
-**`tally doctor` output** (or `/tally:tally` for plugin-only installs)
+**`sigil doctor` output** (or `/sigil:sigil` for plugin-only installs)
 
 ```
 paste here
@@ -18,12 +18,12 @@ paste here
 
 **Versions**
 
-- Tally: `tally --version` (or the version in `/plugin list`):
+- Sigil: `sigil --version` (or the version in `/plugin list`):
 - Claude Code: `claude --version`:
 - OS and shell:
 - Installed as: plugin / npm CLI / both
 
-**The receipt, if the bug is a judgment** (`~/.tally/sessions/<id>/report.md`; remove anything private, Tally never needs prompts or code to reproduce a scoring problem)
+**The receipt, if the bug is a judgment** (`~/.sigil/sessions/<id>/report.md`; remove anything private, Sigil never needs prompts or code to reproduce a scoring problem)
 
 ```
 paste here

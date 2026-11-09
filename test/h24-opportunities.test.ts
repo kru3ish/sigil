@@ -74,7 +74,7 @@ describe('what to add, from the transcript', () => {
   });
 
   it('a file fix creates the subagent or skill, never overwrites one, and undoes cleanly', async () => {
-    const cwd = tmpDir('tally-add-');
+    const cwd = tmpDir('sigil-add-');
     const calls = Array.from({ length: 8 }, () => ({ name: 'Read', phase: 'explore' as Phase }));
     const scout = findOpportunities(transcript({ n: 20, ctx: 60000, calls, phase: (i) => (i < 12 ? 'explore' : 'build') }), { pricing }).find((d) => d.id === 'scout')!;
     const r = applyFix(scout.fix!, { session: 'add-1', cwd });
@@ -89,13 +89,13 @@ describe('what to add, from the transcript', () => {
 });
 
 describe('applying from the page or the session', () => {
-  it('`tally fix all` applies every change Tally writes, and a copied command finds its check from the folder', async () => {
+  it('`sigil fix all` applies every change Sigil writes, and a copied command finds its check from the folder', async () => {
     const { spawnSync } = await import('node:child_process');
     const { root, basicFixture } = await import('./helpers.js');
     const { computeCheck } = await import('../src/estimate/variance.js');
     const { parseTranscriptFile } = await import('../src/transcript/parse.js');
     const { sessionDir } = await import('../src/paths.js');
-    const cwd = tmpDir('tally-fixall-');
+    const cwd = tmpDir('sigil-fixall-');
     spawnSync('git', ['init', '-q'], { cwd });
     const session = 'fixall-0001';
     fs.mkdirSync(sessionDir(session), { recursive: true });

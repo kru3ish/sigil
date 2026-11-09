@@ -1,10 +1,10 @@
 {
   "id": "express-7350",
   "class": "real",
-  "repo": "C:/Users/Mehta/dev/tally-eval-gh/express-7350",
+  "repo": "C:/Users/Mehta/dev/sigil-eval-gh/express-7350",
   "base": "69e768e237095b78d29556931dea73b21ce3c17d",
   "issue": "https://github.com/expressjs/express/issues/7350",
-  "task": "C:/Users/Mehta/dev/tally-eval-gh/express-7350/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval-gh/express-7350/task.md",
   "setup": [],
   "tags": [
     "javascript",

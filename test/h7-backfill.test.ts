@@ -31,7 +31,7 @@ function git(cwd: string, args: string[], env: Record<string, string> = {}): str
 
 /* A repo with dated commits: base before the session, one commit inside the window, one after. */
 function datedRepo(): { cwd: string; base: string; inWindow: string; after: string } {
-  const cwd = tmpDir('tally-bf-');
+  const cwd = tmpDir('sigil-bf-');
   git(cwd, ['init', '-q', '-b', 'feature/rate-limit']);
   git(cwd, ['config', 'user.email', 't@t']);
   git(cwd, ['config', 'user.name', 't']);
@@ -70,9 +70,9 @@ describe('backfill scan', () => {
     expect(() => parseSince('soon')).toThrow();
     const projects = path.join(iso.claude, 'projects');
     fs.mkdirSync(path.join(projects, 'C--Users-dev-acme-app'), { recursive: true });
-    fs.mkdirSync(path.join(projects, 'C--tmp-tally-llm-abc'), { recursive: true });
+    fs.mkdirSync(path.join(projects, 'C--tmp-sigil-llm-abc'), { recursive: true });
     fs.copyFileSync(path.join(basicFixture, 'transcript.jsonl'), path.join(projects, 'C--Users-dev-acme-app', 'fx.jsonl'));
-    fs.copyFileSync(path.join(basicFixture, 'transcript.jsonl'), path.join(projects, 'C--tmp-tally-llm-abc', 'internal.jsonl'));
+    fs.copyFileSync(path.join(basicFixture, 'transcript.jsonl'), path.join(projects, 'C--tmp-sigil-llm-abc', 'internal.jsonl'));
     const s = summarize(path.join(projects, 'C--Users-dev-acme-app', 'fx.jsonl'))!;
     expect(s.cost).toBeGreaterThan(1);
     expect(s.prompts.length).toBe(2);
@@ -131,11 +131,11 @@ describe('history reconstruction', () => {
     expect(denied.ran).toBe(false);
     wt.remove();
     expect(fs.existsSync(wt.path)).toBe(false);
-    expect(git(cwd, ['worktree', 'list'])).not.toContain('tally-wt-');
+    expect(git(cwd, ['worktree', 'list'])).not.toContain('sigil-wt-');
   });
 
   it('marks tests unrunnable when dependencies cannot be installed offline', async () => {
-    const wt = tmpDir('tally-deps-');
+    const wt = tmpDir('sigil-deps-');
     fs.writeFileSync(path.join(wt, 'package.json'), JSON.stringify({ scripts: { test: 'node test.js' }, dependencies: { 'left-pad': '1.0.0' } }));
     fs.writeFileSync(path.join(wt, 'test.js'), 'process.exit(0)');
     const d = await prepareDeps(wt, 5000);
@@ -229,7 +229,7 @@ describe('backfill end to end and blind grading', () => {
     expect(r.replay!.shown.length).toBeGreaterThan(0);
     expect(git(cwd, ['worktree', 'list']).split('\n').length).toBe(1);
     expect(fs.readFileSync(path.join(cwd, 'src.js'), 'utf8')).toContain('500');
-    expect(r.tally_spend_usd).toBeGreaterThan(0);
+    expect(r.sigil_spend_usd).toBeGreaterThan(0);
     expect(logs.some((l) => l.includes('coach replay'))).toBe(true);
 
     const summary = evidenceSummary(cand!.session);
@@ -241,7 +241,7 @@ describe('backfill end to end and blind grading', () => {
     let out = '';
     const res = await gradeSession(cand!.session, { grader: 'alice', out: (s) => (out += s + '\n'), ask: async () => { if (!shownBeforeGrades) shownBeforeGrades = out; return answers.shift() ?? 'm'; } });
     expect(shownBeforeGrades).not.toContain(j.verdict.verdict);
-    expect(shownBeforeGrades).not.toContain('tally');
+    expect(shownBeforeGrades).not.toContain('sigil');
     expect(res.entry.criteria.map((c) => c.human)).toEqual(['met', 'unmet', 'partial', 'met']);
     expect(res.entry.grader).toBe('alice');
     expect(res.entry.source).toBe('backfill');

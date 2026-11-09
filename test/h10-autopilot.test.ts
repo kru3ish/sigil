@@ -10,7 +10,7 @@ import { readEvents, appendEvent, readEventsFile } from '../src/store/events.js'
 import { pendingInjects } from '../src/coach/inject.js';
 import { run as coachRun } from '../src/commands/coach.js';
 import { renderStatusLine, readFlags } from '../src/commands/statusline.js';
-import { install, uninstall, installStatusLine, uninstallStatusLine, isTallyStatusLine, settingsPath } from '../src/install/install.js';
+import { install, uninstall, installStatusLine, uninstallStatusLine, isSigilStatusLine, settingsPath } from '../src/install/install.js';
 import { historyFile, repoKey, appendLine, sessionDir } from '../src/paths.js';
 
 const HOOK = path.join(root, 'dist', 'hook.js');
@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(() => iso.restore());
 
 function hook(event: string, input: Record<string, unknown>): { status: number | null; stdout: string } {
-  const r = spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+  const r = spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
   return { status: r.status, stdout: r.stdout };
 }
 
@@ -41,16 +41,16 @@ describe('autopilot', () => {
     expect(fs.readFileSync(path.join(iso.home, 'spawn.log'), 'utf8').trim()).toBe('');
   });
 
-  it('a tick queues observations for the next prompt, keeps the rest as status-line flags, and the hook delivers them under Tally:', async () => {
+  it('a tick queues observations for the next prompt, keeps the rest as status-line flags, and the hook delivers them under Sigil:', async () => {
     const session = 'auto-session-0002';
-    const cwd = tmpDir('tally-auto-');
+    const cwd = tmpDir('sigil-auto-');
     /* the fixture session has a loop (npm test fails 3×), repeated reads, and a failing MCP tool */
     for (const e of readEventsFile(path.join(basicFixture, 'events.jsonl'))) appendEvent({ ...e, session, cwd });
     await intake({ session, cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: stubIntake(session) });
     await coachRun({ _: [], flags: { tick: true, session, cwd, auto: true } });
     const queued = pendingInjects(session);
     expect(queued.length).toBeGreaterThan(0);
-    for (const q of queued) expect(q.note).toMatch(/^Tally observed /);
+    for (const q of queued) expect(q.note).toMatch(/^Sigil observed /);
     /* nothing that describes an unwritten file is injected on autopilot */
     for (const q of queued) expect(q.note).not.toMatch(/HANDOFF\.md|CLAUDE\.md now/);
     expect(readEvents(session).filter((e) => e.type === 'inject').length).toBe(queued.length);
@@ -60,7 +60,7 @@ describe('autopilot', () => {
     /* flags are handed to Claude once, as an observation with the exact command, so the user decides in the conversation */
     const flagNote = queued.find((q) => /Coach flag/.test(q.note))!;
     expect(flagNote).toBeTruthy();
-    expect(flagNote.note).toMatch(/^Tally observed \d+ Coach flags? waiting for a decision from the user/);
+    expect(flagNote.note).toMatch(/^Sigil observed \d+ Coach flags? waiting for a decision from the user/);
     expect(flagNote.note).toContain('coach --apply task-confirm --session ' + session);
     expect(flags.announced).toContain(flags.pending.find((f) => f.rule === 'task-confirm')!.key);
     const state = JSON.parse(fs.readFileSync(path.join(sessionDir(session), 'coach-state.json'), 'utf8')) as { shown: number };
@@ -73,13 +73,13 @@ describe('autopilot', () => {
     expect(code).toBe(0);
     expect(readFlags(session).pending.some((f) => f.rule === 'task-confirm')).toBe(false);
     const delivered = hook('UserPromptSubmit', { session_id: session, cwd, prompt: 'next' });
-    expect(delivered.stdout).toContain('Tally: Tally observed');
+    expect(delivered.stdout).toContain('Sigil: Sigil observed');
     expect(pendingInjects(session).length).toBe(0);
   });
 
   it('the status line shows task, spend vs budget, context and flags from the JSON Claude Code passes', async () => {
     const session = 'auto-session-0003';
-    const cwd = tmpDir('tally-status-');
+    const cwd = tmpDir('sigil-status-');
     expect(renderStatusLine({ session_id: session, cost: { total_cost_usd: 0.42 } }, false)).toContain('no task linked · $0.420');
     await intake({ session, cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: stubIntake(session) });
     fs.writeFileSync(path.join(sessionDir(session), 'coach-flags.json'), JSON.stringify({ pending: [{ rule: 'task-confirm', key: 'k', title: 't', usd_saved: 1 }, { rule: 'claude-md', key: 'k2', title: 't2', usd_saved: 1 }] }));
@@ -88,10 +88,10 @@ describe('autopilot', () => {
     /* nothing comparable on an isolated machine and no cap: spend is shown without an invented budget */
     expect(line).toContain('$30.50 · no cap');
     expect(line).toContain('ctx 72%');
-    expect(line).toMatch(/⚑ 2 · .+ · tally coach/);
+    expect(line).toMatch(/⚑ 2 · .+ · sigil coach/);
     fs.mkdirSync(path.dirname(settingsPath('user')), { recursive: true });
-    fs.writeFileSync(settingsPath('user'), JSON.stringify({ enabledPlugins: { 'tally@tally': true } }));
-    expect(renderStatusLine({ session_id: session, cost: { total_cost_usd: 1 } }, false)).toMatch(/⚑ 2 · .+ · \/tally:coach/);
+    fs.writeFileSync(settingsPath('user'), JSON.stringify({ enabledPlugins: { 'sigil@sigil': true } }));
+    expect(renderStatusLine({ session_id: session, cost: { total_cost_usd: 1 } }, false)).toMatch(/⚑ 2 · .+ · \/sigil:coach/);
     fs.unlinkSync(settingsPath('user'));
     const r = spawnSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'statusline', '--plain'], { input: JSON.stringify({ session_id: session, cost: { total_cost_usd: 1 } }), encoding: 'utf8', env: { ...process.env } });
     expect(r.status).toBe(0);
@@ -99,7 +99,7 @@ describe('autopilot', () => {
     expect(renderStatusLine({}, false)).toContain('no task linked');
   });
 
-  it('install adds the status line only when none is configured, and uninstall removes only Tally\'s', () => {
+  it('install adds the status line only when none is configured, and uninstall removes only Sigil\'s', () => {
     const file = settingsPath('user');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, '{\n\t"model": "opus"\n}\n');
@@ -109,7 +109,7 @@ describe('autopilot', () => {
     const s = JSON.parse(fs.readFileSync(file, 'utf8')) as { statusLine: { type: string; command: string } };
     expect(s.statusLine.type).toBe('command');
     expect(s.statusLine.command).toMatch(/dist\/cli\.js" statusline$/);
-    expect(isTallyStatusLine(s.statusLine)).toBe(true);
+    expect(isSigilStatusLine(s.statusLine)).toBe(true);
     uninstall({ scope: 'user' });
     expect(fs.readFileSync(file, 'utf8')).toBe(before);
     /* someone else's status line is left alone */
@@ -123,11 +123,11 @@ describe('autopilot', () => {
   });
 
   it('SessionStart opens with the last receipt for the repo', () => {
-    const cwd = tmpDir('tally-last-');
+    const cwd = tmpDir('sigil-last-');
     appendLine(historyFile(), JSON.stringify({ ts: '2026-09-15T10:00:00Z', session: 'old', repo: repoKey(cwd), verdict: 'borderline', task_title: 'Add rate limiting', completion_pct: 50, cost_usd: 1.33, waste_usd: 0.63, final_status: 'reverted', final_verdict: 'not worth it', recommendations: ['Read the ticket checklist before saying done.'] }));
     const r = hook('SessionStart', { session_id: 'auto-session-0004', cwd, source: 'startup' });
     const out = JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } };
-    expect(out.hookSpecificOutput.additionalContext).toContain('Tally: last receipt in this repo: "Add rate limiting" 50% complete, $1.33 spent, $0.63 waste, verdict not worth it (reverted).');
+    expect(out.hookSpecificOutput.additionalContext).toContain('Sigil: last receipt in this repo: "Add rate limiting" 50% complete, $1.33 spent, $0.63 waste, verdict not worth it (reverted).');
     expect(out.hookSpecificOutput.additionalContext).toContain('Read the ticket checklist');
   });
 });

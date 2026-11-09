@@ -1,5 +1,5 @@
 ---
-description: Ask a question over your Tally receipts (numbers only leave the machine); the answer cites the sessions it relied on
+description: Ask a question over your Sigil receipts (numbers only leave the machine); the answer cites the sessions it relied on
 argument-hint: <question>
 allowed-tools: Bash(node *)
 ---

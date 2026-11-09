@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import { agent } from '../agents/index.js';
 import path from 'node:path';
-import { claudeHome, isInternalCwd, tallyHome, readJson, writeJson, repoKey } from '../paths.js';
+import { claudeHome, isInternalCwd, sigilHome, readJson, writeJson, repoKey } from '../paths.js';
 import { parseTranscriptFile } from '../transcript/parse.js';
 
 export interface SessionCandidate {
@@ -28,7 +28,7 @@ interface IndexFile {
 }
 
 export function indexFile(): string {
-  return path.join(tallyHome(), 'backfill', 'index.json');
+  return path.join(sigilHome(), 'backfill', 'index.json');
 }
 
 export function parseSince(s: string | undefined, now = Date.now()): number {

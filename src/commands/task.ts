@@ -16,13 +16,13 @@ export async function run(args: Args): Promise<number | void> {
   const cwd = flag(args, 'cwd') || process.cwd();
   const session = resolveSession(flag(args, 'session'), cwd);
   if (!session) {
-    process.stderr.write('No active Tally session found. Start Claude Code with Tally hooks installed, or pass --session <id>.\n');
+    process.stderr.write('No active Sigil session found. Start Claude Code with Sigil hooks installed, or pass --session <id>.\n');
     return 1;
   }
   if (has(args, 'show')) {
     const t = loadTask(session);
     if (!t) {
-      process.stderr.write('No task contract for this session yet. Link one: tally task <url|path|text>\n');
+      process.stderr.write('No task contract for this session yet. Link one: sigil task <url|path|text>\n');
       return 1;
     }
     process.stdout.write(renderContract(contractFromTask(t, { cwd })) + '\n');
@@ -49,7 +49,7 @@ export async function run(args: Args): Promise<number | void> {
       process.stdout.write(renderTask(existing) + '\n');
       return;
     }
-    process.stderr.write('Usage: tally task <url|path|text>\n');
+    process.stderr.write('Usage: sigil task <url|path|text>\n');
     return 1;
   }
   /* a path that does not exist is an error, never a task: "Deliver: tasks\readme-windows.md" was once frozen as a 0/10

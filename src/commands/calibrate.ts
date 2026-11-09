@@ -17,12 +17,12 @@ export async function run(args: Args): Promise<number | void> {
     const session = resolveSession(args._[1] ?? flag(args, 'session'), process.cwd());
     const human = flag(args, 'human');
     if (!session || !human) {
-      process.stderr.write('Usage: tally calibrate add <session> --human met,partial,unmet,unverifiable[,...] [--verdict "worth it"|borderline|"not worth it"]\n');
+      process.stderr.write('Usage: sigil calibrate add <session> --human met,partial,unmet,unverifiable[,...] [--verdict "worth it"|borderline|"not worth it"]\n');
       return 1;
     }
     const judge = loadJudge(session);
     if (!judge) {
-      process.stderr.write(`No receipt for ${session}. Run tally judge first.\n`);
+      process.stderr.write(`No receipt for ${session}. Run sigil judge first.\n`);
       return 1;
     }
     try {
@@ -39,7 +39,7 @@ export async function run(args: Args): Promise<number | void> {
   if (sub === 'grade') {
     const session = resolveSession(args._[1] ?? flag(args, 'session'), process.cwd());
     if (!session || !loadJudge(session)) {
-      process.stderr.write('Usage: tally calibrate grade <session> [--grader name]   (the session needs a receipt: tally backfill add or tally judge)\n');
+      process.stderr.write('Usage: sigil calibrate grade <session> [--grader name]   (the session needs a receipt: sigil backfill add or sigil judge)\n');
       return 1;
     }
     const grader = flag(args, 'grader') ?? os.userInfo().username;
@@ -50,7 +50,7 @@ export async function run(args: Args): Promise<number | void> {
     } finally {
       rl.close();
     }
-    process.stdout.write('\nReport: tally calibrate report --source backfill\n');
+    process.stdout.write('\nReport: sigil calibrate report --source backfill\n');
     return;
   }
   if (sub === 'rescore') {
@@ -68,7 +68,7 @@ export async function run(args: Args): Promise<number | void> {
     }
     if (!source || source === 'fixture') {
       const b = loadBaseline();
-      if (b) process.stdout.write(`Fixture regression baseline (kept separate from real sessions; ${b.judge_model ?? '?'}, ${b.recorded_at?.slice(0, 10) ?? '?'}): ${(b.criterion_agreement * 100).toFixed(0)}% criterion agreement, ${(b.verdict_agreement * 100).toFixed(0)}% verdict agreement, ${b.avg_share_pct ?? '?'}% average self-share. Run \`tally calibrate eval\` to re-check.\n`);
+      if (b) process.stdout.write(`Fixture regression baseline (kept separate from real sessions; ${b.judge_model ?? '?'}, ${b.recorded_at?.slice(0, 10) ?? '?'}): ${(b.criterion_agreement * 100).toFixed(0)}% criterion agreement, ${(b.verdict_agreement * 100).toFixed(0)}% verdict agreement, ${b.avg_share_pct ?? '?'}% average self-share. Run \`sigil calibrate eval\` to re-check.\n`);
     }
     return;
   }
@@ -79,16 +79,16 @@ export async function run(args: Args): Promise<number | void> {
       process.stderr.write('--record needs --live (it stores the real judge model output).\n');
       return 1;
     }
-    const prevHome = process.env.TALLY_HOME;
+    const prevHome = process.env.SIGIL_HOME;
     const keep = has(args, 'keep');
-    if (!keep) process.env.TALLY_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-cal-home-'));
+    if (!keep) process.env.SIGIL_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-cal-home-'));
     try {
       const only = flag(args, 'only')?.split(',').filter(Boolean);
       const s = await runEval({ live, record, rebaseline: has(args, 'rebaseline'), only, deep: has(args, 'deep') });
       process.stdout.write(`Calibration eval (${live ? 'live judge model: ' + s.judge_model : 'recorded model output replayed through the pipeline'})\n\n`);
       for (const f of s.fixtures) process.stdout.write(`${f.verdict_match && f.matches === f.total ? 'ok  ' : 'diff'} ${f.name.padEnd(26)} ${f.matches}/${f.total} criteria · verdict ${f.judge_verdict}${f.verdict_match ? '' : ` (expected ${f.expected_verdict})`}${f.matches === f.total ? '' : '  [' + f.statuses.filter((x) => x.human !== x.judge).map((x) => `${x.id}: judge ${x.judge}, human ${x.human}`).join('; ') + ']'}\n`);
       process.stdout.write('\n' + renderCalibrationReport(s.report, 'Fixture agreement') + '\n');
-      process.stdout.write('\nSelf-overhead (Tally spend as a share of each session)\n' + renderOverheadTable(s) + '\n');
+      process.stdout.write('\nSelf-overhead (Sigil spend as a share of each session)\n' + renderOverheadTable(s) + '\n');
       if (has(args, 'verbose'))
         for (const f of s.fixtures) {
           const j = loadJudge(f.session);
@@ -118,13 +118,13 @@ FAIL: ${s.false_verified} false VERIFIED (allowed ${maxFalseVerified}). A VERIFI
       if (record) process.stdout.write(s.baseline_updated ? `Recorded model outputs and baseline under test/fixtures/calibration/.\n` : `Nothing recorded: agreement ${(s.criterion_agreement * 100).toFixed(1)}% is below the current baseline; the previous model outputs and baseline stay.\n`);
     } finally {
       if (!keep) {
-        fs.rmSync(process.env.TALLY_HOME!, { recursive: true, force: true });
-        if (prevHome === undefined) delete process.env.TALLY_HOME;
-        else process.env.TALLY_HOME = prevHome;
+        fs.rmSync(process.env.SIGIL_HOME!, { recursive: true, force: true });
+        if (prevHome === undefined) delete process.env.SIGIL_HOME;
+        else process.env.SIGIL_HOME = prevHome;
       }
     }
     return;
   }
-  process.stderr.write('Usage: tally calibrate add|grade|rescore|report|eval\n');
+  process.stderr.write('Usage: sigil calibrate add|grade|rescore|report|eval\n');
   return 1;
 }

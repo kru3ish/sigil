@@ -68,11 +68,11 @@ describe('abstention', () => {
 
 describe('repo policy', () => {
   it('standing criteria are appended to every task and the budget block is honoured', async () => {
-    const cwd = tmpDir('tally-policy-');
-    fs.writeFileSync(path.join(cwd, 'tally.json'), JSON.stringify({ criteria: [{ text: 'New code has tests', check: { kind: 'tests_pass' } }, { text: 'No secrets committed' }], budget: { hourly_rate: 120, fraction: 0.5, hard_stop: true } }, null, 2));
+    const cwd = tmpDir('sigil-policy-');
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), JSON.stringify({ criteria: [{ text: 'New code has tests', check: { kind: 'tests_pass' } }, { text: 'No secrets committed' }], budget: { hourly_rate: 120, fraction: 0.5, hard_stop: true } }, null, 2));
     expect(loadPolicy(cwd).policy.criteria.length).toBe(2);
     fs.mkdirSync(path.join(cwd, 'src', 'deep'), { recursive: true });
-    expect(loadPolicy(path.join(cwd, 'src', 'deep')).file).toContain('tally.json');
+    expect(loadPolicy(path.join(cwd, 'src', 'deep')).file).toContain('sigil.json');
     const session = 'policy-session-0001';
     const r = await intake({ session, cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: intakeStub(session) });
     const policy = r.task.criteria.filter((c) => c.source === 'policy');
@@ -81,16 +81,16 @@ describe('repo policy', () => {
     expect(policy[1]!.kind).toBe('judgment');
     expect(r.task.hourly_rate).toBe(120);
     expect(r.task.budget_usd).toBe(120);
-    fs.writeFileSync(path.join(cwd, 'tally.json'), JSON.stringify({ budget: { usd: 9 } }));
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), JSON.stringify({ budget: { usd: 9 } }));
     const r2 = await intake({ session: 'policy-session-0002', cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: intakeStub('policy-session-0002') });
     expect(r2.task.budget_usd).toBe(9);
-    fs.writeFileSync(path.join(cwd, 'tally.json'), '{ "budget": { "fraction": 5 } }');
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), '{ "budget": { "fraction": 5 } }');
     expect(loadPolicy(cwd).error).toContain('fraction');
   });
 
   it('a hard stop denies tool calls until a human approves', async () => {
-    const cwd = tmpDir('tally-stop-');
-    fs.writeFileSync(path.join(cwd, 'tally.json'), JSON.stringify({ budget: { usd: 1, hard_stop: true } }));
+    const cwd = tmpDir('sigil-stop-');
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), JSON.stringify({ budget: { usd: 1, hard_stop: true } }));
     const session = 'stop-session-0001';
     await intake({ session, cwd, text: 'rate limit the login endpoint', cfg: loadConfig(), llm: intakeStub(session) });
     for (const e of readEventsFile(path.join(basicFixture, 'events.jsonl'))) appendEvent({ ...e, session, cwd });
@@ -102,14 +102,14 @@ describe('repo policy', () => {
     expect(stop).toBeTruthy();
     expect(stop.budget_usd).toBe(1);
     expect(stop.spend_usd).toBeGreaterThan(1);
-    const deny = spawnSync(process.execPath, [HOOK, 'PreToolUse'], { input: JSON.stringify({ session_id: session, cwd, tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'x' } }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    const deny = spawnSync(process.execPath, [HOOK, 'PreToolUse'], { input: JSON.stringify({ session_id: session, cwd, tool_name: 'Edit', tool_use_id: 't1', tool_input: { file_path: 'x' } }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
     expect(deny.status).toBe(0);
     const out = JSON.parse(deny.stdout) as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } };
     expect(out.hookSpecificOutput.permissionDecision).toBe('deny');
-    expect(out.hookSpecificOutput.permissionDecisionReason).toContain('tally budget approve');
+    expect(out.hookSpecificOutput.permissionDecisionReason).toContain('sigil budget approve');
     expect(readEvents(session).some((e) => e.type === 'hard_stop_denied')).toBe(true);
     /* the approve command itself is never denied */
-    const allow = spawnSync(process.execPath, [HOOK, 'PreToolUse'], { input: JSON.stringify({ session_id: session, cwd, tool_name: 'Bash', tool_use_id: 't2', tool_input: { command: 'tally budget approve --note "client asked"' } }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    const allow = spawnSync(process.execPath, [HOOK, 'PreToolUse'], { input: JSON.stringify({ session_id: session, cwd, tool_name: 'Bash', tool_use_id: 't2', tool_input: { command: 'sigil budget approve --note "client asked"' } }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
     expect(allow.stdout.trim()).toBe('');
     expect(approveBudget(session, 'alice', 'client asked', cwd).lifted).toBe(true);
     expect(fs.existsSync(hardStopFile(session))).toBe(false);
@@ -121,7 +121,7 @@ describe('repo policy', () => {
 
 describe('dispute and override', () => {
   it('keeps the original next to the override, re-scores the receipt, and logs a labelled calibration entry', async () => {
-    const cwd = tmpDir('tally-dispute-');
+    const cwd = tmpDir('sigil-dispute-');
     const session = 'dispute-session-0001';
     const j = await reconstructedJudge(session, cwd);
     const before = j.criteria.find((c) => c.id === 'c2')!;
@@ -151,7 +151,7 @@ describe('dispute and override', () => {
 
 describe('explain and reviewer brief', () => {
   it('--explain shows the evidence, the transcript moments and the dispute hint; the PR brief has the review sections', async () => {
-    const cwd = tmpDir('tally-explain-');
+    const cwd = tmpDir('sigil-explain-');
     const session = 'explain-session-0001';
     const j = await reconstructedJudge(session, cwd);
     const text = explainCriterion(session, 'c1');
@@ -161,7 +161,7 @@ describe('explain and reviewer brief', () => {
     expect(text).toContain('reconstructed from the transcript');
     expect(text).toContain('Transcript moments touching those files');
     expect(text).toMatch(/Write rateLimit\.ts/);
-    expect(text).toContain(`tally dispute ${session.slice(0, 8)} c1`);
+    expect(text).toContain(`sigil dispute ${session.slice(0, 8)} c1`);
     expect(explainCriterion(session, 'c9')).toContain('No criterion c9');
     expect(explainAll(session).split('─'.repeat(72)).length).toBe(j.criteria.length);
     const brief = receiptComment(j);
@@ -187,18 +187,18 @@ describe('playbook and export', () => {
     expect(all[0]!.repos).toEqual(['r1', 'r2']);
     expect(clusterLessons(h, 'r1')[0]!.count).toBe(2);
     const snippet = playbookSnippet(all, 3);
-    expect(snippet).toContain('## Lessons from Tally receipts');
+    expect(snippet).toContain('## Lessons from Sigil receipts');
     expect(snippet).toContain('(seen 3×)');
     expect(snippet).not.toContain('Jira MCP');
   });
 
   it('export carries numbers and statuses only, and titles only when asked', async () => {
-    const cwd = tmpDir('tally-export-');
+    const cwd = tmpDir('sigil-export-');
     const session = 'export-session-0001';
     const j = await reconstructedJudge(session, cwd);
     const h: HistoryEntry = { ts: '2026-09-01T00:00:00Z', session, repo: 'r', verdict: j.verdict.verdict, completion_pct: j.completion_pct, cost_usd: j.cost.total_usd, task_title: 'Rate limit the login endpoint', task_source: 'inferred', prompts: ['secret prompt'] };
     const row = exportRow(h, false);
-    expect(row.schema).toBe('tally.receipt.v1');
+    expect(row.schema).toBe('sigil.receipt.v1');
     expect(row.task_title).toBeUndefined();
     expect(JSON.stringify(row)).not.toContain('secret prompt');
     expect(JSON.stringify(row)).not.toContain('Login returns 429');
@@ -213,9 +213,9 @@ describe('policy test_command', () => {
   it('the Judge runs the configured command instead of the detected runner', async () => {
     const { runVerification } = await import('../src/judge/verify.js');
     const { loadPolicy } = await import('../src/policy.js');
-    const cwd = tmpDir('tally-testcmd-');
+    const cwd = tmpDir('sigil-testcmd-');
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'x', scripts: { test: 'node -e "process.exit(1)"' } }));
-    fs.writeFileSync(path.join(cwd, 'tally.json'), JSON.stringify({ test_command: 'node -e "process.exit(0)"' }));
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), JSON.stringify({ test_command: 'node -e "process.exit(0)"' }));
     const pol = loadPolicy(cwd);
     expect(pol.policy.test_command).toBe('node -e "process.exit(0)"');
     const v = await runVerification(cwd, { timeoutMs: 20000, enabled: true, consent: true, command: pol.policy.test_command });

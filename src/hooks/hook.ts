@@ -1,19 +1,19 @@
-/* Tally hook entry. Hard rules: finish under 150ms, always exit 0, no network, redact before writing.
+/* Sigil hook entry. Hard rules: finish under 150ms, always exit 0, no network, redact before writing.
    Only node builtins + src/paths + src/redact are imported so startup stays cheap. */
 import fs from 'node:fs';
 import { agentFromArgv, type CanonicalOutput } from '../agents/index.js';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { activeFile, appendLine, ensureDir, historyFile, readJson, repoKey, sessionDir, tallyHome, writeJson, claudeHome, configFile } from '../paths.js';
+import { activeFile, appendLine, ensureDir, historyFile, readJson, repoKey, sessionDir, sigilHome, writeJson, claudeHome, configFile } from '../paths.js';
 import { readEvents } from '../store/events.js';
 import { redact, redactDeep } from '../redact.js';
 import { quickChecks } from '../judge/quickcheck.js';
 import { findRecall, recallNote, recallSettings } from '../recall/match.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-/* dist/hook.js sits beside dist/cli.js in the bundle; TALLY_HOOK_CLI lets tests point the detached spawn at a stand-in */
-const CLI = process.env.TALLY_HOOK_CLI || [path.join(here, 'cli.js'), path.join(here, '..', 'cli.js')].find((p) => fs.existsSync(p)) || path.join(here, 'cli.js');
+/* dist/hook.js sits beside dist/cli.js in the bundle; SIGIL_HOOK_CLI lets tests point the detached spawn at a stand-in */
+const CLI = process.env.SIGIL_HOOK_CLI || [path.join(here, 'cli.js'), path.join(here, '..', 'cli.js')].find((p) => fs.existsSync(p)) || path.join(here, 'cli.js');
 const SHIP_RE = /\bgit\s+push\b|\bgh\s+pr\s+(create|merge)\b|\bnpm\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b/;
 const TASK_URL_RE = /https?:\/\/(github\.com\/[^\s/]+\/[^\s/]+\/(issues|pull)\/\d+|[^\s]+\.atlassian\.net\/browse\/[A-Z][A-Z0-9]+-\d+|linear\.app\/[^\s]+\/issue\/[A-Z0-9]+-\d+[^\s]*)/;
 /* a .md path in the first prompt, also quoted or followed by punctuation ("Implement the story in STORY.md.") */
@@ -65,9 +65,9 @@ function record(session: string, type: string, cwd: string | undefined, data: Re
   appendLine(path.join(sessionDir(session), 'events.jsonl'), JSON.stringify(ev));
 }
 
-/* Tally can be installed twice (settings hooks and the plugin). Tool events carry a tool_use_id, so the second
+/* Sigil can be installed twice (settings hooks and the plugin). Tool events carry a tool_use_id, so the second
    delivery of the same (session, event, tool_use_id) is dropped here; prompts and stops have no id and rely on
-   `tally doctor` reporting the double install. */
+   `sigil doctor` reporting the double install. */
 function alreadySeen(session: string, event: string, toolUseId: string | undefined): boolean {
   if (!toolUseId) return false;
   const file = path.join(sessionDir(session), 'seen.txt');
@@ -82,8 +82,8 @@ function alreadySeen(session: string, event: string, toolUseId: string | undefin
 }
 
 function spawnDetached(args: string[]): void {
-  if (process.env.TALLY_NO_SPAWN) {
-    appendLine(path.join(tallyHome(), 'spawn.log'), JSON.stringify({ ts: nowIso(), args }));
+  if (process.env.SIGIL_NO_SPAWN) {
+    appendLine(path.join(sigilHome(), 'spawn.log'), JSON.stringify({ ts: nowIso(), args }));
     return;
   }
   try {
@@ -167,7 +167,7 @@ function updateActive(session: string, patch: Record<string, unknown>, remove = 
   writeJson(file, active);
 }
 
-/* autopilot is on unless ~/.tally/config.json says coach.autopilot: false */
+/* autopilot is on unless ~/.sigil/config.json says coach.autopilot: false */
 function dodGate(session: string, cwd: string | undefined, stopHookActive: boolean): Record<string, unknown> | undefined {
   if (stopHookActive || !fs.existsSync(path.join(sessionDir(session), 'task.json'))) return undefined;
   const cfg = readJson<{ coach?: { dod_gate?: boolean; dod_max_blocks?: number } }>(configFile(), {});
@@ -188,7 +188,7 @@ function dodGate(session: string, cwd: string | undefined, stopHookActive: boole
   if (!unmet.length || state.blocks >= max) return undefined;
   writeJson(marker, { blocks: state.blocks + 1, ts: nowIso(), unmet: unmet.map((u) => u.id) });
   record(session, 'dod_gate', cwd, { unmet: unmet.map((u) => u.id), block: state.blocks + 1 });
-  const reason = `Tally: ${unmet.length} acceptance criteri${unmet.length === 1 ? 'on is' : 'a are'} still unmet by mechanical check: ${unmet.map((u) => `${u.id} "${u.text}" (${u.why})`).join('; ')}. Address ${unmet.length === 1 ? 'it' : 'them'}, or say why ${unmet.length === 1 ? 'it is' : 'they are'} out of scope.`;
+  const reason = `Sigil: ${unmet.length} acceptance criteri${unmet.length === 1 ? 'on is' : 'a are'} still unmet by mechanical check: ${unmet.map((u) => `${u.id} "${u.text}" (${u.why})`).join('; ')}. Address ${unmet.length === 1 ? 'it' : 'them'}, or say why ${unmet.length === 1 ? 'it is' : 'they are'} out of scope.`;
   return { decision: 'block', reason };
 }
 
@@ -216,13 +216,13 @@ function costNotice(session: string): string | undefined {
     if (state.shown.includes('cap') || spend < 0.5) return undefined;
     key = 'cap';
     const seen = est?.basis && est.basis !== 'none' ? `${est.n ?? 0} past tasks on record, none like this one` : 'no past tasks on record yet';
-    text = `Tally: no comparable past task to price "${(task.title ?? 'this task').slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Tally can hold the line: tell Claude "cap this at $40" (it runs tally budget set 40), or /tally:budget set 40.`;
+    text = `Sigil: no comparable past task to price "${(task.title ?? 'this task').slice(0, 60)}" (${seen}); ${money(spend)} spent so far. Set a cap so Sigil can hold the line: tell Claude "cap this at $40" (it runs sigil budget set 40), or /sigil:budget set 40.`;
   } else {
     const shipped = fs.existsSync(path.join(dir, 'events.jsonl')) && fs.readFileSync(path.join(dir, 'events.jsonl'), 'utf8').includes('"type":"ship"');
     const drivers = check?.drivers ?? [];
     const top = drivers.find((d) => d.fix && d.fix.apply.kind !== 'advice');
-    /* inside the plugin the slash command always works; a CLI install has `tally` on PATH */
-    const fixCmd = (id: string) => (process.env.CLAUDE_PLUGIN_ROOT ? `/tally:fix ${id}` : `tally fix ${id}`);
+    /* inside the plugin the slash command always works; a CLI install has `sigil` on PATH */
+    const fixCmd = (id: string) => (process.env.CLAUDE_PLUGIN_ROOT ? `/sigil:fix ${id}` : `sigil fix ${id}`);
     const lever = top ? ` Fix for next time: ${top.title.toLowerCase()} (~${money(top.usd)}) → ${fixCmd(top.fix!.id)}.` : '';
     const why = drivers[0] ? ` Largest reason: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : '';
     const span = check?.span && check.span.days > 1 ? ` This transcript spans ${check.span.days} days, so it is probably more than one task.` : '';
@@ -231,21 +231,21 @@ function costNotice(session: string): string | undefined {
     for (const t of [200, 150, 100]) {
       if (pct >= t && !state.shown.includes(`over${t}`)) {
         key = `over${t}`;
-        text = `Tally: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /tally:cost`;
+        text = `Sigil: this task has cost ${money(spend)}, ${Math.round(pct)}% of its ${money(budget)} budget from ${from} (+${money(spend - budget)}).${why}${span}${lever} Breakdown: /sigil:cost`;
         for (const lower of [100, 150, 200]) if (lower <= t && !state.shown.includes(`over${lower}`)) state.shown.push(`over${lower}`);
         break;
       }
     }
     if (!key && shipped && !state.shown.includes('ship')) {
       key = 'ship';
-      text = spend > budget ? `Tally: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /tally:cost` : `Tally: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ''} Breakdown: /tally:cost`;
+      text = spend > budget ? `Sigil: shipped for ${money(spend)}, ${money(spend - budget)} over the ${money(budget)} budget.${why}${lever} Breakdown: /sigil:cost` : `Sigil: shipped for ${money(spend)}, ${money(budget - spend)} under the ${money(budget)} budget from ${from}.${drivers[0] ? ` Largest cost: ${drivers[0].title.toLowerCase()} (~${money(drivers[0].usd)}).` : ''} Breakdown: /sigil:cost`;
     }
     if (!key && !state.shown.includes('estimate')) {
       key = 'estimate';
       text =
         basis === 'history' && est
-          ? `Tally: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}–${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ''}`
-          : `Tally: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ''} Change it: tally budget set <usd>`;
+          ? `Sigil: tasks like this have cost ~${money(est.usd ?? 0)} here (typical ${money(est.low_usd ?? 0)}–${money(est.high_usd ?? 0)}, from ${from}, ${est.confidence} confidence); budget ${money(budget)}.${spend > 0 ? ` ${money(spend)} so far.` : ''}`
+          : `Sigil: budget for this task ${money(budget)} (${from}).${spend > 0 ? ` ${money(spend)} so far.` : ''} Change it: sigil budget set <usd>`;
     }
   }
   if (!key) return undefined;
@@ -267,14 +267,14 @@ function flagNotice(session: string): string | undefined {
   const file = path.join(sessionDir(session), 'coach-flags.json');
   const flags = readJson<FlagsFile>(file, {});
   const notified = new Set(flags.notified ?? []);
-  /* the same order everywhere (notice, status line, /tally:coach): most money first, so "apply 2" means the same thing */
+  /* the same order everywhere (notice, status line, /sigil:coach): most money first, so "apply 2" means the same thing */
   const ordered = [...(flags.pending ?? [])].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
   const fresh = ordered.filter((f) => !notified.has(f.key));
   if (!fresh.length) return undefined;
   const width = Math.max(...ordered.map((f) => f.title.length), 20);
   const rows = ordered.map((f, i) => `  ${i + 1}  ${f.title.padEnd(Math.min(width, 56))}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ''}${notified.has(f.key) ? '' : '  new'}`);
   writeJson(file, { ...flags, notified: [...notified, ...fresh.map((f) => f.key)].filter((k) => (flags.pending ?? []).some((f) => f.key === k)) });
-  return [`Tally Coach · ${ordered.length} waiting for you`, ...rows, `  Act: tell Claude "tally apply 1" (it runs tally coach --apply 1), or /tally:coach for details`].join('\n');
+  return [`Sigil Coach · ${ordered.length} waiting for you`, ...rows, `  Act: tell Claude "sigil apply 1" (it runs sigil coach --apply 1), or /sigil:coach for details`].join('\n');
 }
 
 function autopilotEnabled(): boolean {
@@ -290,7 +290,7 @@ function handoffNote(cwd: string | undefined): string {
   const age = Date.now() - fs.statSync(f).mtimeMs;
   if (age > 24 * 3600 * 1000) return '';
   const body = fs.readFileSync(f, 'utf8').split('\n').slice(0, 25).join('\n').slice(0, 1800);
-  return `Tally: HANDOFF.md in this repo was written ${Math.round(age / 60000)} min ago and holds the state to resume from:\n${body}`;
+  return `Sigil: HANDOFF.md in this repo was written ${Math.round(age / 60000)} min ago and holds the state to resume from:\n${body}`;
 }
 
 /* the newest receipt for this repo, one line, so every session opens knowing how the last one went */
@@ -305,7 +305,7 @@ function lastReceipt(cwd: string | undefined): string {
       const h = JSON.parse(line) as { repo?: string; verdict?: string; task_title?: string; completion_pct?: number; cost_usd?: number; waste_usd?: number; final_status?: string; final_verdict?: string; internal?: boolean };
       if (h.repo !== key || !h.verdict || h.internal) continue;
       const money = (n: number | undefined) => `$${(n ?? 0).toFixed(2)}`;
-      return `Tally: last receipt in this repo: "${h.task_title ?? 'task'}" ${h.completion_pct ?? 0}% complete, ${money(h.cost_usd)} spent, ${money(h.waste_usd)} waste, verdict ${h.final_verdict ?? h.verdict}${h.final_status && h.final_status !== 'unknown' ? ` (${h.final_status})` : ''}.`;
+      return `Sigil: last receipt in this repo: "${h.task_title ?? 'task'}" ${h.completion_pct ?? 0}% complete, ${money(h.cost_usd)} spent, ${money(h.waste_usd)} waste, verdict ${h.final_verdict ?? h.verdict}${h.final_status && h.final_status !== 'unknown' ? ` (${h.final_status})` : ''}.`;
     } catch {
       /* skip */
     }
@@ -334,7 +334,7 @@ function historyLessons(cwd: string | undefined): string {
       /* skip */
     }
   }
-  return lessons.length ? `Tally: past receipts in this repo recorded these lessons:\n- ${lessons.join('\n- ')}` : '';
+  return lessons.length ? `Sigil: past receipts in this repo recorded these lessons:\n- ${lessons.join('\n- ')}` : '';
 }
 
 /* recall: a prompt that looks like a task a past session in this repo already did gets that session's outcome, once
@@ -352,7 +352,7 @@ function recallNotice(session: string, cwd: string | undefined, prompt: string):
     state.offered.push(m.card.session);
     writeJson(stateFile, state);
     record(session, 'recall', cwd, { ref: m.card.session, similarity: m.similarity, prior_cost_usd: m.card.cost_usd, title: m.card.title.slice(0, 120) });
-    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? '/tally:recall' : 'tally recall');
+    return recallNote(m, process.env.CLAUDE_PLUGIN_ROOT ? '/sigil:recall' : 'sigil recall');
   } catch {
     return '';
   }
@@ -378,18 +378,18 @@ function deliverInjects(session: string): string {
   }
   if (!pending.length) return '';
   fs.writeFileSync(file, kept.join('\n') + '\n');
-  return pending.map((n) => `Tally: ${n}`).join('\n');
+  return pending.map((n) => `Sigil: ${n}`).join('\n');
 }
 
 function followupDue(): boolean {
-  const state = readJson<{ last_run?: string }>(path.join(tallyHome(), 'followup-state.json'), {});
+  const state = readJson<{ last_run?: string }>(path.join(sigilHome(), 'followup-state.json'), {});
   const last = state.last_run ? Date.parse(state.last_run) : 0;
   return Date.now() - last > 24 * 3600 * 1000;
 }
 
 function main(): void {
-  /* Tally's own claude -p calls set TALLY_INTERNAL=1; never record them as sessions. */
-  if (process.env.TALLY_INTERNAL) return;
+  /* Sigil's own claude -p calls set SIGIL_INTERNAL=1; never record them as sessions. */
+  if (process.env.SIGIL_INTERNAL) return;
   const raw = readStdin();
   let parsed: Record<string, unknown> = {};
   try {
@@ -398,7 +398,7 @@ function main(): void {
     parsed = {};
   }
   if (!parsed || typeof parsed !== 'object') parsed = {};
-  /* which agent is calling: `--agent codex|gemini|cursor` (or TALLY_AGENT); Claude Code needs nothing */
+  /* which agent is calling: `--agent codex|gemini|cursor` (or SIGIL_AGENT); Claude Code needs nothing */
   const { adapter, rest } = agentFromArgv(process.argv.slice(2));
   const agentEvent = rest[0] || String(parsed.hook_event_name ?? 'Unknown');
   const input = adapter.normalize(parsed, agentEvent) as HookInput;
@@ -449,12 +449,12 @@ function main(): void {
     case 'PreToolUse': {
       if (alreadySeen(session, event, input.tool_use_id)) break;
       /* repo policy hard stop: the Coach wrote hard-stop.json when spend passed the budget; every tool call is denied
-         until `tally budget approve` lifts it. The approve command itself is always allowed. */
+         until `sigil budget approve` lifts it. The approve command itself is always allowed. */
       const stopFile = path.join(sessionDir(session), 'hard-stop.json');
       const cmd0 = typeof input.tool_input?.command === 'string' ? input.tool_input.command : '';
       if (fs.existsSync(stopFile) && !/budget\s+approve/.test(cmd0)) {
         const stop = readJson<{ spend_usd?: number; budget_usd?: number }>(stopFile, {});
-        out = { kind: 'deny', reason: `Tally: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: tally budget approve --note "<why>"` };
+        out = { kind: 'deny', reason: `Sigil: this session has spent $${(stop.spend_usd ?? 0).toFixed(2)} against the repo policy's $${(stop.budget_usd ?? 0).toFixed(2)} budget (hard stop). A human can lift it with: sigil budget approve --note "<why>"` };
         record(session, 'hard_stop_denied', cwd, { tool_name: input.tool_name, tool_use_id: input.tool_use_id });
         break;
       }

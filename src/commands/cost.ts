@@ -1,6 +1,6 @@
-/* `tally cost`: the cost check for the current session (or one named): estimate vs actual, where the money went, and
+/* `sigil cost`: the cost check for the current session (or one named): estimate vs actual, where the money went, and
    the one-line fixes for the next similar story. A named session can be any past Claude Code session on this machine,
-   recorded by Tally or not. */
+   recorded by Sigil or not. */
 import path from 'node:path';
 import { type Args, flag, has } from '../cli.js';
 import { resolveSession, transcriptPathFor } from '../session.js';

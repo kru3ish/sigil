@@ -1,7 +1,7 @@
 /* Recall cards: what a past session in this repository produced, kept so the next session that asks for the same thing
    starts from the answer instead of re-deriving it. The Coach tick writes the card for the live session at every
    Stop (so it is current when the session ends); the UserPromptSubmit hook matches new prompts against the cards of
-   the same repository. Local files, redacted like everything else Tally stores. */
+   the same repository. Local files, redacted like everything else Sigil stores. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { ensureDir, repoKey, writeJson } from '../paths.js';
@@ -68,7 +68,7 @@ export function writeCard(opts: { session: string; cwd: string; transcript: Tran
 }
 
 /* cards for the sessions already on this machine for a repository, so recall has something to offer on day one;
-   sessions that changed nothing, Tally's own runs, and sessions that already have a card are skipped */
+   sessions that changed nothing, Sigil's own runs, and sessions that already have a card are skipped */
 export function backfillCards(cwd: string, opts: { since?: string; force?: boolean; pricing?: Pricing } = {}): { written: number; skipped: number; sessions: number } {
   const pricing = opts.pricing ?? loadPricing();
   const candidates = scanSessions({ since: opts.since ?? '365d', repo: cwd });

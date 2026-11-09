@@ -3,21 +3,21 @@
 
    Claude Code removes OTEL_* variables from the environment it gives hooks (verified on 2.1.302, both from the shell
    and from settings `env`), so the endpoint is looked up in this order:
-     1. `tally config cost.otel_endpoint`
-     2. TALLY_OTEL_ENDPOINT / TALLY_OTEL_HEADERS / TALLY_OTEL_RESOURCE_ATTRIBUTES (these do reach hooks; put them in
+     1. `sigil config cost.otel_endpoint`
+     2. SIGIL_OTEL_ENDPOINT / SIGIL_OTEL_HEADERS / SIGIL_OTEL_RESOURCE_ATTRIBUTES (these do reach hooks; put them in
         settings `env`, managed settings included)
      3. OTEL_EXPORTER_OTLP_(METRICS_)ENDPOINT / _HEADERS / OTEL_RESOURCE_ATTRIBUTES in this process's environment
-        (a `tally` command run from a shell)
+        (a `sigil` command run from a shell)
      4. the same OTEL_* keys in the `env` block of Claude Code's user and managed settings files. An organisation
-        that rolled out Claude Code's own telemetry through managed settings gets Tally's story metrics at the same
+        that rolled out Claude Code's own telemetry through managed settings gets Sigil's story metrics at the same
         collector with nothing else to configure.
    A repository must not decide where data goes: like Claude Code (which ignores OTEL_EXPORTER_OTLP_* in project and
-   local settings), Tally never reads OTEL_* from the repo's .claude/settings(.local).json, and ignores TALLY_OTEL_*
+   local settings), Sigil never reads OTEL_* from the repo's .claude/settings(.local).json, and ignores SIGIL_OTEL_*
    when the repo's own settings files are what set it.
-   This is the organisation's own pipeline; it is separate from Tally's opt-in anonymous metrics (PRIVACY.md).
+   This is the organisation's own pipeline; it is separate from Sigil's opt-in anonymous metrics (PRIVACY.md).
 
-   One gauge point per finished story: tally.story.cost, .estimate, .overage, .avoidable (USD), and
-   tally.story.driver.cost per driver. Attributes: repo name, story key, model, status, estimate basis, agent, author
+   One gauge point per finished story: sigil.story.cost, .estimate, .overage, .avoidable (USD), and
+   sigil.story.driver.cost per driver. Attributes: repo name, story key, model, status, estimate basis, agent, author
    (git user.name), session id. No titles, prompts, code or paths. */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -72,13 +72,13 @@ function parsePairs(s: string | undefined): Record<string, string> {
 
 const withPath = (u: string) => (u.replace(/\/+$/, '').endsWith('/v1/metrics') ? u : u.replace(/\/+$/, '') + '/v1/metrics');
 
-/* TALLY_OTEL_* that came from the repo's own project or local settings (Claude Code passes those to hooks) */
-export function repoSetsTallyOtel(cwd: string | undefined): boolean {
+/* SIGIL_OTEL_* that came from the repo's own project or local settings (Claude Code passes those to hooks) */
+export function repoSetsSigilOtel(cwd: string | undefined): boolean {
   if (!cwd) return false;
   for (const f of [path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')]) {
     try {
       const env = (JSON.parse(fs.readFileSync(f, 'utf8')) as { env?: Record<string, unknown> }).env ?? {};
-      if (Object.keys(env).some((k) => k.startsWith('TALLY_OTEL_'))) return true;
+      if (Object.keys(env).some((k) => k.startsWith('SIGIL_OTEL_'))) return true;
     } catch {
       /* not there */
     }
@@ -86,13 +86,13 @@ export function repoSetsTallyOtel(cwd: string | undefined): boolean {
   return false;
 }
 
-export function otlpTarget(env: NodeJS.ProcessEnv = process.env, configured?: string, settingsEnv: Record<string, string> = {}, opts: { repoSetsTally?: boolean } = {}): OtlpTarget | null {
+export function otlpTarget(env: NodeJS.ProcessEnv = process.env, configured?: string, settingsEnv: Record<string, string> = {}, opts: { repoSetsSigil?: boolean } = {}): OtlpTarget | null {
   const json = { 'content-type': 'application/json' };
-  if (configured || (env.TALLY_OTEL_ENDPOINT && !opts.repoSetsTally)) {
-    return { url: withPath((configured ?? env.TALLY_OTEL_ENDPOINT)!), headers: { ...json, ...parsePairs(env.TALLY_OTEL_HEADERS) }, resource: env.TALLY_OTEL_RESOURCE_ATTRIBUTES, source: configured ? 'config cost.otel_endpoint' : 'TALLY_OTEL_ENDPOINT' };
+  if (configured || (env.SIGIL_OTEL_ENDPOINT && !opts.repoSetsSigil)) {
+    return { url: withPath((configured ?? env.SIGIL_OTEL_ENDPOINT)!), headers: { ...json, ...parsePairs(env.SIGIL_OTEL_HEADERS) }, resource: env.SIGIL_OTEL_RESOURCE_ATTRIBUTES, source: configured ? 'config cost.otel_endpoint' : 'SIGIL_OTEL_ENDPOINT' };
   }
   for (const [src, e] of [['environment', env], ['Claude Code settings env', settingsEnv]] as const) {
-    /* Tally speaks OTLP/HTTP JSON; a collector set up for gRPC only is not guessed at */
+    /* Sigil speaks OTLP/HTTP JSON; a collector set up for gRPC only is not guessed at */
     if ((e.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL ?? e.OTEL_EXPORTER_OTLP_PROTOCOL) === 'grpc') continue;
     const url = e.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ?? (e.OTEL_EXPORTER_OTLP_ENDPOINT ? withPath(e.OTEL_EXPORTER_OTLP_ENDPOINT) : undefined);
     if (url) return { url, headers: { ...json, ...parsePairs(e.OTEL_EXPORTER_OTLP_METRICS_HEADERS ?? e.OTEL_EXPORTER_OTLP_HEADERS) }, resource: e.OTEL_RESOURCE_ATTRIBUTES, source: `OTEL_EXPORTER_OTLP_* (${src})` };
@@ -109,16 +109,16 @@ export function storyMetrics(e: LedgerEntry, opts: { repo: string; version: stri
   const gauge = (name: string, description: string, value: number | undefined, extra: Attr[] = []) =>
     value === undefined ? null : { name, unit: 'USD', description, gauge: { dataPoints: [{ timeUnixNano: t, asDouble: value, attributes: [...common, ...extra] }] } };
   const metrics = [
-    gauge('tally.story.cost', 'what the story cost (API-equivalent)', e.actual_usd),
-    gauge('tally.story.estimate', 'what similar past stories cost', e.estimate_usd),
-    gauge('tally.story.overage', 'cost minus estimate', e.delta_usd),
-    gauge('tally.story.avoidable', 'combined saving the cost check found, overlaps counted once', e.savable_usd),
-    ...e.drivers.map((d) => gauge('tally.story.driver.cost', 'one cost driver', d.usd, [...attr('driver', d.id), ...attr('fix', d.fix)])),
+    gauge('sigil.story.cost', 'what the story cost (API-equivalent)', e.actual_usd),
+    gauge('sigil.story.estimate', 'what similar past stories cost', e.estimate_usd),
+    gauge('sigil.story.overage', 'cost minus estimate', e.delta_usd),
+    gauge('sigil.story.avoidable', 'combined saving the cost check found, overlaps counted once', e.savable_usd),
+    ...e.drivers.map((d) => gauge('sigil.story.driver.cost', 'one cost driver', d.usd, [...attr('driver', d.id), ...attr('fix', d.fix)])),
   ].filter(Boolean);
   /* OTEL_RESOURCE_ATTRIBUTES (k=v,k=v) labels every point with the team, cost centre, etc. */
-  const resAttrs: Attr[] = [...attr('service.name', 'tally'), ...attr('service.version', opts.version)];
+  const resAttrs: Attr[] = [...attr('service.name', 'sigil'), ...attr('service.version', opts.version)];
   for (const [k, v] of Object.entries(parsePairs(opts.resource))) resAttrs.push(...attr(k, v));
-  return { resourceMetrics: [{ resource: { attributes: resAttrs }, scopeMetrics: [{ scope: { name: 'tally', version: opts.version }, metrics }] }] };
+  return { resourceMetrics: [{ resource: { attributes: resAttrs }, scopeMetrics: [{ scope: { name: 'sigil', version: opts.version }, metrics }] }] };
 }
 
 export async function exportStory(e: LedgerEntry, opts: { repo: string; version: string; target: OtlpTarget; timeoutMs?: number; fetchImpl?: typeof fetch }): Promise<{ ok: boolean; status?: number; error?: string }> {

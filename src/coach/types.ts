@@ -1,5 +1,5 @@
 import type { Config } from '../config.js';
-import type { TallyEvent } from '../store/events.js';
+import type { SigilEvent } from '../store/events.js';
 import type { Transcript } from '../transcript/parse.js';
 import type { Task } from '../task/intake.js';
 
@@ -51,8 +51,8 @@ export interface HistoryEntry {
   prompts?: string[];
   internal?: boolean;
   task_source?: 'linked' | 'inferred' | 'confirmed';
-  tally_own_usd?: number;
-  tally_share_pct?: number;
+  sigil_own_usd?: number;
+  sigil_share_pct?: number;
   cost_confidence?: 'full' | 'partial';
   estimate_hours?: number;
 }
@@ -62,7 +62,7 @@ export interface RuleContext {
   cwd: string;
   now: Date;
   cfg: Config;
-  events: TallyEvent[];
+  events: SigilEvent[];
   transcript?: Transcript;
   task?: Task | null;
   history: HistoryEntry[];

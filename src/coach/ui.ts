@@ -36,8 +36,8 @@ export function renderHeader(ctx: RuleContext, color = true): string {
   const budget = task?.budget_usd ?? 0;
   const spendStr = budget ? `${fmtUsd(ctx.spendUsd)} / ${fmtUsd(budget)} (${Math.round((ctx.spendUsd / budget) * 100)}%)` : fmtUsd(ctx.spendUsd);
   const lines = [
-    paint(color, C.bold, `Tally Coach`) + paint(color, C.gray, `  session ${ctx.session.slice(0, 8)}  ${ctx.cwd}`),
-    `${paint(color, C.cyan, 'task')}  ${task ? `${task.title}  ${paint(color, C.gray, `spec ${task.spec_quality.score}/10, ${task.criteria.length} criteria`)}` : paint(color, C.yellow, 'none linked (tally task <url|path|text>)')}`,
+    paint(color, C.bold, `Sigil Coach`) + paint(color, C.gray, `  session ${ctx.session.slice(0, 8)}  ${ctx.cwd}`),
+    `${paint(color, C.cyan, 'task')}  ${task ? `${task.title}  ${paint(color, C.gray, `spec ${task.spec_quality.score}/10, ${task.criteria.length} criteria`)}` : paint(color, C.yellow, 'none linked (sigil task <url|path|text>)')}`,
     `${paint(color, C.cyan, 'spend')} ${spendStr} API-equivalent   ${paint(color, C.cyan, 'context')} ${pct}%   ${paint(color, C.cyan, 'tools')} ${ctx.events.filter((e) => e.type === 'post_tool').length}`,
   ];
   return lines.join('\n');
@@ -143,7 +143,7 @@ export async function watch(opts: WatchOptions): Promise<void> {
     } else if (key === 'm') {
       if (s.action.kind === 'consent') setTestRerunConsent(opts.cwd, false);
       muteRule(opts.cwd, s.rule, 'muted by user');
-      w(paint(color, C.gray, `    → rule ${s.rule} muted for this repo (tally config unmute ${s.rule})`));
+      w(paint(color, C.gray, `    → rule ${s.rule} muted for this repo (sigil config unmute ${s.rule})`));
     }
     saveState(opts.session, engine.state);
     void ctx;
@@ -217,7 +217,7 @@ export async function watch(opts: WatchOptions): Promise<void> {
     }
     saveState(opts.session, engine.state);
     if (events.some((e) => e.type === 'session_end') && ticks > 1) {
-      w(paint(color, C.gray, 'session ended; the receipt will appear via `tally judge` shortly.'));
+      w(paint(color, C.gray, 'session ended; the receipt will appear via `sigil judge` shortly.'));
       return;
     }
     if (opts.once || (opts.maxTicks && ticks >= opts.maxTicks)) return;

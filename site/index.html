@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tally</title>
+<title>Sigil</title>
 <meta name="description" content="The reliability layer for AI coding agents: the task frozen before the work, every claim traced to evidence, VERIFIED / SUPPORTED / UNVERIFIED / UNMET per criterion. Claude Code, Codex CLI, Gemini CLI, Cursor.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Cpath d='M8 7v18M13 7v18M18 7v18M23 7v18M5 22l22-8' stroke='%23f3efe6' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -142,32 +142,32 @@ footer a:hover{color:var(--text)}
 <body>
 <div class="wrap">
 <nav>
-  <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#1e2631"/><path d="M8 7v18M13 7v18M18 7v18M23 7v18M5 22l22-8" stroke="#f3efe6" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg>Tally <span class="pre">preview 0.11.0</span></a>
-  <div class="links"><a href="#how">How it judges</a><a href="#accuracy">Accuracy</a><a href="#install">Install</a><a href="#privacy">Privacy</a><a href="https://github.com/kru3ish/tally">GitHub</a></div>
+  <a class="brand" href="#"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#1e2631"/><path d="M8 7v18M13 7v18M18 7v18M23 7v18M5 22l22-8" stroke="#f3efe6" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg>Sigil <span class="pre">preview 0.11.0</span></a>
+  <div class="links"><a href="#how">How it judges</a><a href="#accuracy">Accuracy</a><a href="#install">Install</a><a href="#privacy">Privacy</a><a href="https://github.com/kru3ish/sigil">GitHub</a></div>
 </nav>
 
 <div class="hero">
   <div>
     <div class="eyebrow">For Claude Code, Codex CLI, Gemini CLI and Cursor · local · open source</div>
     <h1 style="margin-top:14px">What will this story cost the agent? And why did it cost more?</h1>
-    <p class="lede">Paste the Jira or GitHub story as usual. Tally prices it from the similar stories already on your machine, keeps <b>spend vs estimate</b> in the status line, and when the story goes over it tells you <b>in the same session</b>: how much, where the money went, and the <b>one-line config change</b> that makes the next similar story cheaper. No model call, nothing sent anywhere.</p>
+    <p class="lede">Paste the Jira or GitHub story as usual. Sigil prices it from the similar stories already on your machine, keeps <b>spend vs estimate</b> in the status line, and when the story goes over it tells you <b>in the same session</b>: how much, where the money went, and the <b>one-line config change</b> that makes the next similar story cheaper. No model call, nothing sent anywhere.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Install in two lines</a>
-      <a class="btn" href="https://github.com/kru3ish/tally">Read the source</a>
+      <a class="btn" href="https://github.com/kru3ish/sigil">Read the source</a>
     </div>
     <div class="install-mini">
       <span class="k">Claude Code plugin</span>
-      <pre><code>/plugin marketplace add kru3ish/tally
-/plugin install tally@tally</code></pre>
+      <pre><code>/plugin marketplace add kru3ish/sigil
+/plugin install sigil@sigil</code></pre>
     </div>
     <div class="statusbar">
       <div class="lbl">Claude Code status line, always on</div>
-      <span class="d">Tally</span> <span class="d">·</span> Rate limit the login endpoint <span class="d">·</span> <span class="y">$41.20 / ~$50.00 est (82%)</span> <span class="d">·</span> ctx 34%
+      <span class="d">Sigil</span> <span class="d">·</span> Rate limit the login endpoint <span class="d">·</span> <span class="y">$41.20 / ~$50.00 est (82%)</span> <span class="d">·</span> ctx 34%
     </div>
   </div>
 
-  <div class="receipt" id="receipt" aria-label="A Tally cost check for a real session">
-    <div class="r-head"><b>TALLY COST CHECK</b><span>a real session · /tally:cost</span></div>
+  <div class="receipt" id="receipt" aria-label="A Sigil cost check for a real session">
+    <div class="r-head"><b>SIGIL COST CHECK</b><span>a real session · /sigil:cost</span></div>
     <div><b>Build the game in plan.md</b><br><span style="color:var(--paper-mute)">claude-opus-5 · 207 calls past 80k context</span></div>
     <div class="stamp">$156.52</div>
     <div class="verdict"><span class="b">UP TO $114.60 AVOIDABLE</span><span>combined, overlaps counted once</span></div>
@@ -179,12 +179,12 @@ footer a:hover{color:var(--text)}
     <div class="sec">
       <div style="font-weight:600">Apply for the next similar story</div>
       <ol class="next">
-        <li><code>tally fix model-sonnet</code>: <code>"model": "sonnet"</code> in the repo's <code>.claude/settings.json</code>; commit it and the team has it.</li>
-        <li><code>tally fix subagent-sonnet</code>: subagents stop inheriting the main model.</li>
+        <li><code>sigil fix model-sonnet</code>: <code>"model": "sonnet"</code> in the repo's <code>.claude/settings.json</code>; commit it and the team has it.</li>
+        <li><code>sigil fix subagent-sonnet</code>: subagents stop inheriting the main model.</li>
         <li>Split stories this size: a fresh session per sub-task.</li>
       </ol>
     </div>
-    <div class="fu">In the session, at the end of the turn: <b>“this story has cost $75.00, 150% of the ~$50.00 estimate from 6 similar past stories (+$25.00). Biggest lever → tally fix model-sonnet.”</b></div>
+    <div class="fu">In the session, at the end of the turn: <b>“this story has cost $75.00, 150% of the ~$50.00 estimate from 6 similar past stories (+$25.00). Biggest lever → sigil fix model-sonnet.”</b></div>
   </div>
 </div>
 
@@ -198,12 +198,12 @@ footer a:hover{color:var(--text)}
     <div>
       <div class="k">02 · THE COACH, ON ITS OWN</div>
       <h3>Runs after every turn.</h3>
-      <p>No pane to open. After each of Claude's turns the hooks run fifteen deterministic rules: the same command failing three times, the same file read three times, context at 85%, an MCP server erroring, spend at 80% of budget, a usage limit at 80%, a credential read or a write outside the repo. Observations reach Claude on the next prompt as a <code>Tally:</code> line. Claude can ask Tally itself over MCP (<code>tally_unmet</code>) before it says done, and an opt-in Stop gate blocks once when the quick checks say a criterion is still unmet. Decisions only you can make show as flags in the status line.</p>
+      <p>No pane to open. After each of Claude's turns the hooks run fifteen deterministic rules: the same command failing three times, the same file read three times, context at 85%, an MCP server erroring, spend at 80% of budget, a usage limit at 80%, a credential read or a write outside the repo. Observations reach Claude on the next prompt as a <code>Sigil:</code> line. Claude can ask Sigil itself over MCP (<code>sigil_unmet</code>) before it says done, and an opt-in Stop gate blocks once when the quick checks say a criterion is still unmet. Decisions only you can make show as flags in the status line.</p>
     </div>
     <div>
       <div class="k">03 · THE FOLLOW-UP, AND THE RECORD</div>
       <h3>Did it hold up? Audit it. Dispute it.</h3>
-      <p>Seven days later Tally checks the PR: merged, reverted, reopened, review rounds, CI on the merge commit. Every criterion can be opened to its evidence (<code>--explain</code>), contested on the record (<code>tally dispute</code>), and a repo <code>tally.json</code> adds standing criteria and a budget with a real hard stop. When Tally cannot check enough, it says <em>insufficient evidence</em> instead of guessing. On library-shaped repos a maintainer-review tier reads the diff for layer, blast radius and untested surface, and can hold a verdict at borderline; it never raises one.</p>
+      <p>Seven days later Sigil checks the PR: merged, reverted, reopened, review rounds, CI on the merge commit. Every criterion can be opened to its evidence (<code>--explain</code>), contested on the record (<code>sigil dispute</code>), and a repo <code>sigil.json</code> adds standing criteria and a budget with a real hard stop. When Sigil cannot check enough, it says <em>insufficient evidence</em> instead of guessing. On library-shaped repos a maintainer-review tier reads the diff for layer, blast radius and untested surface, and can hold a verdict at borderline; it never raises one.</p>
     </div>
   </div>
 </section>
@@ -213,15 +213,15 @@ footer a:hover{color:var(--text)}
     <div class="eyebrow">For one person</div>
     <h2>Your numbers on day one, no model calls.</h2>
   </div>
-  <p class="mute" style="max-width:820px"><b>Not only Claude Code.</b> <code>tally install --agent codex</code>, <code>--agent gemini</code> or <code>--agent cursor</code> writes the same hooks into that agent, the Coach and Judge run unchanged, and the Judge itself can use any OpenAI-compatible model. Codex sessions carry cost from their rollouts; agents that do not expose token usage get receipts without a dollar figure rather than a guess.</p>
-  <p class="mute" style="max-width:820px">The moment Tally is installed it reads the transcripts already on the machine and prints a one-page report: spend over 30 days, the three biggest sessions, where money bought nothing (retry loops, repeated reads, first-turn load, compactions), the one habit that would have saved the most, and what the same usage costs on each Claude plan at list price. Then <code>tally replay &lt;session&gt;</code> shows the timeline with the moment it went off track, <code>tally prompts</code> shows what your best opening prompts had in common, <code>tally ask</code> answers a question over your receipts citing sessions, and <code>tally export --invoice</code> turns receipts into invoice lines.</p>
+  <p class="mute" style="max-width:820px"><b>Not only Claude Code.</b> <code>sigil install --agent codex</code>, <code>--agent gemini</code> or <code>--agent cursor</code> writes the same hooks into that agent, the Coach and Judge run unchanged, and the Judge itself can use any OpenAI-compatible model. Codex sessions carry cost from their rollouts; agents that do not expose token usage get receipts without a dollar figure rather than a guess.</p>
+  <p class="mute" style="max-width:820px">The moment Sigil is installed it reads the transcripts already on the machine and prints a one-page report: spend over 30 days, the three biggest sessions, where money bought nothing (retry loops, repeated reads, first-turn load, compactions), the one habit that would have saved the most, and what the same usage costs on each Claude plan at list price. Then <code>sigil replay &lt;session&gt;</code> shows the timeline with the moment it went off track, <code>sigil prompts</code> shows what your best opening prompts had in common, <code>sigil ask</code> answers a question over your receipts citing sessions, and <code>sigil export --invoice</code> turns receipts into invoice lines.</p>
 </section>
 
 <section id="how">
   <div class="sec-head">
     <div class="eyebrow">How it judges</div>
     <h2>Tiered, so most receipts cost almost nothing.</h2>
-    <p class="mute measure">A model rates criteria. Arithmetic decides the verdict. A transcript saying "all tests pass" is a claim; Tally runs the tests itself, with your consent, in a scrubbed environment, and marks anything it cannot check as unverifiable rather than guessing.</p>
+    <p class="mute measure">A model rates criteria. Arithmetic decides the verdict. A transcript saying "all tests pass" is a claim; Sigil runs the tests itself, with your consent, in a scrubbed environment, and marks anything it cannot check as unverifiable rather than guessing.</p>
   </div>
   <div class="tbl"><table class="tiers">
     <thead><tr><th>Tier</th><th>What runs</th><th>When</th></tr></thead>
@@ -231,22 +231,22 @@ footer a:hover{color:var(--text)}
       <tr><td>2</td><td>A stronger model on only the criteria that need it: small again under $1 of session spend, sonnet up to $3, opus above.</td><td>Session cost ≥ $3, <code>--deep</code>, low confidence, a partial/unmet call on a correctness criterion, or a criterion whose one-step change would flip the verdict.</td></tr>
     </tbody>
   </table></div>
-  <p class="callout">Verdict rule: <b>worth it</b> needs ≥70% completion, ROI ≥2×, quality ≥6 and a green independent test run. <b>Not worth it</b> is under 40%, ROI under 1, or quality under 4. Everything between is borderline. Dollar figures are API-equivalent at list price; Tally's own calls are counted separately and printed on every receipt.</p>
+  <p class="callout">Verdict rule: <b>worth it</b> needs ≥70% completion, ROI ≥2×, quality ≥6 and a green independent test run. <b>Not worth it</b> is under 40%, ROI under 1, or quality under 4. Everything between is borderline. Dollar figures are API-equivalent at list price; Sigil's own calls are counted separately and printed on every receipt.</p>
 </section>
 
 <section id="accuracy">
   <div class="sec-head">
     <div class="eyebrow">Accuracy</div>
     <h2>Early, and measured two ways.</h2>
-    <p class="mute measure">Neither is a benchmark. The fixture numbers are reproduced in CI on every commit; the real-session numbers come from the author's own sessions, blind-graded before seeing Tally's answer.</p>
+    <p class="mute measure">Neither is a benchmark. The fixture numbers are reproduced in CI on every commit; the real-session numbers come from the author's own sessions, blind-graded before seeing Sigil's answer.</p>
   </div>
   <div class="stats">
     <div class="stat"><div class="v">19<small>/ 19</small></div><div class="l">criteria agreed, 5 fixture sessions</div></div>
     <div class="stat"><div class="v">5<small>/ 5</small></div><div class="l">verdicts agreed, fixtures</div></div>
-    <div class="stat"><div class="v">4.1<small>%</small></div><div class="l">Tally's own spend, share of session spend</div></div>
+    <div class="stat"><div class="v">4.1<small>%</small></div><div class="l">Sigil's own spend, share of session spend</div></div>
     <div class="stat"><div class="v">51%</div><div class="l">criterion agreement on 11 real sessions, 51 criteria (early, n=11)</div></div>
   </div>
-  <p class="callout">Real sessions, blind-graded (n=11, 2026-09-22): 51% exact criterion agreement (63% within one step), 3 abstentions; on the other 8 verdicts, 1 exact and 6 within one step, Tally stricter on 14 of 51. Coach: 54 of 83 replayed suggestions marked useful (65%). Grade your own with <code>tally calibrate grade</code>; that is the data this needs next.</p>
+  <p class="callout">Real sessions, blind-graded (n=11, 2026-09-22): 51% exact criterion agreement (63% within one step), 3 abstentions; on the other 8 verdicts, 1 exact and 6 within one step, Sigil stricter on 14 of 51. Coach: 54 of 83 replayed suggestions marked useful (65%). Grade your own with <code>sigil calibrate grade</code>; that is the data this needs next.</p>
 </section>
 
 <section id="install">
@@ -257,20 +257,20 @@ footer a:hover{color:var(--text)}
   <div class="two">
     <div>
       <h3>As a Claude Code plugin</h3>
-      <p class="mute">Hooks, autopilot Coach and the <code>/tally:*</code> commands. Needs Node 18+ and git, nothing else.</p>
-      <pre><code>/plugin marketplace add kru3ish/tally
-/plugin install tally@tally
-/tally:statusline        # once, for the status bar</code></pre>
+      <p class="mute">Hooks, autopilot Coach and the <code>/sigil:*</code> commands. Needs Node 18+ and git, nothing else.</p>
+      <pre><code>/plugin marketplace add kru3ish/sigil
+/plugin install sigil@sigil
+/sigil:statusline        # once, for the status bar</code></pre>
     </div>
     <div>
       <h3>As an npm CLI</h3>
       <p class="mute">Hooks and status line go into <code>~/.claude/settings.json</code>, backed up first and restored byte-identical on uninstall. Adds the one-key Coach pane, backfill and blind grading.</p>
-      <pre><code>npm i -g @kru3ish/tally
-tally install
-tally doctor</code></pre>
+      <pre><code>npm i -g sigil
+sigil install
+sigil doctor</code></pre>
     </div>
   </div>
-  <p class="callout">Pick one. <code>tally install</code> refuses while the plugin is enabled, and <code>tally doctor</code> says so, so events are never recorded twice. <code>tally demo</code> replays a recorded session end to end in a throwaway directory before you install anything.</p>
+  <p class="callout">Pick one. <code>sigil install</code> refuses while the plugin is enabled, and <code>sigil doctor</code> says so, so events are never recorded twice. <code>sigil demo</code> replays a recorded session end to end in a throwaway directory before you install anything.</p>
 </section>
 
 <section>
@@ -293,7 +293,7 @@ tally doctor</code></pre>
     <div><code>history-lesson</code><span>lessons from past receipts and follow-ups in this repo</span></div>
     <div><code>verification-consent</code><span>first test re-run in a repo asks once</span></div>
   </div>
-  <p class="callout">Noise control: at most one non-critical suggestion per three minutes and eight per session; critical ones always show. What reaches Claude is always an observation ("Tally observed npm test fail 3 times"), never an instruction.</p>
+  <p class="callout">Noise control: at most one non-critical suggestion per three minutes and eight per session; critical ones always show. What reaches Claude is always an observation ("Sigil observed npm test fail 3 times"), never an instruction.</p>
 </section>
 
 <section id="privacy">
@@ -301,12 +301,12 @@ tally doctor</code></pre>
     <div>
       <div class="eyebrow">Privacy</div>
       <h2 style="margin-top:10px">Nothing leaves your machine.</h2>
-      <p class="mute" style="margin-top:14px">Hooks make no network calls and finish in under 150 ms. Model calls go through <code>claude -p</code> on your own login, isolated from your MCP servers, hooks and skills, or through any OpenAI-compatible local model (Ollama, vLLM, LM Studio) when <code>models.provider</code> says so: air-gapped, zero outbound traffic. Events are redacted (keys, tokens, bearer headers, passwords in URLs) and truncated before they are written. Write-back to an issue or PR is off by default and never includes prompts or code. Everything lives in <code>~/.tally</code>; delete the folder and it is gone.</p>
+      <p class="mute" style="margin-top:14px">Hooks make no network calls and finish in under 150 ms. Model calls go through <code>claude -p</code> on your own login, isolated from your MCP servers, hooks and skills, or through any OpenAI-compatible local model (Ollama, vLLM, LM Studio) when <code>models.provider</code> says so: air-gapped, zero outbound traffic. Events are redacted (keys, tokens, bearer headers, passwords in URLs) and truncated before they are written. Write-back to an issue or PR is off by default and never includes prompts or code. Everything lives in <code>~/.sigil</code>; delete the folder and it is gone.</p>
     </div>
     <div>
       <div class="eyebrow">Next to the built-ins</div>
       <div class="tbl" style="margin-top:14px"><table class="cmp">
-        <thead><tr><th></th><th>/cost, ccusage</th><th>/insights</th><th>Tally</th></tr></thead>
+        <thead><tr><th></th><th>/cost, ccusage</th><th>/insights</th><th>Sigil</th></tr></thead>
         <tbody>
           <tr><td>Unit</td><td>session, day</td><td>30 days</td><td class="y">one task</td></tr>
           <tr><td>Tied to acceptance criteria</td><td class="n">no</td><td class="n">no</td><td class="y">frozen at intake</td></tr>
@@ -320,7 +320,7 @@ tally doctor</code></pre>
 </section>
 
 <footer>
-  <div>Tally · MIT · <a href="https://github.com/kru3ish/tally">github.com/kru3ish/tally</a> · <a href="https://www.npmjs.com/package/@kru3ish/tally">npm</a> · <a href="https://github.com/kru3ish/tally/blob/main/CHANGELOG.md">changelog</a> · <a href="https://github.com/kru3ish/tally/blob/main/SECURITY.md">security</a></div>
+  <div>Sigil · MIT · <a href="https://github.com/kru3ish/sigil">github.com/kru3ish/sigil</a> · <a href="https://www.npmjs.com/package/sigil">npm</a> · <a href="https://github.com/kru3ish/sigil/blob/main/CHANGELOG.md">changelog</a> · <a href="https://github.com/kru3ish/sigil/blob/main/SECURITY.md">security</a></div>
   <div>Preview. Treat verdicts as a second opinion.</div>
 </footer>
 </div>

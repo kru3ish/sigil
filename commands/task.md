@@ -4,7 +4,7 @@ argument-hint: <url|path|text>
 allowed-tools: Bash(node *)
 ---
 
-Link the task to this Tally session:
+Link the task to this Sigil session:
 
 ```!
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.js" task "$ARGUMENTS" --plain

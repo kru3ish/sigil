@@ -39,7 +39,7 @@ function actionCard(a: Action, i: number, cli: string): string {
   <div class="num">${i + 1}</div>
   <div class="body">
     <div class="atop"><h3>${esc(a.title)}</h3>${a.usd >= 0.01 ? `<span class="save">up to ${$(a.usd)}</span>` : ''}</div>
-    <div class="meta"><span class="tag">${KIND_LABEL[a.kind]}</span>${a.source === 'official' ? '<span class="tag official">Official plugin</span>' : a.source === 'tally' && a.kind !== 'habit' && a.tallyFix ? '<span class="tag">By Tally · undoable</span>' : ''}</div>
+    <div class="meta"><span class="tag">${KIND_LABEL[a.kind]}</span>${a.source === 'official' ? '<span class="tag official">Official plugin</span>' : a.source === 'sigil' && a.kind !== 'habit' && a.sigilFix ? '<span class="tag">By Sigil · undoable</span>' : ''}</div>
     <p>${esc(a.why)}</p>
     ${a.command ? copyBox(a.command) : '<p class="sub">Nothing to install; this one is how the work is split.</p>'}
     ${others}
@@ -53,7 +53,7 @@ function storySection(c: CostCheck, cli: string): string {
   const actions = buildActions(c, cli);
   const top = actions.filter((a) => a.kind !== 'habit').slice(0, 5);
   const rest = actions.filter((a) => !top.includes(a));
-  const appliable = actions.filter((a) => a.tallyFix && a.source === 'tally').length;
+  const appliable = actions.filter((a) => a.sigilFix && a.source === 'sigil').length;
   const max = Math.max(c.actual_usd, e?.high_usd ?? 0) * 1.08 || 1;
   const pct = (n: number) => `${Math.min(100, (n / max) * 100).toFixed(1)}%`;
   const summary = c.savable_usd >= 0.01 ? `About <b>${$(c.savable_usd)}</b> of this could be avoided next time${top.length ? `. ${top.length === 1 ? 'The change below gets' : `The ${top.length} changes below get`} most of it.` : '.'}` : 'Nothing in this story stands out as avoidable spend.';
@@ -71,10 +71,10 @@ function storySection(c: CostCheck, cli: string): string {
 ${
   top.length
     ? `<section>
-  <div class="shead"><h2>Next time</h2>${appliable > 1 ? `<div class="all"><span class="sub">Apply all ${appliable} of Tally's changes</span>${copyBox(`${cli} fix all`)}</div>` : ''}</div>
+  <div class="shead"><h2>Next time</h2>${appliable > 1 ? `<div class="all"><span class="sub">Apply all ${appliable} of Sigil's changes</span>${copyBox(`${cli} fix all`)}</div>` : ''}</div>
   <ol class="actions">${top.map((a, i) => actionCard(a, i, cli)).join('')}</ol>
   ${rest.length ? `<details class="more"><summary>${rest.length} more</summary><ol class="actions">${rest.map((a, i) => actionCard(a, top.length + i, cli)).join('')}</ol></details>` : ''}
-  <p class="hint">Paste a command in a terminal in this repo, or ask Claude in the session: <code>/tally:fix ${esc(top[0]!.id)}</code>. Changes land in the repo's <code>.claude/</code> folder, so committing them gives the team the same setup.</p>
+  <p class="hint">Paste a command in a terminal in this repo, or ask Claude in the session: <code>/sigil:fix ${esc(top[0]!.id)}</code>. Changes land in the repo's <code>.claude/</code> folder, so committing them gives the team the same setup.</p>
 </section>`
     : ''
 }
@@ -140,7 +140,7 @@ function teamSection(entries: LedgerEntry[], cli: string): string {
     }
   const topFixes = [...adds.values()].sort((a, b) => b.usd - a.usd).slice(0, 5);
   return `<section>
-  <div class="shead"><h2>Team</h2><span class="sub">${entries.length} ${entries.length === 1 ? 'story' : 'stories'} in .tally/ledger.jsonl</span></div>
+  <div class="shead"><h2>Team</h2><span class="sub">${entries.length} ${entries.length === 1 ? 'story' : 'stories'} in .sigil/ledger.jsonl</span></div>
   <div class="kpis">
     <div><div class="k">Spend</div><div class="v">${$(spend)}</div><div class="sub">median ${$(quantile(entries.map((e) => e.actual_usd), 0.5))} a story</div></div>
     <div><div class="k">Estimate error</div><div class="v">${priced.length ? `${Math.round(quantile(err, 0.5) * 100)}%` : '–'}</div><div class="sub">${priced.length ? `${Math.round((inRange / priced.length) * 100)}% inside the range` : 'needs priced stories'}</div></div>
@@ -159,13 +159,13 @@ function teamSection(entries: LedgerEntry[], cli: string): string {
 }
 
 export function renderDashboard(opts: { repo: string; entries: LedgerEntry[]; current?: CostCheck; estimate?: { story: string; estimate: CostEstimate }; cli?: string; now?: Date; ledgerPath?: string }): string {
-  const cli = opts.cli ?? 'tally';
+  const cli = opts.cli ?? 'sigil';
   const generated = (opts.now ?? new Date()).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   const body = [opts.estimate ? estimateSection(opts.estimate.story, opts.estimate.estimate) : '', opts.current ? storySection(opts.current, cli) : '', teamSection(opts.entries, cli)].join('\n');
-  const empty = !opts.estimate && !opts.current && !opts.entries.length ? `<section class="hero"><h1>No stories yet</h1><p class="lead">When a session ends, its story is added to <code>.tally/ledger.jsonl</code> in this repo. Commit that file and everyone here shares the estimates and this page.</p></section>` : '';
+  const empty = !opts.estimate && !opts.current && !opts.entries.length ? `<section class="hero"><h1>No stories yet</h1><p class="lead">When a session ends, its story is added to <code>.sigil/ledger.jsonl</code> in this repo. Commit that file and everyone here shares the estimates and this page.</p></section>` : '';
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tally · ${esc(opts.repo)}</title>
+<title>Sigil · ${esc(opts.repo)}</title>
 <style>
 :root{--bg:#fafaf8;--card:#fff;--ink:#16191d;--mute:#6b7280;--line:#e7e5e0;--soft:#f3f2ee;--accent:#2563eb;--over:#dc4a33;--under:#15803d;--on:#2563eb;--none:#9ca3af;--band:#dbe5f7;--save:#ecfdf3;--saveink:#15803d}
 @media (prefers-color-scheme:dark){:root{--bg:#0f1114;--card:#171a1f;--ink:#e9e7e2;--mute:#9aa1aa;--line:#262a31;--soft:#1d2127;--accent:#7aa2ff;--over:#ff7a63;--under:#4ade80;--on:#7aa2ff;--none:#6b7280;--band:#25324a;--save:#123122;--saveink:#6ee7a0}}
@@ -223,7 +223,7 @@ table{width:100%;border-collapse:collapse;font-size:13.5px}th,td{padding:8px 6px
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 @media (max-width:560px){.hero{padding:20px}.action{grid-template-columns:1fr;padding:16px}.num{display:none}.drow{grid-template-columns:1fr 64px}.drow .bar{display:none}h1{font-size:21px}}
 </style></head><body><div class="wrap">
-<header><span><b>Tally</b> · ${esc(opts.repo)}</span><span>${esc(generated)} · a local file; nothing was sent anywhere</span></header>
+<header><span><b>Sigil</b> · ${esc(opts.repo)}</span><span>${esc(generated)} · a local file; nothing was sent anywhere</span></header>
 ${body}${empty}
 </div>
 <script>

@@ -1,8 +1,8 @@
-/* Agent adapters: Tally's hooks, rules, Judge and Coach speak Claude Code's hook vocabulary (SessionStart,
+/* Agent adapters: Sigil's hooks, rules, Judge and Coach speak Claude Code's hook vocabulary (SessionStart,
    UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd; tool_name Bash / Edit / Write / Read with
    tool_input.command / file_path). Other coding agents expose the same lifecycle under other names and shapes, so
-   one adapter per agent maps its events and payloads onto that vocabulary on the way in and formats Tally's answer
-   (context, deny, block) on the way out. The hook script takes `--agent <id>`; `tally install --agent <id>` writes
+   one adapter per agent maps its events and payloads onto that vocabulary on the way in and formats Sigil's answer
+   (context, deny, block) on the way out. The hook script takes `--agent <id>`; `sigil install --agent <id>` writes
    the agent's hook file. Verified against each agent's hook documentation on 2026-09-26 (docs/PLATFORM_NOTES.md). */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,7 +13,7 @@ export const AGENT_IDS: AgentId[] = ['claude-code', 'codex', 'gemini', 'cursor']
 
 export type CanonicalEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'PostToolUseFailure' | 'Stop' | 'PreCompact' | 'Notification' | 'SessionEnd' | 'Unknown';
 
-/* Claude Code's hook input, which the rest of Tally consumes */
+/* Claude Code's hook input, which the rest of Sigil consumes */
 export interface CanonicalInput {
   session_id?: string;
   transcript_path?: string;
@@ -34,7 +34,7 @@ export interface CanonicalInput {
   [k: string]: unknown;
 }
 
-/* What Tally wants to say back, in Claude Code's terms */
+/* What Sigil wants to say back, in Claude Code's terms */
 export type CanonicalOutput =
   | { kind: 'context'; event: CanonicalEvent; text: string }
   | { kind: 'deny'; reason: string }
@@ -42,7 +42,7 @@ export type CanonicalOutput =
   /* shown to the user, not to the model: the cost check at the end of a turn */
   | { kind: 'notice'; text: string };
 
-/* What an agent can tell Tally. False means Tally reports the fact as unavailable rather than estimating it. */
+/* What an agent can tell Sigil. False means Sigil reports the fact as unavailable rather than estimating it. */
 export interface AgentCapabilities {
   lifecycle_hooks: boolean;
   tool_calls: boolean;
@@ -57,7 +57,7 @@ export interface AgentCapabilities {
   token_usage: boolean;
   model_name: boolean;
   cost: boolean;
-  /* free text on what is missing and why, shown by `tally adapters` */
+  /* free text on what is missing and why, shown by `sigil adapters` */
   notes?: string;
 }
 
@@ -67,19 +67,19 @@ export interface AgentAdapter {
   capabilities: AgentCapabilities;
   /* the env var the agent sets with the session id in child processes, if any */
   sessionEnv?: string;
-  /* the agent's event name → Tally's canonical event */
+  /* the agent's event name → Sigil's canonical event */
   event(name: string): CanonicalEvent;
   /* the agent's stdin JSON → canonical input */
   normalize(raw: Record<string, unknown>, agentEvent: string): CanonicalInput;
-  /* Tally's answer → the agent's stdout JSON (null: say nothing) */
+  /* Sigil's answer → the agent's stdout JSON (null: say nothing) */
   output(out: CanonicalOutput): unknown;
-  /* where the agent reads hooks from at user scope, and the hooks document Tally writes there */
+  /* where the agent reads hooks from at user scope, and the hooks document Sigil writes there */
   hooksFile(): string;
-  /* merge Tally's hooks into an existing hooks document; returns the new document */
+  /* merge Sigil's hooks into an existing hooks document; returns the new document */
   writeHooks(existing: unknown, command: (event: CanonicalEvent) => string): unknown;
-  /* remove Tally's hooks; returns the new document */
+  /* remove Sigil's hooks; returns the new document */
   removeHooks(existing: unknown): unknown;
-  /* the agent's events Tally subscribes to (agent names) */
+  /* the agent's events Sigil subscribes to (agent names) */
   subscribed: string[];
   /* where the agent keeps transcripts on disk, when known */
   transcriptRoots?: () => string[];
@@ -95,8 +95,8 @@ function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
 
-function isTally(cmd: unknown): boolean {
-  return typeof cmd === 'string' && /hook\.js["']?\s|tally/.test(cmd) && /--agent|tally/.test(cmd);
+function isSigil(cmd: unknown): boolean {
+  return typeof cmd === 'string' && /hook\.js["']?\s|sigil|tally/.test(cmd) && /--agent|sigil|tally/.test(cmd);
 }
 
 /* ---------- Claude Code: identity ---------- */
@@ -156,7 +156,7 @@ const codex: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => isSigil(h.command))));
       kept.push({ hooks: [{ type: 'command', command: command(ev as CanonicalEvent), timeout: 5 }] });
       hooks[ev] = kept;
     }
@@ -167,7 +167,7 @@ const codex: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -206,8 +206,8 @@ const gemini: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'tally' || isTally(h.command))));
-      kept.push({ matcher: '*', hooks: [{ name: 'tally', type: 'command', command: command(this.event(ev)), timeout: 5000 }] });
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || isSigil(h.command))));
+      kept.push({ matcher: '*', hooks: [{ name: 'sigil', type: 'command', command: command(this.event(ev)), timeout: 5000 }] });
       hooks[ev] = kept;
     }
     return { ...doc, hooks };
@@ -217,7 +217,7 @@ const gemini: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const groups = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'tally' || isTally(h.command))));
+      const kept = groups.filter((g) => !(Array.isArray(g.hooks) && (g.hooks as Array<Record<string, unknown>>).some((h) => h.name === 'sigil' || isSigil(h.command))));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -273,7 +273,7 @@ const cursor: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of this.subscribed) {
       const list = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = list.filter((h) => !isTally(h.command));
+      const kept = list.filter((h) => !isSigil(h.command));
       kept.push({ type: 'command', command: command(this.event(ev)), timeout: 5 });
       hooks[ev] = kept;
     }
@@ -284,7 +284,7 @@ const cursor: AgentAdapter = {
     const hooks = asRecord(doc.hooks);
     for (const ev of Object.keys(hooks)) {
       const list = Array.isArray(hooks[ev]) ? (hooks[ev] as Array<Record<string, unknown>>) : [];
-      const kept = list.filter((h) => !isTally(h.command));
+      const kept = list.filter((h) => !isSigil(h.command));
       if (kept.length) hooks[ev] = kept;
       else delete hooks[ev];
     }
@@ -298,10 +298,10 @@ export function agent(id: string | undefined): AgentAdapter {
   return ADAPTERS[(id ?? 'claude-code') as AgentId] ?? claudeCode;
 }
 
-/* `--agent <id>` anywhere in argv, else TALLY_AGENT, else claude-code; returns the remaining argv too */
+/* `--agent <id>` anywhere in argv, else SIGIL_AGENT, else claude-code; returns the remaining argv too */
 export function agentFromArgv(argv: string[]): { adapter: AgentAdapter; rest: string[] } {
   const rest: string[] = [];
-  let id: string | undefined = process.env.TALLY_AGENT;
+  let id: string | undefined = process.env.SIGIL_AGENT;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--agent' && argv[i + 1]) {
@@ -332,7 +332,7 @@ export function detectAgents(): Array<{ id: AgentId; file: string; installed: bo
     let installed = false;
     if (fs.existsSync(file)) {
       try {
-        installed = /--agent[ =]/.test(fs.readFileSync(file, 'utf8')) && /tally|hook\.js/.test(fs.readFileSync(file, 'utf8'));
+        installed = /--agent[ =]/.test(fs.readFileSync(file, 'utf8')) && /sigil|hook\.js/.test(fs.readFileSync(file, 'utf8'));
       } catch {
         installed = false;
       }

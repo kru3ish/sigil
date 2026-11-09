@@ -1,9 +1,9 @@
 {
   "id": "config-loader",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/config-loader",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/config-loader",
   "base": "b1fd98b730da22e64d2336692292ce622288d236",
-  "task": "C:/Users/Mehta/dev/tally-eval/config-loader/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/config-loader/task.md",
   "setup": [],
   "tags": [
     "javascript",

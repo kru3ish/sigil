@@ -22,7 +22,7 @@ export async function run(args: Args): Promise<number | void> {
   }
   const j = followupSession(session);
   if (!j) {
-    process.stderr.write(`Session ${session} has no receipt yet; run \`tally judge ${session}\` first.\n`);
+    process.stderr.write(`Session ${session} has no receipt yet; run \`sigil judge ${session}\` first.\n`);
     return 1;
   }
   process.stdout.write(renderSummary(j, !plain) + '\n');

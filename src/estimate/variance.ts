@@ -1,7 +1,7 @@
 /* The cost check: what the story was expected to cost, what it did cost, where the difference went, and the one-line
    change that would make the next similar story cheaper. Every driver is a dollar figure computed from the session's
-   own transcript; every fix is a concrete edit to a Claude Code settings file or CLAUDE.md that `tally fix <id>`
-   applies (and `tally undo` reverts), or a command printed for the user to run. */
+   own transcript; every fix is a concrete edit to a Claude Code settings file or CLAUDE.md that `sigil fix <id>`
+   applies (and `sigil undo` reverts), or a command printed for the user to run. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { claudeHome, readJson, sessionDir, writeJson } from '../paths.js';
@@ -207,8 +207,8 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
   const cmds = successfulCommands(t);
   const reread = waste.repeated_reads.slice(0, 5);
   const mdLines: string[] = [];
-  if (cmds.length) mdLines.push('## Commands (recorded by Tally from a session where they worked)', ...cmds.map((c) => `- \`${c}\``), '');
-  if (reread.length) mdLines.push('## Files agents keep re-reading (recorded by Tally)', ...reread.map((r) => `- ${rel(cwd, r.file)}`), '');
+  if (cmds.length) mdLines.push('## Commands (recorded by Sigil from a session where they worked)', ...cmds.map((c) => `- \`${c}\``), '');
+  if (reread.length) mdLines.push('## Files agents keep re-reading (recorded by Sigil)', ...reread.map((r) => `- ${rel(cwd, r.file)}`), '');
   const claudeMdFix: Fix | undefined = mdLines.length ? { id: 'claude-md', title: 'Write what this session learned into CLAUDE.md', what: `appends ${[cmds.length ? `${cmds.length} working command(s)` : '', reread.length ? `${reread.length} file(s) it kept re-reading` : ''].filter(Boolean).join(' and ')} to CLAUDE.md, so the next session does not rediscover them`, apply: { kind: 'claude_md', content: mdLines.join('\n') } } : undefined;
 
   /* 3. failed commands retried unchanged */
@@ -223,9 +223,9 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
   const start = readEvents(session).find((e) => e.type === 'session_start');
   const loaded = (start?.data.loaded as { mcp?: string[]; skills?: string[]; plugins?: string[] } | undefined) ?? {};
   const usedMcp = new Set(t.mcpCalls.map((c) => c.server));
-  const unusedMcp = (loaded.mcp ?? []).filter((m) => !usedMcp.has(m) && m !== 'tally');
+  const unusedMcp = (loaded.mcp ?? []).filter((m) => !usedMcp.has(m) && m !== 'sigil');
   const usedSkills = new Set(t.skills.map((s) => s.name));
-  const unusedPlugins = (loaded.plugins ?? []).filter((p) => p !== 'tally' && ![...usedSkills].some((s) => s.startsWith(p + ':')) && ![...usedMcp].some((s) => s.includes(p)));
+  const unusedPlugins = (loaded.plugins ?? []).filter((p) => p !== 'sigil' && ![...usedSkills].some((s) => s.startsWith(p + ':')) && ![...usedMcp].some((s) => s.includes(p)));
   const items = (loaded.mcp?.length ?? 0) + (loaded.plugins?.length ?? 0) + (loaded.skills?.length ?? 0);
   const unused = unusedMcp.length + unusedPlugins.length;
   if (waste.dead_weight.usd >= 0.01 && unused > 0 && items > 0) {
@@ -235,7 +235,7 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
     const commands = [...elsewhere.map((m) => `claude mcp remove ${m} --scope user`), ...unusedPlugins.map((p) => `claude plugin disable ${p}`)];
     const fix: Fix = inProject.length
       ? { id: 'drop-unused-mcp', title: 'Stop loading MCP servers this repo does not use', what: `adds ${inProject.join(', ')} to disabledMcpjsonServers in .claude/settings.local.json${commands.length ? `; also run: ${commands.join(' && ')}` : ''}`, apply: { kind: 'settings', patch: { disabledMcpjsonServers: inProject }, scope: 'local' } }
-      : { id: 'drop-unused-mcp', title: 'Stop loading MCP servers and plugins this story did not use', what: 'prints the commands; Tally does not remove servers or plugins itself', apply: { kind: 'command', commands } };
+      : { id: 'drop-unused-mcp', title: 'Stop loading MCP servers and plugins this story did not use', what: 'prints the commands; Sigil does not remove servers or plugins itself', apply: { kind: 'command', commands } };
     drivers.push({
       id: 'context',
       title: 'Tools loaded but never used',
@@ -267,7 +267,7 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
       usd: round2(longUsd),
       detail: `${longCalls} call(s) carried more than ${LONG / 1000}k tokens of history; re-sending the part above ${LONG / 1000}k cost ${$(longUsd)}. Part of this is the work itself; a fresh session per sub-task avoids most of it.`,
       basis: 'measured',
-      fix: { id: 'split-story', title: 'Split stories this size', what: 'run /clear (or a new session) between sub-tasks, with the plan in a file so nothing is lost; Tally cannot apply this for you', apply: { kind: 'advice' } },
+      fix: { id: 'split-story', title: 'Split stories this size', what: 'run /clear (or a new session) between sub-tasks, with the plan in a file so nothing is lost; Sigil cannot apply this for you', apply: { kind: 'advice' } },
     });
   }
 
@@ -279,7 +279,7 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
       usd: round2(waste.compaction_churn.usd),
       detail: `${waste.compaction_churn.compactions} compaction(s) re-cached ${waste.compaction_churn.recache_tokens.toLocaleString('en-US')} tokens. A story this size is cheaper as two sessions.`,
       basis: 'measured',
-      fix: { id: 'split-story', title: 'Split stories this size', what: 'run /clear (or a new session) between sub-tasks; Tally cannot apply this for you', apply: { kind: 'advice' } },
+      fix: { id: 'split-story', title: 'Split stories this size', what: 'run /clear (or a new session) between sub-tasks; Sigil cannot apply this for you', apply: { kind: 'advice' } },
     });
   }
 
@@ -351,10 +351,10 @@ export function computeCheck(session: string, opts: { transcript?: Transcript; t
 }
 
 export function renderCheck(c: CostCheck, opts: { cli?: string; details?: boolean } = {}): string {
-  const cli = opts.cli ?? 'tally';
+  const cli = opts.cli ?? 'sigil';
   const L: string[] = [];
   const e = c.estimate && c.estimate.basis !== 'none' ? c.estimate : undefined;
-  L.push(`Tally cost check${c.task ? ` · ${c.task.split('\n')[0]!.slice(0, 80)}` : ''}`, '');
+  L.push(`Sigil cost check${c.task ? ` · ${c.task.split('\n')[0]!.slice(0, 80)}` : ''}`, '');
   const estText = !e ? 'no estimate yet (no past tasks on this machine to compare with)' : fmtEstimate(e);
   L.push(`  Cost      ${$(c.actual_usd)} on ${c.model}${c.span && c.span.days > 1 ? `, across ${c.span.days} days${c.span.compactions ? ` and ${c.span.compactions} compaction${c.span.compactions === 1 ? '' : 's'}` : ''} (one transcript, probably more than one task)` : ''}`);
   L.push(`  Estimate  ${estText}`);
@@ -382,9 +382,9 @@ export function renderCheck(c: CostCheck, opts: { cli?: string; details?: boolea
     L.push(a.command ? `      → ${a.command}` : '      → nothing to install; split the work');
     for (const o of a.others) L.push(`        also: ${o.name} (${o.tier === 'official' ? 'official ' + o.kind : `${o.kind}, ${o.source}${o.stars !== undefined ? `, ★${o.stars}` : ''}`})  ${o.install ?? o.url ?? ''}`);
   });
-  const own = actions.filter((a) => a.tallyFix && a.source === 'tally').length;
+  const own = actions.filter((a) => a.sigilFix && a.source === 'sigil').length;
   L.push('');
-  if (own > 1) L.push(`Apply all ${own} of Tally's changes: ${cli} fix all   (undo: ${cli} undo)`);
+  if (own > 1) L.push(`Apply all ${own} of Sigil's changes: ${cli} fix all   (undo: ${cli} undo)`);
   if (c.stack_tools?.length) L.push(`For your stack: ${c.stack_tools.map((a) => `${a.name} (${a.install ?? a.url})`).join(', ')}`);
   if (!c.catalog) L.push(`Run \`${cli} catalog update\` to also check the official plugin marketplace and the awesome lists for tools that already do this.`);
   if (opts.details) {
@@ -397,11 +397,11 @@ export function renderCheck(c: CostCheck, opts: { cli?: string; details?: boolea
 /* one line for the user at the end of a turn */
 export function headline(c: CostCheck): string {
   const top = c.drivers.find((d) => d.fix && d.fix.apply.kind !== 'advice');
-  const lever = top ? ` Biggest lever: ${top.title.toLowerCase()} (~${$(top.usd)}) → \`tally fix ${top.fix!.id}\`.` : '';
-  if (c.status === 'over') return `Tally: this story has cost ${$(c.actual_usd)} against a ~${$(c.estimate!.usd)} estimate from similar stories (+${$(c.delta_usd!)}).${lever} Full breakdown: /tally:cost`;
-  if (c.status === 'under') return `Tally: ${$(c.actual_usd)} so far, under the ~${$(c.estimate!.usd)} estimate for similar stories.`;
-  if (c.status === 'on_target') return `Tally: ${$(c.actual_usd)} so far, on target for the ~${$(c.estimate!.usd)} estimate.`;
-  return `Tally: ${$(c.actual_usd)} so far.${lever}`;
+  const lever = top ? ` Biggest lever: ${top.title.toLowerCase()} (~${$(top.usd)}) → \`sigil fix ${top.fix!.id}\`.` : '';
+  if (c.status === 'over') return `Sigil: this story has cost ${$(c.actual_usd)} against a ~${$(c.estimate!.usd)} estimate from similar stories (+${$(c.delta_usd!)}).${lever} Full breakdown: /sigil:cost`;
+  if (c.status === 'under') return `Sigil: ${$(c.actual_usd)} so far, under the ~${$(c.estimate!.usd)} estimate for similar stories.`;
+  if (c.status === 'on_target') return `Sigil: ${$(c.actual_usd)} so far, on target for the ~${$(c.estimate!.usd)} estimate.`;
+  return `Sigil: ${$(c.actual_usd)} so far.${lever}`;
 }
 
 function settingsFileFor(scope: 'project' | 'local' | 'user', cwd: string): string {
@@ -417,7 +417,7 @@ export function findFix(c: CostCheck, id: string): Fix | undefined {
 export function applyFix(fix: Fix, opts: { session: string; cwd: string; global?: boolean }): { ok: boolean; detail: string; file?: string } {
   const a = fix.apply;
   if (a.kind === 'advice') return { ok: false, detail: `${fix.title}: ${fix.what}` };
-  if (a.kind === 'command') return { ok: false, detail: `Tally does not run these for you:\n  ${a.commands.join('\n  ')}` };
+  if (a.kind === 'command') return { ok: false, detail: `Sigil does not run these for you:\n  ${a.commands.join('\n  ')}` };
   if (a.kind === 'file') {
     const file = path.join(opts.cwd, a.path);
     if (fs.existsSync(file)) return { ok: true, detail: `${a.path} already exists; not overwritten`, file };

@@ -1,10 +1,10 @@
 {
   "id": "yargs-2423",
   "class": "real",
-  "repo": "C:/Users/Mehta/dev/tally-eval-gh/yargs-2423",
+  "repo": "C:/Users/Mehta/dev/sigil-eval-gh/yargs-2423",
   "base": "60be6600673cb1549378e9477a06bab14344563c",
   "issue": "https://github.com/yargs/yargs/issues/2423",
-  "task": "C:/Users/Mehta/dev/tally-eval-gh/yargs-2423/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval-gh/yargs-2423/task.md",
   "setup": [],
   "tags": [
     "typescript",

@@ -55,7 +55,7 @@ export async function run(args: Args): Promise<void> {
   if (transcriptPath && fs.existsSync(transcriptPath)) {
     const t = parseTranscriptFile(transcriptPath);
     if (t.internal || isInternalCwd(cwd)) {
-      log(`finalize: ${session} is an internal Tally run; not recorded`);
+      log(`finalize: ${session} is an internal Sigil run; not recorded`);
       return;
     }
     usedSkills = [...new Set(t.skills.map((s) => s.name))];

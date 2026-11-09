@@ -5,7 +5,7 @@
 
    Third-party MCP servers are suggested with the install command their own documentation gives (checked 2026-10-18):
    Context7 https://context7.com/docs/resources/all-clients, Serena https://oraios.github.io/serena/02-usage/030_clients.html.
-   Tally never installs them itself. */
+   Sigil never installs them itself. */
 import path from 'node:path';
 import { priceFor, type Pricing } from '../cost/pricing.js';
 import { isLintCommand, isTestCommand, type ToolCall, type Transcript } from '../transcript/parse.js';
@@ -254,7 +254,7 @@ export function findOpportunities(t: Transcript, opts: { cwd?: string; loaded?: 
         apply: {
           kind: 'file',
           path: `.claude/skills/${name}/SKILL.md`,
-          content: `---\nname: ${name}\ndescription: Context for work like "${opts.story.replace(/"/g, "'").slice(0, 120)}" in this repository. Use when a task touches the same area.\n---\n\nRecorded by Tally from a finished session.\n\n## Files involved\n${edited.map((f) => `- ${f}`).join('\n')}\n${worked.length ? `\n## Commands that worked\n${worked.map((c) => `- \`${c}\``).join('\n')}\n` : ''}`,
+          content: `---\nname: ${name}\ndescription: Context for work like "${opts.story.replace(/"/g, "'").slice(0, 120)}" in this repository. Use when a task touches the same area.\n---\n\nRecorded by Sigil from a finished session.\n\n## Files involved\n${edited.map((f) => `- ${f}`).join('\n')}\n${worked.length ? `\n## Commands that worked\n${worked.map((c) => `- \`${c}\``).join('\n')}\n` : ''}`,
         },
       },
     });

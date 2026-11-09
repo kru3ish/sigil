@@ -45,6 +45,6 @@
   },
   "budget_usd": 9.38,
   "hourly_rate": 75,
-  "tally_cost_usd": 0.004,
+  "sigil_cost_usd": 0.004,
   "model": "fixture"
 }

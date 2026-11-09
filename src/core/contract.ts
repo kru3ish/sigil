@@ -1,6 +1,6 @@
 /* The Task Contract: the frozen definition of done.
 
-   Tally has frozen acceptance criteria at intake since 0.1 (`task.json`). This module gives that a first-class shape:
+   Sigil has frozen acceptance criteria at intake since 0.1 (`task.json`). This module gives that a first-class shape:
    goal, criteria, constraints, verification commands, unknowns, a status that says whether a human has confirmed it,
    and the revision history, so the definition of done cannot drift silently during a session and every later edit is
    on the record. `task.json` stays the stored form; the contract is projected from it and its revisions are kept next
@@ -18,9 +18,9 @@ export type ContractStatus = 'needs_confirmation' | 'linked' | 'confirmed';
 export interface ContractCriterion {
   id: string;
   text: string;
-  /* explicit: from the ticket or the user; inferred: from prompts, branch and commits; policy: from tally.json */
+  /* explicit: from the ticket or the user; inferred: from prompts, branch and commits; policy: from sigil.json */
   source: 'explicit' | 'inferred' | 'policy';
-  /* how Tally will check it without a model, when it can */
+  /* how Sigil will check it without a model, when it can */
   check?: CheckSpec;
 }
 
@@ -62,7 +62,7 @@ function readStored(session: string): StoredContract {
 }
 
 /* Verification commands: the repo policy's `test_command` first, then the detected runner, then a lint script if the
-   package declares one. Only commands Tally would actually run appear here. */
+   package declares one. Only commands Sigil would actually run appear here. */
 export function verificationCommands(cwd: string | undefined): string[] {
   const out: string[] = [];
   if (!cwd) return out;
@@ -88,7 +88,7 @@ export function verificationCommands(cwd: string | undefined): string[] {
 export function contractFromTask(task: Task, opts: { cwd?: string } = {}): TaskContract {
   const stored = readStored(task.session);
   const cwd = opts.cwd ?? task.cwd;
-  /* The confirmation rule, explicitly: CONFIRMED means a person ran `tally task --confirm` (or `--edit`). A contract
+  /* The confirmation rule, explicitly: CONFIRMED means a person ran `sigil task --confirm` (or `--edit`). A contract
      taken from a ticket or a file without that is LINKED: its criteria come from a source, not from a person's
      sign-off. An inferred contract, or one whose spec needed clarification, is NEEDS CONFIRMATION until confirmed. */
   const status: ContractStatus = task.confirmed ? 'confirmed' : task.inferred || task.needs_clarification ? 'needs_confirmation' : 'linked';
@@ -137,14 +137,14 @@ export function renderContract(c: TaskContract): string {
   L.push('');
   L.push('Verification');
   if (c.verification.length) for (const v of c.verification) L.push(`- ${v}`);
-  else L.push('- (no test command detected; set test_command in tally.json)');
+  else L.push('- (no test command detected; set test_command in sigil.json)');
   if (c.unknowns.length) {
     L.push('');
     L.push('Unknowns');
     for (const q of c.unknowns) L.push(`- ${q}`);
   }
   L.push('');
-  L.push(`Status: ${STATUS_LABEL[c.status]}${c.status === 'needs_confirmation' ? '  (tally task --confirm, or --edit "<text>")' : ''}  ·  frozen ${c.frozen_at.slice(0, 16).replace('T', ' ')}  ·  spec quality ${c.spec_quality}/10`);
+  L.push(`Status: ${STATUS_LABEL[c.status]}${c.status === 'needs_confirmation' ? '  (sigil task --confirm, or --edit "<text>")' : ''}  ·  frozen ${c.frozen_at.slice(0, 16).replace('T', ' ')}  ·  spec quality ${c.spec_quality}/10`);
   if (c.revisions.length > 1) {
     L.push('');
     L.push('Revisions');

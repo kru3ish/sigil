@@ -1,10 +1,10 @@
-/* `tally check`: the pull-request check. Judges base..HEAD of this checkout against the task (a linked issue, a
+/* `sigil check`: the pull-request check. Judges base..HEAD of this checkout against the task (a linked issue, a
    tasks/*.md, or the PR text) with no session behind it: the acceptance criteria, an independent test run in this clean
    checkout, the mutation check, scope. Prints the receipt, writes the CI step summary, posts or updates one PR comment,
-   and exits 1 when the repo policy's bar (`verification.required` in tally.json) is not met.
+   and exits 1 when the repo policy's bar (`verification.required` in sigil.json) is not met.
 
    Without a model (no key in the environment) it resolves mechanical checks and runs the tests, and says so: criteria
-   that need a reading are UNVERIFIED, never guessed. With TALLY_LLM_BASE_URL + TALLY_LLM_API_KEY (+ TALLY_LLM_MODEL) it
+   that need a reading are UNVERIFIED, never guessed. With SIGIL_LLM_BASE_URL + SIGIL_LLM_API_KEY (+ SIGIL_LLM_MODEL) it
    judges them through an OpenAI-compatible endpoint. */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -91,14 +91,14 @@ export function passes(a: Assurance, required: Required): boolean {
 }
 
 /* a model for the run, when the environment has one: an OpenAI-compatible endpoint (Anthropic's, OpenAI's, a gateway,
-   Ollama) through TALLY_LLM_BASE_URL / TALLY_LLM_API_KEY / TALLY_LLM_MODEL; else the configured provider when its key is
+   Ollama) through SIGIL_LLM_BASE_URL / SIGIL_LLM_API_KEY / SIGIL_LLM_MODEL; else the configured provider when its key is
    present; else none */
 export function modelForCheck(session: string, cfg: ReturnType<typeof loadConfig>, env: NodeJS.ProcessEnv = process.env): LlmClient {
-  if (env.TALLY_LLM === 'none') return new NoModelLlm();
-  if (env.TALLY_LLM === 'stub') return makeLlm({ session });
-  if (env.TALLY_LLM_BASE_URL && env.TALLY_LLM_API_KEY) {
-    if (env.TALLY_LLM_MODEL) for (const k of ['intake', 'tier1', 'tier2_escalation', 'judge', 'coach'] as const) cfg.models[k] = env.TALLY_LLM_MODEL;
-    return new OpenAICompatible({ baseUrl: env.TALLY_LLM_BASE_URL, apiKey: env.TALLY_LLM_API_KEY, session, usdPerMillionInput: cfg.models.usd_per_million_input, usdPerMillionOutput: cfg.models.usd_per_million_output });
+  if (env.SIGIL_LLM === 'none') return new NoModelLlm();
+  if (env.SIGIL_LLM === 'stub') return makeLlm({ session });
+  if (env.SIGIL_LLM_BASE_URL && env.SIGIL_LLM_API_KEY) {
+    if (env.SIGIL_LLM_MODEL) for (const k of ['intake', 'tier1', 'tier2_escalation', 'judge', 'coach'] as const) cfg.models[k] = env.SIGIL_LLM_MODEL;
+    return new OpenAICompatible({ baseUrl: env.SIGIL_LLM_BASE_URL, apiKey: env.SIGIL_LLM_API_KEY, session, usdPerMillionInput: cfg.models.usd_per_million_input, usdPerMillionOutput: cfg.models.usd_per_million_output });
   }
   if (cfg.models.provider === 'openai-compatible' && env[cfg.models.api_key_env]) return makeLlm({ session });
   return new NoModelLlm();
@@ -108,7 +108,7 @@ export function modelForCheck(session: string, cfg: ReturnType<typeof loadConfig
    token (GH_TOKEN in Actions). Failures are reported, never fatal: the check's exit code is about the receipt. */
 export function postComment(cwd: string, pr: PullRequest, body: string, say: (s: string) => void): boolean {
   if (!pr.number || !pr.repo) return false;
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tally-check-')), 'comment.md');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-check-')), 'comment.md');
   fs.writeFileSync(file, body);
   const gh = (args: string[]) => spawnSync('gh', args, { cwd, encoding: 'utf8', windowsHide: true, timeout: 60000 });
   try {
@@ -116,10 +116,10 @@ export function postComment(cwd: string, pr: PullRequest, body: string, say: (s:
     const id = list.status === 0 ? list.stdout.trim().split('\n').filter(Boolean)[0] : undefined;
     const r = id ? gh(['api', '-X', 'PATCH', `repos/${pr.repo}/issues/comments/${id}`, '-F', `body=@${file}`]) : gh(['api', '-X', 'POST', `repos/${pr.repo}/issues/${pr.number}/comments`, '-F', `body=@${file}`]);
     if (r.status !== 0) {
-      say(`tally check: could not ${id ? 'update' : 'post'} the PR comment: ${(r.stderr || r.stdout).trim().slice(0, 200) || 'gh not available'}`);
+      say(`sigil check: could not ${id ? 'update' : 'post'} the PR comment: ${(r.stderr || r.stdout).trim().slice(0, 200) || 'gh not available'}`);
       return false;
     }
-    say(`tally check: ${id ? 'updated' : 'posted'} the receipt comment on #${pr.number}`);
+    say(`sigil check: ${id ? 'updated' : 'posted'} the receipt comment on #${pr.number}`);
     return true;
   } finally {
     fs.rmSync(path.dirname(file), { recursive: true, force: true });
@@ -133,20 +133,20 @@ export async function run(args: Args): Promise<number | void> {
     if (!json) process.stderr.write(s + '\n');
   };
   if (!git(cwd, ['rev-parse', '--show-toplevel'])) {
-    process.stderr.write('tally check: not a git repository.\n');
+    process.stderr.write('sigil check: not a git repository.\n');
     return 2;
   }
   const pr = readPullRequestEvent();
   const base = resolveBase(cwd, flag(args, 'base'), pr?.base_ref ?? process.env.GITHUB_BASE_REF);
   const head = git(cwd, ['rev-parse', 'HEAD']);
   if (!base || !head) {
-    process.stderr.write('tally check: could not find the base commit. Pass --base <sha|branch>; in Actions use actions/checkout with fetch-depth: 0.\n');
+    process.stderr.write('sigil check: could not find the base commit. Pass --base <sha|branch>; in Actions use actions/checkout with fetch-depth: 0.\n');
     return 2;
   }
   const taskArg = flag(args, 'task');
   const taskRef = taskArg ? { ref: /\.md$/i.test(taskArg) && !/^https?:/.test(taskArg) ? path.resolve(cwd, taskArg) : taskArg, kind: 'given' as const } : pr ? taskRefFromPullRequest(pr, cwd) : null;
   if (!taskRef) {
-    process.stderr.write('tally check: no task. Pass --task <issue url | tasks/x.md | "text">, or run in a pull_request workflow.\n');
+    process.stderr.write('sigil check: no task. Pass --task <issue url | tasks/x.md | "text">, or run in a pull_request workflow.\n');
     return 2;
   }
   const cfg = loadConfig();
@@ -154,7 +154,7 @@ export async function run(args: Args): Promise<number | void> {
   const pol = loadPolicy(cwd);
   const reqFlag = flag(args, 'require');
   if (reqFlag && !REQUIRED.includes(reqFlag as Required)) {
-    process.stderr.write(`tally check: --require must be one of ${REQUIRED.join(', ')}.\n`);
+    process.stderr.write(`sigil check: --require must be one of ${REQUIRED.join(', ')}.\n`);
     return 2;
   }
   const required = (reqFlag as Required | undefined) ?? pol.policy.verification.required;
@@ -165,9 +165,9 @@ export async function run(args: Args): Promise<number | void> {
   /* a re-run judges again: nothing from the last run of this commit is reused */
   for (const f of ['task.json', 'judge.json', 'events.jsonl', 'contract.json', 'progress.json']) fs.rmSync(path.join(dir, f), { force: true });
   const llm = has(args, 'no-model') ? new NoModelLlm() : modelForCheck(session, cfg);
-  appendEvent({ ts: new Date().toISOString(), type: 'session_start', session, cwd, data: { agent: 'ci', git_head: base, source: 'tally check', pr: pr?.number ?? null, head } });
+  appendEvent({ ts: new Date().toISOString(), type: 'session_start', session, cwd, data: { agent: 'ci', git_head: base, source: 'sigil check', pr: pr?.number ?? null, head } });
   const range = `${base.slice(0, 8)}..${head.slice(0, 8)}`;
-  say(`Tally check: ${range} in ${cwd}${llm.noModel ? ' (no model: mechanical checks and tests only)' : ''}`);
+  say(`Sigil check: ${range} in ${cwd}${llm.noModel ? ' (no model: mechanical checks and tests only)' : ''}`);
   const isText = taskRef.kind === 'text' || (taskRef.kind === 'given' && !/^https?:/.test(taskRef.ref) && !/\.md$/i.test(taskRef.ref) && !/^[A-Z][A-Z0-9]+-\d+$/.test(taskRef.ref));
   const { task } = await intake({ session, cwd, ref: isText ? undefined : taskRef.ref, text: isText ? taskRef.ref : undefined, cfg, llm, force: true, noCache: true });
   say(`Task: ${task.title} · ${task.criteria.length} criteria (${task.criteria.filter((c) => c.kind === 'mechanical').length} mechanical)${task.fetch_error ? ` · ${task.fetch_error}` : ''}`);
@@ -194,9 +194,9 @@ export async function run(args: Args): Promise<number | void> {
   const wantComment = has(args, 'comment') || (!has(args, 'no-comment') && pol.policy.verification.comment);
   if (wantComment && pr?.number) postComment(cwd, pr, md, say);
   if (!ok) {
-    say(`tally check: the bar is "${required}" and the receipt does not meet it (${a.summary.verified} verified, ${a.summary.supported} supported, ${a.summary.unverified} unverified, ${a.summary.unmet} unmet).`);
+    say(`sigil check: the bar is "${required}" and the receipt does not meet it (${a.summary.verified} verified, ${a.summary.supported} supported, ${a.summary.unverified} unverified, ${a.summary.unmet} unmet).`);
     return 1;
   }
-  say(`tally check: passed (${required}).`);
+  say(`sigil check: passed (${required}).`);
   return 0;
 }

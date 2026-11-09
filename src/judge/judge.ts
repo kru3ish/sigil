@@ -7,7 +7,7 @@ import type { LlmClient } from '../llm/client.js';
 import { parseTranscriptFile, type Transcript } from '../transcript/parse.js';
 import { computeWaste } from '../cost/waste.js';
 import { attribute, markTouched } from '../cost/attribution.js';
-import { readEvents, appendEvent, type TallyEvent } from '../store/events.js';
+import { readEvents, appendEvent, type SigilEvent } from '../store/events.js';
 import { loadTask, type Task } from '../task/intake.js';
 import { collectEvidence, type Evidence, type Exec } from './evidence.js';
 import { runVerification, NO_CONSENT_REASON, type VerificationResult } from './verify.js';
@@ -37,7 +37,7 @@ export function isTestCriterion(text: string): boolean {
 import { JudgeSchema, type Judge, type Verdict } from './schema.js';
 import { renderReport, renderSummary } from './report.js';
 import { sessionDir, ensureDir, writeJson, historyFile, appendLine, repoKey, readJson, log } from '../paths.js';
-import { tallySpendFile } from '../llm/client.js';
+import { sigilSpendFile } from '../llm/client.js';
 
 export const JUDGE_SYSTEM = `You are an independent, skeptical auditor of a coding session. You did NOT do the work and you must not take the working assistant's word for anything.
 Evidence hierarchy, strongest first: (1) the INDEPENDENT test run that the auditor executed, (2) the git diff, (3) tool outputs recorded in the transcript, (4) the assistant's own messages, which are claims, not evidence.
@@ -88,7 +88,7 @@ interface JudgeOut {
 export function otelCrossCheck(session: string, transcriptCost: number): Judge['cost']['otel'] {
   const o = otelCostForSession(session);
   if (o.available) return { available: true, total_usd: round(o.total_usd), delta_usd: round(o.total_usd - transcriptCost), note: `${o.points} metric points` };
-  if (process.env.CLAUDE_CODE_ENABLE_TELEMETRY) return { available: false, note: 'CLAUDE_CODE_ENABLE_TELEMETRY is set but no metrics reached Tally for this session; run `tally otel` and point OTEL_EXPORTER_OTLP_ENDPOINT at it' };
+  if (process.env.CLAUDE_CODE_ENABLE_TELEMETRY) return { available: false, note: 'CLAUDE_CODE_ENABLE_TELEMETRY is set but no metrics reached Sigil for this session; run `sigil otel` and point OTEL_EXPORTER_OTLP_ENDPOINT at it' };
   return undefined;
 }
 
@@ -187,8 +187,8 @@ function round(n: number, d = 4): number {
   return Math.round(n * f) / f;
 }
 
-export function tallyOwnSpend(session: string): number {
-  const f = tallySpendFile();
+export function sigilOwnSpend(session: string): number {
+  const f = sigilSpendFile();
   if (!fs.existsSync(f)) return 0;
   let sum = 0;
   for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
@@ -230,7 +230,7 @@ export async function judgeSession(opts: {
   llm: LlmClient;
   reason: Judge['reason'];
   exec?: Exec;
-  events?: TallyEvent[];
+  events?: SigilEvent[];
   verification?: VerificationResult;
   task?: Task | null;
   consent?: boolean;
@@ -243,7 +243,7 @@ export async function judgeSession(opts: {
 }): Promise<Judge> {
   const events = opts.events ?? readEvents(opts.session);
   const t = parseTranscriptFile(opts.transcriptPath);
-  if (t.internal) throw new Error('refusing to judge one of Tally\'s own internal runs');
+  if (t.internal) throw new Error('refusing to judge one of Sigil\'s own internal runs');
   let task = opts.task === undefined ? loadTask(opts.session) : opts.task;
   const linked = !!task;
   if (!task) task = implicitTask(opts.session, opts.cwd, t, opts.cfg);
@@ -304,7 +304,7 @@ export async function judgeSession(opts: {
   if (opts.llm.noModel) {
     for (const id of judgmentIds) {
       const c = task.criteria.find((x) => x.id === id)!;
-      resolved.set(id, { id, text: c.text, status: 'unverifiable', evidence: 'no model in this run: this criterion needs a reading of the evidence (give it a mechanical check, or set TALLY_LLM_API_KEY)', files: [], resolved_by: 'rule' });
+      resolved.set(id, { id, text: c.text, status: 'unverifiable', evidence: 'no model in this run: this criterion needs a reading of the evidence (give it a mechanical check, or set SIGIL_LLM_API_KEY)', files: [], resolved_by: 'rule' });
     }
     decision = { ...decision, run_tier1: false, run_tier2: false, tier2_criteria: [] };
   }
@@ -414,7 +414,7 @@ export async function judgeSession(opts: {
       ? reviewCaps(review)
         ? ` Held at borderline: the maintainer review would request changes (${review?.layer === 'workaround' ? 'fix is a workaround, ' : ''}${review?.blast_radius === 'wide' ? 'wide blast radius, ' : ''}${review?.untested_surface?.length ? `${review.untested_surface.length} changed behaviour(s) without a test` : ''}).`.replace(/, \)\./, ').')
         : specCapped
-          ? ` Held at borderline: spec quality ${task.spec_quality.score}/10 needed clarification and the task was never confirmed (tally task --confirm lifts this).`
+          ? ` Held at borderline: spec quality ${task.spec_quality.score}/10 needed clarification and the task was never confirmed (sigil task --confirm lifts this).`
           : ` Held at borderline: \`${ver.command}\` exited 0 but ran no tests, so the green run proves nothing.`
       : '';
   const tiersRan: Array<'tier0' | 'tier1' | 'tier2'> = ['tier0', ...tierCosts.map((c) => c.tier)];
@@ -435,7 +435,7 @@ export async function judgeSession(opts: {
     t,
     criteria.filter((c) => c.status === 'met').flatMap((c) => c.files),
   );
-  const tallyOwn = tallyOwnSpend(opts.session);
+  const sigilOwn = sigilOwnSpend(opts.session);
 
   const judge: Judge = {
     version: 1,
@@ -482,8 +482,8 @@ export async function judgeSession(opts: {
       per_completed_criterion_usd: counts.met > 0 ? round(t.cost / counts.met, 2) : null,
       budget_usd: task.budget_usd,
       budget_used_pct: task.budget_usd > 0 ? round((t.cost / task.budget_usd) * 100, 1) : 0,
-      tally_own_usd: round(Math.max(tallyOwn, r.cost_usd)),
-      tally_share_pct: t.cost > 0 ? round((Math.max(tallyOwn, r.cost_usd) / t.cost) * 100, 1) : 0,
+      sigil_own_usd: round(Math.max(sigilOwn, r.cost_usd)),
+      sigil_share_pct: t.cost > 0 ? round((Math.max(sigilOwn, r.cost_usd) / t.cost) * 100, 1) : 0,
       confidence: t.cost_confidence,
       format: t.format,
       otel: otelCrossCheck(opts.session, t.cost),
@@ -497,7 +497,7 @@ export async function judgeSession(opts: {
       compaction_churn: { ...waste.compaction_churn, usd: round(waste.compaction_churn.usd) },
     },
     value: { estimate_hours: task.estimate.hours, hourly_rate: task.hourly_rate, human_value_usd: round(humanValue, 2), credited_value_usd: credited, roi_multiple: roi },
-    attribution: { label: 'correlational', note: 'Whether a skill or MCP call touched a met criterion is a correlation, not a cause. Run `tally experiment start <skill|mcp> <name> --tasks N` for a controlled answer.', rows },
+    attribution: { label: 'correlational', note: 'Whether a skill or MCP call touched a met criterion is a correlation, not a cause. Run `sigil experiment start <skill|mcp> <name> --tasks N` for a controlled answer.', rows },
     safety: { flags: scanSecurity(events, opts.repoCwd ?? opts.cwd) },
     verdict: { verdict, reason: String(out.verdict_reason ?? '') + capNote },
     review,
@@ -555,8 +555,8 @@ export function persistJudge(judge: Judge, task: Task | null): void {
     final_verdict: judge.followup?.final_verdict,
     linked: judge.task.linked,
     task_source: judge.task.task_source,
-    tally_own_usd: judge.cost.tally_own_usd,
-    tally_share_pct: judge.cost.tally_share_pct,
+    sigil_own_usd: judge.cost.sigil_own_usd,
+    sigil_share_pct: judge.cost.sigil_share_pct,
     cost_confidence: judge.cost.confidence,
     internal: false,
     criteria_count: judge.criteria.length,
@@ -585,7 +585,7 @@ export function implicitTask(session: string, cwd: string, t: Transcript, cfg: C
     budget_usd: 0,
     budget_basis: 'none',
     hourly_rate: cfg.hourly_rate,
-    tally_cost_usd: 0,
+    sigil_cost_usd: 0,
     model: 'none',
   };
 }
@@ -607,18 +607,18 @@ export function currentHead(cwd: string): string | undefined {
 /* a fingerprint of the uncommitted work: the diff against HEAD plus the untracked files; a receipt made before an edit
    must not be reused after it */
 export function workingTreeHash(cwd: string): string | undefined {
-  /* Tally's own files in the repository (.tally/ledger.jsonl) are not the person's work: writing a receipt summary must
+  /* Sigil's own files in the repository (.sigil/ledger.jsonl) are not the person's work: writing a receipt summary must
      not make the receipt look stale */
-  const diff = spawnSync('git', ['diff', 'HEAD', '--no-color', '--', '.', ':(exclude).tally'], { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 50 * 1024 * 1024 });
+  const diff = spawnSync('git', ['diff', 'HEAD', '--no-color', '--', '.', ':(exclude).sigil'], { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 50 * 1024 * 1024 });
   if (diff.status !== 0) return undefined;
   const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard'], { cwd, encoding: 'utf8', windowsHide: true });
-  const untrackedList = untracked.status === 0 ? untracked.stdout.split('\n').filter((f) => f && !isTallyPath(f)).join('\n') : '';
+  const untrackedList = untracked.status === 0 ? untracked.stdout.split('\n').filter((f) => f && !isSigilPath(f)).join('\n') : '';
   return createHash('sha1').update(diff.stdout).update('\n--\n').update(untrackedList).digest('hex').slice(0, 16);
 }
 
-/* .tally/ in a repository holds the team ledger; it is Tally's, never evidence of the work */
-export function isTallyPath(file: string): boolean {
-  return /^\.tally[\\/]/.test(file.trim());
+/* .sigil/ (or the 0.13 .tally/) in a repository holds the team ledger; it is Sigil's, never evidence of the work */
+export function isSigilPath(file: string): boolean {
+  return /^\.(?:sigil|tally)[\\/]/.test(file.trim());
 }
 
 /* A stored receipt is current only when nothing it depends on has moved: the commit, the uncommitted work, and the

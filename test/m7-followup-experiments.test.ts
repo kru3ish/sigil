@@ -27,7 +27,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function repoWithRevert(): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-fu-');
+  const cwd = tmpDir('sigil-fu-');
   git(cwd, 'init', '-q', '-b', 'main');
   git(cwd, 'config', 'user.email', 't@t');
   git(cwd, 'config', 'user.name', 't');
@@ -147,7 +147,7 @@ describe('follow-up', () => {
 
 describe('experiments', () => {
   it('alternates arms, patches settings.local.json, and restores it byte-identically', () => {
-    const cwd = tmpDir('tally-exp-');
+    const cwd = tmpDir('sigil-exp-');
     const file = path.join(cwd, '.claude', 'settings.local.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const original = '{\n  "model": "opus"\n}\n';
@@ -164,7 +164,7 @@ describe('experiments', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(original);
     prepareNextArm(cwd);
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).disabledMcpjsonServers).toBeUndefined();
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))._tally_experiment.arm).toBe('on');
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))._sigil_experiment.arm).toBe('on');
     expect(recordAssignment(cwd, 'sess-b')).toBe('on');
     restoreExperimentConfig(cwd, 'sess-b');
     expect(fs.readFileSync(file, 'utf8')).toBe(original);
@@ -176,7 +176,7 @@ describe('experiments', () => {
   });
 
   it('handles a skill arm and a missing settings file (restored to missing)', () => {
-    const cwd = tmpDir('tally-exp2-');
+    const cwd = tmpDir('sigil-exp2-');
     const file = path.join(cwd, '.claude', 'settings.local.json');
     startExperiment(cwd, 'skill', 'superpowers:brainstorming', 2);
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).permissions.deny).toEqual(['Skill(superpowers:brainstorming)']);
@@ -186,7 +186,7 @@ describe('experiments', () => {
   });
 
   it('reports honestly about sample size and compares arms', async () => {
-    const cwd = tmpDir('tally-exp3-');
+    const cwd = tmpDir('sigil-exp3-');
     const exp = startExperiment(cwd, 'skill', 'tdd', 8);
     let r = buildReport(exp);
     expect(r.enough_data).toBe(false);

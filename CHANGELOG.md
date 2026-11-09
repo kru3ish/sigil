@@ -1,6 +1,15 @@
 # Changelog
 
-All notable changes to Tally. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
+All notable changes to Sigil (Tally until 0.13). The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow semver, and the plugin manifest version moves with the npm version.
+
+## [0.14.0] - 2026-11-09
+
+Tally is now Sigil. A sigil is the seal pressed into wax so the reader can trust the document without trusting the courier; that is what the receipt is for. The old name was shared with four other AI coding analytics tools, one of them a Claude Code plugin, so anyone who searched for it found someone else.
+
+### Changed
+- **The name.** npm package `sigil` (was `@kru3ish/tally`), binary `sigil`, plugin and marketplace `sigil` (`/plugin marketplace add kru3ish/sigil`, `/plugin install sigil@sigil`), slash commands `/sigil:*`, MCP server `sigil` with tools `sigil_task`, `sigil_unmet`, `sigil_receipt`, `sigil_flags`, `sigil_budget`, repository `github.com/kru3ish/sigil` (the old URL redirects). Data dir `~/.sigil`, environment `SIGIL_*`, repo policy `sigil.json`, team ledger `.sigil/ledger.jsonl`, GitHub Action "Sigil check".
+- **One release of compatibility, removed in 0.15.** The `tally` binary stays as an alias of `sigil`. A `TALLY_*` variable is read when the `SIGIL_*` one is unset. When `~/.sigil` does not exist and `~/.tally` does, Sigil uses `~/.tally` in place and `sigil doctor` says so; nothing is moved. `tally.json` / `.tally.json` are read when a repository has no `sigil.json`, and its `.tally/ledger.jsonl` when it has no `.sigil/` ledger. Hooks and status lines installed by the old binary, and the `tally@tally` plugin id, are recognised by `sigil doctor`, `sigil install` and `sigil uninstall`.
+- Entries below this one, DECISIONS before "The name", and `docs/releases/*` keep the old name where it was written.
 
 ## [0.13.0] - 2026-11-09
 

@@ -11,11 +11,11 @@ export async function run(args: Args): Promise<number | void> {
     const name = args._[2];
     const tasks = Number(flag(args, 'tasks') ?? 6);
     if ((kind !== 'skill' && kind !== 'mcp') || !name || !Number.isFinite(tasks) || tasks < 2) {
-      process.stderr.write('Usage: tally experiment start <skill|mcp> <name> --tasks N\n');
+      process.stderr.write('Usage: sigil experiment start <skill|mcp> <name> --tasks N\n');
       return 1;
     }
     const exp = startExperiment(cwd, kind, name, tasks);
-    process.stdout.write(`Started experiment ${exp.id}: ${kind} "${name}" alternates off/on across the next ${tasks} tasks in this repo.\nThe next session starts with it ${exp.next_arm.toUpperCase()} (.claude/settings.local.json is patched now and restored byte-identically at each session end).\nRun \`tally experiment report\` after a few judged tasks.\n`);
+    process.stdout.write(`Started experiment ${exp.id}: ${kind} "${name}" alternates off/on across the next ${tasks} tasks in this repo.\nThe next session starts with it ${exp.next_arm.toUpperCase()} (.claude/settings.local.json is patched now and restored byte-identically at each session end).\nRun \`sigil experiment report\` after a few judged tasks.\n`);
     return;
   }
   if (sub === 'stop') {
@@ -28,13 +28,13 @@ export async function run(args: Args): Promise<number | void> {
     const all = loadExperiments().experiments.filter((e) => e.repo === key);
     const target = flag(args, 'id') ? all.find((e) => e.id === flag(args, 'id')) : activeExperiment(cwd) ?? all.at(-1);
     if (!target) {
-      process.stdout.write('No experiments in this repo. Start one: tally experiment start <skill|mcp> <name> --tasks 6\n');
+      process.stdout.write('No experiments in this repo. Start one: sigil experiment start <skill|mcp> <name> --tasks 6\n');
       return;
     }
     process.stdout.write(renderExperimentReport(buildReport(target)) + '\n');
     if (all.length > 1) process.stdout.write(`\n(${all.length} experiments in this repo; pass --id <id> for another)\n`);
     return;
   }
-  process.stderr.write('Usage: tally experiment start|report|stop\n');
+  process.stderr.write('Usage: sigil experiment start|report|stop\n');
   return 1;
 }

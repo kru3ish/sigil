@@ -1,4 +1,4 @@
-/* `tally check`: the pull-request check with no session behind it. A clean checkout, a task file with checks written
+/* `sigil check`: the pull-request check with no session behind it. A clean checkout, a task file with checks written
    into it, an independent test run, the mutation check, and an exit code that follows the repo policy. */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
@@ -25,7 +25,7 @@ function git(cwd: string, args: string[]): string {
 /* base: login returns 200; a task file with three criteria, two of them with checks written in. The branch adds the
    limit, a test that names the 429, and (unless `forgetReadme`) the README line. */
 function makeRepo(opts: { forgetReadme?: boolean } = {}): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-check-');
+  const cwd = tmpDir('sigil-check-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.mkdirSync(path.join(cwd, 'test'));
@@ -49,7 +49,7 @@ function makeRepo(opts: { forgetReadme?: boolean } = {}): { cwd: string; base: s
 }
 
 function check(cwd: string, args: string[], env: Record<string, string> = {}): { status: number | null; stdout: string; stderr: string; json: (Assurance & { check: { passed: boolean; required: string; no_model: boolean; tests_run: boolean } }) | null } {
-  const r = spawnSync(process.execPath, [CLI, 'check', ...args], { cwd, encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_LLM: 'none', TALLY_TELEMETRY: '0', GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: '', GITHUB_OUTPUT: '', ...env }, timeout: 120000 });
+  const r = spawnSync(process.execPath, [CLI, 'check', ...args], { cwd, encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_LLM: 'none', SIGIL_TELEMETRY: '0', GITHUB_EVENT_PATH: '', GITHUB_STEP_SUMMARY: '', GITHUB_OUTPUT: '', ...env }, timeout: 120000 });
   let json = null;
   try {
     json = JSON.parse(r.stdout);
@@ -71,10 +71,10 @@ describe('checks written into the ticket', () => {
   });
 });
 
-describe('tally check', () => {
+describe('sigil check', () => {
   it('judges base..HEAD of a checkout with no session: mechanical checks, the independent run, the mutation check, and a clean exit', () => {
     const { cwd, base } = makeRepo();
-    const summary = path.join(tmpDir('tally-sum-'), 'summary.md');
+    const summary = path.join(tmpDir('sigil-sum-'), 'summary.md');
     fs.writeFileSync(summary, '');
     const out = path.join(path.dirname(summary), 'out.txt');
     fs.writeFileSync(out, '');
@@ -102,7 +102,7 @@ describe('tally check', () => {
     /* the step summary and outputs for the workflow */
     const md = fs.readFileSync(summary, 'utf8');
     expect(md.startsWith(MARKDOWN_MARKER)).toBe(true);
-    expect(md).toContain('### Tally check — passed');
+    expect(md).toContain('### Sigil check — passed');
     expect(md).toContain('| ✅ VERIFIED | README documents the limit |');
     expect(md).toContain('Mutation check: the agent\'s tests fail without the change');
     expect(md).toContain('No model in this run');
@@ -112,7 +112,7 @@ describe('tally check', () => {
     const strict = check(cwd, ['--task', 'tasks/rate-limit.md', '--base', base, '--require', 'verified', '--no-comment']);
     expect(strict.status).toBe(1);
     expect(strict.stderr).toContain('the bar is "verified"');
-    expect(strict.stdout).toContain('Tally Verify');
+    expect(strict.stdout).toContain('Sigil Verify');
   }, 120000);
 
   it('fails the check on an unmet criterion, and follows the repo policy for the bar', () => {
@@ -122,9 +122,9 @@ describe('tally check', () => {
     expect(r.json!.check.passed).toBe(false);
     expect(r.json!.criteria.find((c) => c.text === 'README documents the limit')!.status).toBe('UNMET');
     /* the policy can lower the bar to nothing but the mechanical checks' absence... no: no-unmet is the floor; it can only raise it */
-    fs.writeFileSync(path.join(cwd, 'tally.json'), JSON.stringify({ verification: { required: 'verified', comment: false } }));
+    fs.writeFileSync(path.join(cwd, 'sigil.json'), JSON.stringify({ verification: { required: 'verified', comment: false } }));
     const ok = makeRepo();
-    fs.writeFileSync(path.join(ok.cwd, 'tally.json'), JSON.stringify({ verification: { required: 'verified', comment: false } }));
+    fs.writeFileSync(path.join(ok.cwd, 'sigil.json'), JSON.stringify({ verification: { required: 'verified', comment: false } }));
     const r2 = check(ok.cwd, ['--task', 'tasks/rate-limit.md', '--base', ok.base, '--json', '--no-comment']);
     expect(r2.status).toBe(1);
     expect(r2.json!.check.required).toBe('verified');
@@ -137,7 +137,7 @@ describe('tally check', () => {
 
   it('finds the task behind a pull request from the event file, and the base from the PR base branch', () => {
     const { cwd, base } = makeRepo();
-    const ev = path.join(tmpDir('tally-ev-'), 'event.json');
+    const ev = path.join(tmpDir('sigil-ev-'), 'event.json');
     fs.writeFileSync(ev, JSON.stringify({ pull_request: { number: 7, title: 'Add the limit', body: 'Implements tasks/rate-limit.md\n\nFixes #12', html_url: 'https://github.com/o/r/pull/7', base: { ref: 'main' } }, repository: { full_name: 'o/r' } }));
     const pr = readPullRequestEvent({ GITHUB_EVENT_PATH: ev })!;
     expect(pr).toMatchObject({ number: 7, repo: 'o/r', base_ref: 'main' });
@@ -176,7 +176,7 @@ describe('tally check', () => {
       } as unknown as Assurance,
       { range: 'a..b', required: 'no-unmet', passed: false },
     );
-    expect(md).toContain('### Tally check — failed');
+    expect(md).toContain('### Sigil check — failed');
     expect(md).toContain('| ❌ UNMET | A \\| B | README.md does not contain Limit |');
     expect(md).toContain('for a..b');
     expect(md).toContain('no code or prompts');

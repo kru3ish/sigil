@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isolate, basicFixture } from './helpers.js';
 import { loadConfig } from '../src/config.js';
-import { StubLlm, tallySpendFile } from '../src/llm/client.js';
+import { StubLlm, sigilSpendFile } from '../src/llm/client.js';
 import { classifyRef, fetchTask, type FetchDeps } from '../src/task/fetchers.js';
 import { intake, loadTask, computeBudget, computeEstimate, TaskSchema, renderTask } from '../src/task/intake.js';
 
@@ -137,7 +137,7 @@ describe('intake', () => {
     expect(TaskSchema.safeParse(JSON.parse(fs.readFileSync(path.join(iso.home, 'sessions', 's1', 'task.json'), 'utf8'))).success).toBe(true);
     expect(llm.calls[0]!.kind).toBe('intake');
     expect(llm.calls[0]!.prompt).toContain('Add tests');
-    expect(fs.readFileSync(tallySpendFile(), 'utf8')).toContain('"intake"');
+    expect(fs.readFileSync(sigilSpendFile(), 'utf8')).toContain('"intake"');
   });
 
   it('flags low spec quality and lists questions', async () => {

@@ -1,6 +1,6 @@
-# Tally as the reliability layer for AI coding agents
+# Sigil as the reliability layer for AI coding agents
 
-Status: living document. Written 2026-09-27 against 0.4.0 after an audit of the whole repository (30 source modules, 196 tests, five authored fixtures, two blind-graded evals). This is the plan for turning Tally from "receipts and a coach for Claude Code" into a vendor-neutral engine that answers five questions about any coding agent's work:
+Status: living document. Written 2026-09-27 against 0.4.0 after an audit of the whole repository (30 source modules, 196 tests, five authored fixtures, two blind-graded evals). This is the plan for turning Sigil from "receipts and a coach for Claude Code" into a vendor-neutral engine that answers five questions about any coding agent's work:
 
 1. **VERIFY**: did the agent complete the requested task?
 2. **OBSERVE**: how did it behave while doing so?
@@ -22,12 +22,12 @@ The governing principle: **evidence is the source of truth; model judgment fills
 | Independent verification | `src/judge/verify.ts`: detects or takes the policy `test_command`, runs it in a scrubbed environment with a timeout after one consent per repo | yes | Does not yet distinguish pre-existing tests from tests the agent wrote |
 | Receipts | `src/judge/schema.ts`, `report.ts`: `judge.json` + `report.md` | yes, extend | Verdict, quality 0–10 and ROI lead the summary; they should follow the evidence |
 | Coach | `src/coach/`: 15 deterministic rules, LLM pass, autopilot, flags | yes | Rule inputs are raw events; they will read the normalised stream once it exists |
-| Policy | `src/policy.ts`: `tally.json` criteria, budget, hard stop, `test_command` | yes, extend | |
+| Policy | `src/policy.ts`: `sigil.json` criteria, budget, hard stop, `test_command` | yes, extend | |
 | Follow-up | `src/commands/followup.ts` | yes | Post-merge outcome tracking already distinguishes "looked done" from "held up" |
 | Calibration | `src/calibrate/`: fixtures replayed in CI, blind grading, agreement reports | yes | Needs the new statuses and a false-VERIFIED measure |
 | Backfill, experiments, export, replay, onboard, playbook | `src/backfill/`, `src/commands/*` | yes | |
 
-Backwards-compatibility requirements found: stored `events.jsonl`, `task.json`, `judge.json`, `history.jsonl` and `calibration.jsonl` must keep loading; the plugin's hook command line (`node dist/hook.js <Event>`) must keep working; `tally calibrate rescore` must be able to re-derive receipts from stored criteria.
+Backwards-compatibility requirements found: stored `events.jsonl`, `task.json`, `judge.json`, `history.jsonl` and `calibration.jsonl` must keep loading; the plugin's hook command line (`node dist/hook.js <Event>`) must keep working; `sigil calibrate rescore` must be able to re-derive receipts from stored criteria.
 
 ## Target architecture
 
@@ -42,10 +42,10 @@ flowchart LR
   D --> G[Observability<br/>waste, metrics]
   D --> H[Memory engine]
   D --> I[Evaluation engine]
-  D --> J[Policy engine<br/>tally.json]
+  D --> J[Policy engine<br/>sigil.json]
   E --> F
   J --> F
-  F --> R[Receipt<br/>judge.json · report.md · tally verify]
+  F --> R[Receipt<br/>judge.json · report.md · sigil verify]
   G --> R
   H --> R
 ```
@@ -65,7 +65,7 @@ The migration is incremental: the raw store is unchanged, the normalised stream 
 | SUPPORTED | Evidence supports the criterion but needs interpretation or is incomplete (a model judgment without a deterministic anchor; visible partial work) |
 | UNVERIFIED | Not enough evidence to say |
 | UNMET | Evidence shows the criterion was not done |
-| Provenance | Whether a test existed at session start, was written by the agent, or was run independently by Tally |
+| Provenance | Whether a test existed at session start, was written by the agent, or was run independently by Sigil |
 
 The four statuses map onto the stored `met / partial / unmet / unverifiable` plus the resolving tier, so old receipts can be re-expressed without re-judging.
 
@@ -76,34 +76,34 @@ Sequencing follows what the repository can support today, not a wish list.
 ### v0.5 Assurance (shipped 2026-09-27)
 
 - `src/core/events.ts`: the normalised event model with `agent` and `model` as separate objects, derived from the raw store and the transcript. Tests prove the projection on the fixture session and on Codex, Gemini and Cursor payloads.
-- `src/core/contract.ts`: Task Contract as a first-class object projected from `task.json` (goal, criteria, constraints, verification, unknowns, status, revisions). `tally task --show` renders it; `--confirm` and `--edit` record revisions.
+- `src/core/contract.ts`: Task Contract as a first-class object projected from `task.json` (goal, criteria, constraints, verification, unknowns, status, revisions). `sigil task --show` renders it; `--confirm` and `--edit` record revisions.
 - `src/assurance/`: the Evidence Map and the four statuses, built from deterministic evidence first and the Judge's model judgments second; test provenance (pre-existing / agent-created / independent).
-- `tally verify [--json] [--ci] [--deep]`: the flagship output. `--json` follows a documented `tally.verify.v1` schema. `--ci` exits non-zero on UNMET.
+- `sigil verify [--json] [--ci] [--deep]`: the flagship output. `--json` follows a documented `sigil.verify.v1` schema. `--ci` exits non-zero on UNMET.
 - Receipt redesign: evidence first, agent and model named, verification provenance, potentially avoidable work itemised, verdict and ROI labelled experimental and moved down.
-- Adapter capabilities and `tally adapters`.
+- Adapter capabilities and `sigil adapters`.
 - Docs: this roadmap, `ARCHITECTURE.md`, `ADAPTER_SDK.md`, `EVALUATION.md`, a README that leads with the five questions.
 
 ### v0.6 Evaluation (shipped 2026-09-27)
 
 Pulled forward: before adding more assurance features, the project needed a way to find out when the existing ones over-claim.
 
-- `tally eval run|discover|report`: isolated repository, coding-agent session with Tally attached, Tally's judge, a blind evaluator in a separate process, comparison, a committed ledger by class (`eval/results/`).
+- `sigil eval run|discover|report`: isolated repository, coding-agent session with Sigil attached, Sigil's judge, a blind evaluator in a separate process, comparison, a committed ledger by class (`eval/results/`).
 - Five adversarial calibration fixtures with `assurance_ceiling`; false VERIFIED counted and gated in CI; `--rebaseline` for honest lower numbers.
 - Deterministic safeguards the evaluation forced: a runner that runs nothing is inconclusive and caps the verdict; a test claim needs a test; a touched test file is provenance, not an anchor; a tree is scanned only if it holds the receipt's base commit; generic tokens are not names.
 - `scripts/release-check.mjs`: the release checklist as an executable.
 
 ### v0.7 Ship quality
 
-- `tally ship`: evidence-based readiness (contract, criteria, tests, lint, scope, regression evidence, documentation, policy) with blocking and weak evidence listed and next actions.
+- `sigil ship`: evidence-based readiness (contract, criteria, tests, lint, scope, regression evidence, documentation, policy) with blocking and weak evidence listed and next actions.
 - Scope expansion: expected areas from the contract versus areas touched, flagged not judged.
-- `tally risk`: touched modules, callers where practical, tests that cover them, suggested verification commands.
+- `sigil risk`: touched modules, callers where practical, tests that cover them, suggested verification commands.
 - Test-quality evidence for new or changed tests (exercises changed behaviour, meaningful assertions, negative cases), static first, model only where static cannot tell.
 - Plan drift where an agent exposes a plan (Claude Code's TodoWrite, Cursor's plan events).
-- Policy expansion in `tally.json`: `requirements`, `paths.require_human_review`, generated-file protection, verification required before ship. Deterministic enforcement only.
+- Policy expansion in `sigil.json`: `requirements`, `paths.require_human_review`, generated-file protection, verification required before ship. Deterministic enforcement only.
 
 ### v0.8 Memory
 
-- Repository memory under `.tally/memory/` with provenance (source, supporting sessions, confidence, first and last observed); explainable with `tally memory` and `tally memory explain <id>`.
+- Repository memory under `.sigil/memory/` with provenance (source, supporting sessions, confidence, first and last observed); explainable with `sigil memory` and `sigil memory explain <id>`.
 - Mistake memory: recurring failure patterns across sessions, surfaced as historical warnings at session start, agent-agnostic.
 - Instruction-file recommendations (CLAUDE.md, AGENTS.md, tool equivalents) proposed from repeated evidence, never auto-applied unless configured.
 
@@ -114,12 +114,12 @@ Pulled forward: before adding more assurance features, the project needed a way 
 
 ### v1.0 Deep assurance
 
-- Mutation verification in an isolated worktree (`tally verify --deep` gains mutations; opt-in; never touches the user's tree).
+- Mutation verification in an isolated worktree (`sigil verify --deep` gains mutations; opt-in; never touches the user's tree).
 - Richer regression analysis; mature evaluation suite with false-VERIFIED as the headline error.
 
 ### Beyond
 
-The reliability layer: an agent is replaceable, Tally retains the truth.
+The reliability layer: an agent is replaceable, Sigil retains the truth.
 
 ## Non-goals for now
 

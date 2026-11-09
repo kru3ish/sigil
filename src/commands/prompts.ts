@@ -1,4 +1,4 @@
-/* `tally prompts`: what your best-scoring tasks' opening prompts had in common, from your own receipts. Compares
+/* `sigil prompts`: what your best-scoring tasks' opening prompts had in common, from your own receipts. Compares
    the top and bottom halves by completion on a few plain features and offers a starting template. */
 import { type Args, has } from '../cli.js';
 import { loadHistory } from '../coach/context.js';

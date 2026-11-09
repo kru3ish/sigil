@@ -28,7 +28,7 @@ export const burnRate: Rule = {
           title: `$${spent.toFixed(2)} in ${BURN_WINDOW_MIN} min, no file changed`,
           message: `The last ${BURN_WINDOW_MIN} minutes cost $${spent.toFixed(2)} across ${calls} tool calls without a single edit. That is exploration or thrashing. Narrow the question or give Claude the file names.`,
           usd_saved: spent / 2,
-          action: { kind: 'inject', label: 'Ask Claude to commit to a plan', note: `Tally observed ${calls} tool calls and $${spent.toFixed(2)} of spend in the last ${BURN_WINDOW_MIN} minutes with no file edited.` },
+          action: { kind: 'inject', label: 'Ask Claude to commit to a plan', note: `Sigil observed ${calls} tool calls and $${spent.toFixed(2)} of spend in the last ${BURN_WINDOW_MIN} minutes with no file edited.` },
         });
       }
     }
@@ -42,9 +42,9 @@ export const burnRate: Rule = {
           key: 'budget:100',
           severity: 'critical',
           title: `Over budget: $${ctx.spendUsd.toFixed(2)} of $${task.budget_usd.toFixed(2)}`,
-          message: `Spend has passed the budget for "${task.title}" (${pct.toFixed(0)}%), set from ${from}. Wrap up, re-scope, or raise the cap on purpose (tally budget set <usd>).`,
+          message: `Spend has passed the budget for "${task.title}" (${pct.toFixed(0)}%), set from ${from}. Wrap up, re-scope, or raise the cap on purpose (sigil budget set <usd>).`,
           usd_saved: ctx.avgTurnCostUsd * 5,
-          action: { kind: 'inject', label: 'Tell Claude to wrap up', note: `Tally observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget from ${from} (${pct.toFixed(0)}%).` },
+          action: { kind: 'inject', label: 'Tell Claude to wrap up', note: `Sigil observed session spend of $${ctx.spendUsd.toFixed(2)} against the task's $${task.budget_usd.toFixed(2)} budget from ${from} (${pct.toFixed(0)}%).` },
         });
       } else if (pct >= 80) {
         out.push({
@@ -54,7 +54,7 @@ export const burnRate: Rule = {
           title: `${pct.toFixed(0)}% of budget used`,
           message: `$${ctx.spendUsd.toFixed(2)} of the $${task.budget_usd.toFixed(2)} budget is spent. ${task.criteria.length} criteria were frozen at intake; check which are done before spending more.`,
           usd_saved: ctx.avgTurnCostUsd * 3,
-          action: { kind: 'inject', label: 'Ask for a criteria checkpoint', note: `Tally observed session spend at ${pct.toFixed(0)}% of the $${task.budget_usd.toFixed(2)} budget; the ${task.criteria.length} acceptance criteria frozen at intake are: ${task.criteria.map((c) => c.text).join('; ')}.` },
+          action: { kind: 'inject', label: 'Ask for a criteria checkpoint', note: `Sigil observed session spend at ${pct.toFixed(0)}% of the $${task.budget_usd.toFixed(2)} budget; the ${task.criteria.length} acceptance criteria frozen at intake are: ${task.criteria.map((c) => c.text).join('; ')}.` },
         });
       }
     }

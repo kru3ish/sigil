@@ -15,7 +15,7 @@ export const ConfigSchema = z.object({
       /* 'claude' runs `claude -p` on your login; 'openai-compatible' talks to base_url (Ollama, vLLM, LM Studio) for air-gapped use */
       provider: z.enum(['claude', 'openai-compatible']).default('claude'),
       base_url: z.string().default('http://localhost:11434/v1'),
-      api_key_env: z.string().default('TALLY_LLM_API_KEY'),
+      api_key_env: z.string().default('SIGIL_LLM_API_KEY'),
       usd_per_million_input: z.number().nonnegative().default(0),
       usd_per_million_output: z.number().nonnegative().default(0),
     })
@@ -61,7 +61,7 @@ export const ConfigSchema = z.object({
     .default({}),
   cost: z
     .object({
-      /* every finished story appends one numbers-and-title line to <repo>/.tally/ledger.jsonl; commit it and the team
+      /* every finished story appends one numbers-and-title line to <repo>/.sigil/ledger.jsonl; commit it and the team
          shares estimates and the dashboard */
       ledger: z.boolean().default(true),
       /* open the cost dashboard in the browser when an interactive session with a priced story ends */
@@ -90,7 +90,7 @@ export const ConfigSchema = z.object({
       enabled: z.boolean().default(true),
       /* TF-IDF cosine a past task must reach to be offered */
       min_similarity: z.number().min(0).max(1).default(0.35),
-      /* where the cards live; default ~/.tally/recall. A synced folder (a notes vault) shares them across machines */
+      /* where the cards live; default ~/.sigil/recall. A synced folder (a notes vault) shares them across machines */
       dir: z.string().optional(),
     })
     .default({}),

@@ -1,5 +1,5 @@
 {
-  "description": "Tally records session events for per-task receipts and live coaching; every hook exits 0 in under 150 ms and never calls the network.",
+  "description": "Sigil records session events for per-task receipts and live coaching; every hook exits 0 in under 150 ms and never calls the network.",
   "hooks": {
     "SessionStart": [
       {

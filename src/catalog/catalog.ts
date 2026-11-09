@@ -1,9 +1,9 @@
 /* The catalog of what already exists: plugins, skills, subagents and MCP servers other people have built and listed.
    When the cost check finds a pattern (docs looked up on the web, whole files read, a context that never compacts),
-   it asks the catalog for the best existing tool for that need before falling back to a file Tally writes itself.
+   it asks the catalog for the best existing tool for that need before falling back to a file Sigil writes itself.
 
    Sources, fetched with plain GETs (nothing about the user, the repo or the session is sent) and cached in
-   ~/.tally/catalog.json for a week:
+   ~/.sigil/catalog.json for a week:
      official  Anthropic's plugin marketplace (claude-plugins-official) and Anthropic's skills marketplace
      curated   awesome-claude-code, awesome-mcp-servers, awesome-claude-skills (community lists with human review)
    The open MCP registry is not used for ranking: it has no quality signal, and a search for "documentation" returned
@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { readJson, tallyHome, writeJson } from '../paths.js';
+import { readJson, sigilHome, writeJson } from '../paths.js';
 
 export type Tier = 'official' | 'curated';
 export type Kind = 'plugin' | 'skill' | 'mcp' | 'agent' | 'tool';
@@ -112,7 +112,7 @@ export const SOURCES: SourceDef[] = [
 ];
 
 export function catalogFile(): string {
-  return path.join(tallyHome(), 'catalog.json');
+  return path.join(sigilHome(), 'catalog.json');
 }
 
 export function loadCatalog(): Catalog | null {
@@ -131,7 +131,7 @@ export async function updateCatalog(opts: { fetchImpl?: typeof fetch; sources?: 
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 15000);
       try {
-        const r = await f(src.url, { signal: ctrl.signal, headers: { 'user-agent': 'tally-catalog' } });
+        const r = await f(src.url, { signal: ctrl.signal, headers: { 'user-agent': 'sigil-catalog' } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const entries = src.parse(await r.text(), src);
         return { meta: { name: src.name, url: src.url, entries: entries.length }, entries };
@@ -232,7 +232,7 @@ export async function enrichStars(c: Catalog, repos: string[], opts: { fetchImpl
       if (r.status === 0) stars = Number(r.stdout.trim());
     } else {
       try {
-        const r = await (opts.fetchImpl ?? fetch)(`https://api.github.com/repos/${repo}`, { headers: { 'user-agent': 'tally-catalog', accept: 'application/vnd.github+json' } });
+        const r = await (opts.fetchImpl ?? fetch)(`https://api.github.com/repos/${repo}`, { headers: { 'user-agent': 'sigil-catalog', accept: 'application/vnd.github+json' } });
         if (r.ok) stars = ((await r.json()) as { stargazers_count?: number }).stargazers_count;
         else if (r.status === 403) break;
       } catch {

@@ -30,7 +30,7 @@ function git(cwd: string, args: string[]): string {
 
 /* a judged session with one VERIFIED (tier 0), one SUPPORTED (model) and one UNMET criterion */
 async function judged(session: string): Promise<{ cwd: string }> {
-  const cwd = tmpDir('tally-fb-');
+  const cwd = tmpDir('sigil-fb-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'app', scripts: { test: 'node -e "console.log(\'1 passing\')"' } }));
@@ -56,14 +56,14 @@ async function judged(session: string): Promise<{ cwd: string }> {
 }
 
 describe('feedback: local labels next to the receipt', () => {
-  it('records a label with what Tally had said, flags a wrong VERIFIED, and rejects unknown criteria', async () => {
+  it('records a label with what Sigil had said, flags a wrong VERIFIED, and rejects unknown criteria', async () => {
     await judged('fb-1');
     const { entry } = recordFeedback('fb-1', 'c2', 'wrong', 'the runner printed 1 passing but ran nothing', '9.9.9');
     expect(entry.assurance).toBe('VERIFIED');
     expect(entry.judge_status).toBe('met');
     expect(entry.resolved_by).toBe('tier0');
     expect(entry.false_verified).toBe(true);
-    expect(entry.tally_version).toBe('9.9.9');
+    expect(entry.sigil_version).toBe('9.9.9');
     const c1 = recordFeedback('fb-1', 'c1', 'correct', undefined).entry;
     expect(c1.assurance).toBe('SUPPORTED');
     expect(c1.false_verified).toBe(false);
@@ -75,9 +75,9 @@ describe('feedback: local labels next to the receipt', () => {
 
   it('the wrong-verdict report carries shape and counts only, never text, paths or names', async () => {
     const { cwd } = await judged('fb-2');
-    recordFeedback('fb-2', 'c2', 'wrong', 'see the tally-eval run', '9.9.9');
+    recordFeedback('fb-2', 'c2', 'wrong', 'see the sigil-eval run', '9.9.9');
     const r = buildWrongVerdictReport('fb-2', 'c2', { version: '9.9.9', cwd });
-    expect(r.schema).toBe('tally.wrong-verdict.v1');
+    expect(r.schema).toBe('sigil.wrong-verdict.v1');
     expect(r.criterion).toMatchObject({ id: 'c2', index: 2, of: 3, judge_status: 'met', assurance: 'VERIFIED', resolved_by: 'tier0' });
     expect(r.feedback.false_verified).toBe(true);
     expect(r.feedback.comment_included).toBe(false);
@@ -86,14 +86,14 @@ describe('feedback: local labels next to the receipt', () => {
     expect(r.receipt.assurance.VERIFIED).toBe(1);
     expect(r.receipt.assurance.UNMET).toBe(1);
     const payload = JSON.stringify(r);
-    for (const leak of ['login', 'README', 'Rate limit', cwd, 'src/', '429 after', 'tally-fb-']) expect(payload, `payload leaks ${leak}`).not.toContain(leak);
+    for (const leak of ['login', 'README', 'Rate limit', cwd, 'src/', '429 after', 'sigil-fb-']) expect(payload, `payload leaks ${leak}`).not.toContain(leak);
     expect(r.criterion.evidence.every((e) => Object.keys(e).every((k) => ['kind', 'strength', 'ok'].includes(k)))).toBe(true);
     expect(scanForSecrets(payload)).toEqual([]);
     /* the comment is opt-in and the only free text */
     const withComment = buildWrongVerdictReport('fb-2', 'c2', { version: '9.9.9', cwd, includeComment: true });
-    expect(withComment.feedback.comment).toBe('see the tally-eval run');
+    expect(withComment.feedback.comment).toBe('see the sigil-eval run');
     const url = issueUrl(r);
-    expect(url).toMatch(/^https:\/\/github\.com\/kru3ish\/tally\/issues\/new\?template=wrong_verdict\.md/);
+    expect(url).toMatch(/^https:\/\/github\.com\/kru3ish\/sigil\/issues\/new\?template=wrong_verdict\.md/);
     expect(url).toContain(encodeURIComponent('[false VERIFIED]'));
     expect(url).toContain(encodeURIComponent('false-verified'));
   });
@@ -109,7 +109,7 @@ describe('feedback: local labels next to the receipt', () => {
 
   it('the CLI records, lists, and writes a report file; a secret in the comment blocks --report', async () => {
     const { cwd } = await judged('fb-3');
-    const env = { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude };
+    const env = { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude };
     const list = spawnSync(process.execPath, [CLI, 'feedback', '--session', 'fb-3'], { cwd, encoding: 'utf8', env });
     expect(list.status).toBe(0);
     expect(list.stdout).toMatch(/c1\s+SUPPORTED/);
@@ -121,7 +121,7 @@ describe('feedback: local labels next to the receipt', () => {
     expect(rep.stdout).toMatch(/release-blocking/);
     expect(rep.stdout).toMatch(/Wrote .*bug\.json/);
     const j = JSON.parse(fs.readFileSync(out, 'utf8')) as { schema: string; feedback: { false_verified: boolean } };
-    expect(j.schema).toBe('tally.wrong-verdict.v1');
+    expect(j.schema).toBe('sigil.wrong-verdict.v1');
     expect(j.feedback.false_verified).toBe(true);
     const blocked = spawnSync(process.execPath, [CLI, 'feedback', 'wrong', 'c1', '--session', 'fb-3', '--comment', 'key ghp_abcdefghijklmnopqrstuvwxyz1234', '--report', '--include-comment', '--out', path.join(cwd, 'blocked.json')], { cwd, encoding: 'utf8', env });
     expect(blocked.status).toBe(1);
@@ -140,9 +140,9 @@ describe('the one-time usefulness question', () => {
     expect(shouldAskUsefulness(readUsefulness(), { interactive: true })).toBe(false);
     /* demo and internal runs do not count */
     countVerification('demo-abc');
-    process.env.TALLY_INTERNAL = '1';
+    process.env.SIGIL_INTERNAL = '1';
     countVerification('real-x');
-    delete process.env.TALLY_INTERNAL;
+    delete process.env.SIGIL_INTERNAL;
     expect(readUsefulness().verifications).toBe(USEFULNESS_AFTER - 1);
     countVerification('real-5');
     const s = readUsefulness();

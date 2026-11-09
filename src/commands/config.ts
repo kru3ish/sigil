@@ -17,7 +17,7 @@ export async function run(args: Args): Promise<number | void> {
       return;
     }
     const c = testRerunConsent(loadConfig(), process.cwd());
-    process.stdout.write(`Test re-runs in ${process.cwd()}: ${c === undefined ? 'not asked yet' : c ? 'allowed' : 'disallowed'}  (tally config consent on|off)\n`);
+    process.stdout.write(`Test re-runs in ${process.cwd()}: ${c === undefined ? 'not asked yet' : c ? 'allowed' : 'disallowed'}  (sigil config consent on|off)\n`);
     return;
   }
   if (key === 'mutes') {
@@ -30,7 +30,7 @@ export async function run(args: Args): Promise<number | void> {
     return;
   }
   if (value === undefined) {
-    process.stderr.write('Usage: tally config <key> <value>   e.g. tally config hourly_rate 120 | tally config models.judge opus | tally config writeback true\n');
+    process.stderr.write('Usage: sigil config <key> <value>   e.g. sigil config hourly_rate 120 | sigil config models.judge opus | sigil config writeback true\n');
     return 1;
   }
   const parsed: unknown = /^(true|false)$/.test(value) ? value === 'true' : /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;

@@ -1,10 +1,10 @@
 /* Recall at prompt time: which past task in this repository is this prompt asking for again. Reads the cards the
-   Coach tick wrote (one per past session, plain JSON under ~/.tally/recall/<repo>/ or `recall.dir`) and ranks them by
+   Coach tick wrote (one per past session, plain JSON under ~/.sigil/recall/<repo>/ or `recall.dir`) and ranks them by
    word similarity. Imports only paths and the similarity code so the hook stays fast. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readJson, repoKey, tallyHome, configFile } from '../paths.js';
+import { readJson, repoKey, sigilHome, configFile } from '../paths.js';
 import { rank } from '../text/similarity.js';
 
 export interface RecallCard {
@@ -44,7 +44,7 @@ export function recallKey(cwd: string): string {
 }
 
 export function recallDir(cwd: string, dir = recallSettings().dir): string {
-  return path.join(dir ?? path.join(tallyHome(), 'recall'), recallKey(cwd));
+  return path.join(dir ?? path.join(sigilHome(), 'recall'), recallKey(cwd));
 }
 
 export function cardFile(cwd: string, session: string): string {
@@ -92,9 +92,9 @@ export function findRecall(prompt: string, cwd: string, session: string, min?: n
 const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
 
 /* the note Claude sees: what was done, what it cost, where to find the rest */
-export function recallNote(m: RecallMatch, cli = 'tally'): string {
+export function recallNote(m: RecallMatch, cli = 'sigil'): string {
   const c = m.card;
   const when = (c.started ?? c.updated).slice(0, 10);
   const files = c.files.length ? ` Files it touched: ${c.files.slice(0, 6).join(', ')}${c.files.length > 6 ? ` (+${c.files.length - 6})` : ''}.` : '';
-  return `Tally recall: a task like this ran in this repo on ${when} and cost $${c.cost_usd.toFixed(2)}: "${cut(c.title, 80)}". Outcome then: ${cut(c.outcome.replace(/\s+/g, ' '), 400)}${files} Reuse that work before re-deriving it; the full card: ${cli} recall ${c.session.slice(0, 8)}`;
+  return `Sigil recall: a task like this ran in this repo on ${when} and cost $${c.cost_usd.toFixed(2)}: "${cut(c.title, 80)}". Outcome then: ${cut(c.outcome.replace(/\s+/g, ' '), 400)}${files} Reuse that work before re-deriving it; the full card: ${cli} recall ${c.session.slice(0, 8)}`;
 }

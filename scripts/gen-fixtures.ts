@@ -1,4 +1,4 @@
-/* Generates realistic Claude Code transcript + Tally hook-event fixtures.
+/* Generates realistic Claude Code transcript + Sigil hook-event fixtures.
    Run: npm run fixtures. Output is committed under test/fixtures/. */
 import fs from 'node:fs';
 import path from 'node:path';

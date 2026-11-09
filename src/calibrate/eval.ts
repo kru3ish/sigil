@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { loadConfig, type Config } from '../config.js';
-import { makeLlm, recordTallySpend, type LlmClient, type LlmRequest, type LlmResult } from '../llm/client.js';
+import { makeLlm, recordSigilSpend, type LlmClient, type LlmRequest, type LlmResult } from '../llm/client.js';
 import { judgeSession } from '../judge/judge.js';
 import { TaskSchema, type Task } from '../task/intake.js';
 import { readEventsFile } from '../store/events.js';
@@ -67,8 +67,8 @@ export function materializeRepo(c: FixtureCase, root: string): { cwd: string; ba
   const cwd = path.join(root, c.name);
   fs.mkdirSync(cwd, { recursive: true });
   git(cwd, 'init', '-q', '-b', 'main');
-  git(cwd, 'config', 'user.email', 'fixture@tally.local');
-  git(cwd, 'config', 'user.name', 'tally fixture');
+  git(cwd, 'config', 'user.email', 'fixture@sigil.local');
+  git(cwd, 'config', 'user.name', 'sigil fixture');
   for (const [f, content] of Object.entries(c.repo.base)) {
     fs.mkdirSync(path.dirname(path.join(cwd, f)), { recursive: true });
     fs.writeFileSync(path.join(cwd, f), content);
@@ -94,7 +94,7 @@ export class ReplayLlm implements LlmClient {
     if (!call) throw new Error(`ReplayLlm: no recorded tier ${req.tier} call (recorded: ${this.calls.map((c) => 'tier' + c.tier).join(', ') || 'none'}); re-record with --live --record`);
     this.used = this.calls.indexOf(call) + 1;
     const usage = { input: call.prompt_tokens, output: 300, cache_write: 0, cache_write_1h: 0, cache_read: 0 };
-    recordTallySpend({ kind: `judge:tier${call.tier}`, model: call.model, cost_usd: call.cost_usd, usage, session: this.session });
+    recordSigilSpend({ kind: `judge:tier${call.tier}`, model: call.model, cost_usd: call.cost_usd, usage, session: this.session });
     return { data: call.data as T, usage, cost_usd: call.cost_usd, model: call.model, duration_ms: 1 };
   }
 }
@@ -116,7 +116,7 @@ export interface FixtureResult {
 export async function runFixture(c: FixtureCase, opts: { cfg?: Config; live?: boolean; llm?: LlmClient; workRoot?: string; deep?: boolean }): Promise<FixtureResult> {
   const cfg = opts.cfg ?? loadConfig();
   const ownRoot = !opts.workRoot;
-  const workRoot = opts.workRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), 'tally-cal-'));
+  const workRoot = opts.workRoot ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-cal-'));
   try {
     return await runFixtureIn(c, { ...opts, cfg, workRoot });
   } finally {
@@ -146,7 +146,7 @@ async function runFixtureIn(c: FixtureCase, opts: { cfg: Config; live?: boolean;
       },
     };
   } else {
-    if (!c.recorded) throw new Error(`${c.name}: no model-output.json recorded; run \`tally calibrate eval --live --record\` once`);
+    if (!c.recorded) throw new Error(`${c.name}: no model-output.json recorded; run \`sigil calibrate eval --live --record\` once`);
     llm = new ReplayLlm(c.recorded.calls, session);
   }
   const task = { ...c.task, cwd };
@@ -162,7 +162,7 @@ async function runFixtureIn(c: FixtureCase, opts: { cfg: Config; live?: boolean;
 }
 
 export interface EvalSummary {
-  fixtures: Array<{ name: string; session: string; matches: number; total: number; verdict_match: boolean; judge_verdict: string; expected_verdict: string; statuses: Array<{ id: string; human: Status; judge: Status; resolved_by: string; assurance?: string }>; session_usd: number; tally_usd: number; share_pct: number; tiers: string[]; tier_reason: string; false_verified: string[]; false_unmet: string[] }>;
+  fixtures: Array<{ name: string; session: string; matches: number; total: number; verdict_match: boolean; judge_verdict: string; expected_verdict: string; statuses: Array<{ id: string; human: Status; judge: Status; resolved_by: string; assurance?: string }>; session_usd: number; sigil_usd: number; share_pct: number; tiers: string[]; tier_reason: string; false_verified: string[]; false_unmet: string[] }>;
   false_verified: number;
   false_unmet: number;
   report: CalibrationReport;
@@ -170,7 +170,7 @@ export interface EvalSummary {
   verdict_agreement: number;
   avg_share_pct: number;
   total_session_usd: number;
-  total_tally_usd: number;
+  total_sigil_usd: number;
   live: boolean;
   judge_model: string;
   baseline_updated?: boolean;
@@ -179,7 +179,7 @@ export interface EvalSummary {
 export async function runEval(opts: { live?: boolean; record?: boolean; rebaseline?: boolean; cfg?: Config; llmFor?: (c: FixtureCase) => LlmClient; only?: string[]; deep?: boolean }): Promise<EvalSummary> {
   const cases = loadFixtures().filter((c) => !opts.only?.length || opts.only.includes(c.name));
   if (!cases.length) throw new Error('no calibration fixtures found');
-  const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-cal-'));
+  const workRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-cal-'));
   const results: FixtureResult[] = [];
   for (const c of cases) {
     const r = await runFixture(c, { cfg: opts.cfg, live: opts.live, llm: opts.llmFor?.(c), workRoot, deep: opts.deep });
@@ -199,13 +199,13 @@ export async function runEval(opts: { live?: boolean; record?: boolean; rebaseli
     false_verified: r.false_verified,
     false_unmet: r.false_unmet,
     session_usd: r.judge.cost.total_usd,
-    tally_usd: r.judge.cost.tally_own_usd,
-    share_pct: r.judge.cost.tally_share_pct,
+    sigil_usd: r.judge.cost.sigil_own_usd,
+    share_pct: r.judge.cost.sigil_share_pct,
     tiers: r.judge.tiers.ran,
     tier_reason: r.judge.tiers.reason,
   }));
   const totalSession = fixtures.reduce((s, f) => s + f.session_usd, 0);
-  const totalTally = fixtures.reduce((s, f) => s + f.tally_usd, 0);
+  const totalSigil = fixtures.reduce((s, f) => s + f.sigil_usd, 0);
   const summary: EvalSummary = {
     fixtures,
     report,
@@ -215,7 +215,7 @@ export async function runEval(opts: { live?: boolean; record?: boolean; rebaseli
     verdict_agreement: report.verdict_agreement ?? 0,
     avg_share_pct: fixtures.length ? fixtures.reduce((s, f) => s + f.share_pct, 0) / fixtures.length : 0,
     total_session_usd: totalSession,
-    total_tally_usd: totalTally,
+    total_sigil_usd: totalSigil,
     live: !!opts.live,
     judge_model: results.flatMap((r) => r.judge.tiers.calls.map((c) => c.model)).filter((m, i, a) => a.indexOf(m) === i).join('+') || 'mechanical',
   };
@@ -231,7 +231,7 @@ export async function runEval(opts: { live?: boolean; record?: boolean; rebaseli
     if (opts.rebaseline || !old || summary.criterion_agreement >= old.criterion_agreement - 1e-9) {
       /* model outputs and baseline are written together so a replay always reproduces the recorded agreement */
       if (opts.record && opts.live) for (const r of results) writeOutput(r);
-      if (!opts.only?.length) fs.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: new Date().toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, tally_usd: f.tally_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + '\n');
+      if (!opts.only?.length) fs.writeFileSync(baselineFile(), JSON.stringify({ recorded_at: new Date().toISOString(), judge_model: summary.judge_model, criterion_agreement: summary.criterion_agreement, verdict_agreement: summary.verdict_agreement, false_verified: summary.false_verified, false_unmet: summary.false_unmet, avg_share_pct: Math.round(summary.avg_share_pct * 100) / 100, fixtures: fixtures.map((f) => ({ name: f.name, matches: f.matches, total: f.total, verdict_match: f.verdict_match, session_usd: f.session_usd, sigil_usd: f.sigil_usd, share_pct: f.share_pct, tiers: f.tiers })) }, null, 2) + '\n');
       summary.baseline_updated = true;
     } else summary.baseline_updated = false;
   }
@@ -246,8 +246,8 @@ export function loadBaseline(): { recorded_at?: string; judge_model?: string; cr
 
 export function renderOverheadTable(s: EvalSummary): string {
   const L: string[] = [];
-  L.push('fixture                    session $   tally $   share   tiers');
-  for (const f of s.fixtures) L.push(`${f.name.padEnd(26)} ${('$' + f.session_usd.toFixed(3)).padStart(9)} ${('$' + f.tally_usd.toFixed(3)).padStart(9)} ${(f.share_pct.toFixed(1) + '%').padStart(7)}   ${f.tiers.map((t) => t.replace('tier', '')).join('→')}  ${f.tier_reason}`);
-  L.push(`${'average / total'.padEnd(26)} ${('$' + s.total_session_usd.toFixed(3)).padStart(9)} ${('$' + s.total_tally_usd.toFixed(3)).padStart(9)} ${(s.avg_share_pct.toFixed(1) + '%').padStart(7)}`);
+  L.push('fixture                    session $   sigil $   share   tiers');
+  for (const f of s.fixtures) L.push(`${f.name.padEnd(26)} ${('$' + f.session_usd.toFixed(3)).padStart(9)} ${('$' + f.sigil_usd.toFixed(3)).padStart(9)} ${(f.share_pct.toFixed(1) + '%').padStart(7)}   ${f.tiers.map((t) => t.replace('tier', '')).join('→')}  ${f.tier_reason}`);
+  L.push(`${'average / total'.padEnd(26)} ${('$' + s.total_session_usd.toFixed(3)).padStart(9)} ${('$' + s.total_sigil_usd.toFixed(3)).padStart(9)} ${(s.avg_share_pct.toFixed(1) + '%').padStart(7)}`);
   return L.join('\n');
 }

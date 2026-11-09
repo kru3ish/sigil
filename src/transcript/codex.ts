@@ -1,4 +1,4 @@
-/* Codex CLI rollout files (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl) → Tally's Transcript. Each line is
+/* Codex CLI rollout files (~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl) → Sigil's Transcript. Each line is
    {timestamp, type, payload}: session_meta (id, cwd, model_provider), turn_context (model), response_item (message,
    function_call, function_call_output, custom_tool_call), event_msg (user_message, agent_message, token_count,
    task_started, task_complete). Written from the public descriptions of the format (docs/PLATFORM_NOTES.md), read

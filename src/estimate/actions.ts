@@ -1,5 +1,5 @@
 /* The cost check as a short, ranked to-do list: one action per fix, in plain words, with the most it could save, why,
-   and the one command that applies it. The terminal, the dashboard and /tally:cost all show this same list. */
+   and the one command that applies it. The terminal, the dashboard and /sigil:cost all show this same list. */
 import { spawnSync } from 'node:child_process';
 import { builtCliPath } from '../paths.js';
 import type { AltTool, CostCheck, Fix } from './variance.js';
@@ -10,14 +10,14 @@ export interface Action {
   id: string;
   title: string;
   kind: ActionKind;
-  /* who made it: Tally writes it, or it is an official / community tool that already exists */
-  source: 'tally' | 'official' | 'community';
+  /* who made it: Sigil writes it, or it is an official / community tool that already exists */
+  source: 'sigil' | 'official' | 'community';
   usd: number;
   why: string;
   /* the line to run; absent for a habit */
   command?: string;
-  /* true when `tally fix <id>` applies it (settings, files, CLAUDE.md, official plugin installs) */
-  tallyFix: boolean;
+  /* true when `sigil fix <id>` applies it (settings, files, CLAUDE.md, official plugin installs) */
+  sigilFix: boolean;
   others: AltTool[];
 }
 
@@ -37,11 +37,11 @@ const PLAIN: Record<string, { title: string; kind: ActionKind }> = {
 };
 
 let cachedCli: string | undefined;
-/* `tally` when it is on PATH; otherwise the full node command, so a plugin-only install can paste it too */
+/* `sigil` when it is on PATH; otherwise the full node command, so a plugin-only install can paste it too */
 export function cliCommand(): string {
   if (cachedCli) return cachedCli;
-  const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['tally'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
-  cachedCli = r.status === 0 && r.stdout.trim() ? 'tally' : `node "${builtCliPath().replace(/\\/g, '/')}"`;
+  const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', ['sigil'], { encoding: 'utf8', windowsHide: true, timeout: 3000 });
+  cachedCli = r.status === 0 && r.stdout.trim() ? 'sigil' : `node "${builtCliPath().replace(/\\/g, '/')}"`;
   return cachedCli;
 }
 
@@ -57,7 +57,7 @@ export function firstSentence(s: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-export function buildActions(c: CostCheck, cli = 'tally'): Action[] {
+export function buildActions(c: CostCheck, cli = 'sigil'): Action[] {
   const byFix = new Map<string, Action>();
   for (const d of c.drivers) {
     const f = d.fix;
@@ -71,17 +71,17 @@ export function buildActions(c: CostCheck, cli = 'tally'): Action[] {
     const plain = PLAIN[f.id];
     const pluginName = official ? /install ([\w.-]+)@/.exec((f.apply as { commands: string[] }).commands[0]!)?.[1] : undefined;
     const kind: ActionKind = official ? 'plugin' : plain?.kind ?? (f.apply.kind === 'settings' ? 'setting' : f.apply.kind === 'file' ? 'skill' : f.apply.kind === 'claude_md' ? 'notes' : f.apply.kind === 'advice' ? 'habit' : 'command');
-    const tallyFix = official || f.apply.kind === 'settings' || f.apply.kind === 'file' || f.apply.kind === 'claude_md';
-    const command = f.apply.kind === 'advice' ? undefined : tallyFix ? `${cli} fix ${f.id}` : f.apply.kind === 'command' ? f.apply.commands.join(' && ') : undefined;
+    const sigilFix = official || f.apply.kind === 'settings' || f.apply.kind === 'file' || f.apply.kind === 'claude_md';
+    const command = f.apply.kind === 'advice' ? undefined : sigilFix ? `${cli} fix ${f.id}` : f.apply.kind === 'command' ? f.apply.commands.join(' && ') : undefined;
     byFix.set(f.id, {
       id: f.id,
       title: official ? `Install ${pluginName}` : plain?.title ?? f.title,
       kind,
-      source: official ? 'official' : 'tally',
+      source: official ? 'official' : 'sigil',
       usd: d.usd,
       why: firstSentence(d.detail),
       command,
-      tallyFix,
+      sigilFix,
       others: (d.alternatives ?? []).filter((a) => !pluginName || a.name !== pluginName).slice(0, 3),
     });
   }

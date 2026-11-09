@@ -1,4 +1,4 @@
-/* `tally audit [--since 30d] [--repo <path>] [--json]`: the trail of decisions Tally recorded on this machine, in one
+/* `sigil audit [--since 30d] [--repo <path>] [--json]`: the trail of decisions Sigil recorded on this machine, in one
    list: receipts, pull-request checks, disputes (who overrode which criterion and why), budget approvals, hard stops
    and done-gate blocks. Read from the session event streams already on disk; nothing new is written, nothing leaves.
    `--json` is the form for a SIEM or a spreadsheet. */
@@ -66,7 +66,7 @@ export function renderAudit(lines: AuditLine[], since: string): string {
   const counts = new Map<AuditKind, number>();
   for (const l of lines) counts.set(l.kind, (counts.get(l.kind) ?? 0) + 1);
   const L: string[] = [];
-  L.push(`Tally audit · last ${since} · ${lines.length} entries: ${[...counts.entries()].map(([k, n]) => `${n} ${k.replace('_', ' ')}${n === 1 ? '' : k === 'dispute' ? 's' : k.endsWith('k') ? 's' : k === 'receipt' ? 's' : ''}`).join(', ')}`);
+  L.push(`Sigil audit · last ${since} · ${lines.length} entries: ${[...counts.entries()].map(([k, n]) => `${n} ${k.replace('_', ' ')}${n === 1 ? '' : k === 'dispute' ? 's' : k.endsWith('k') ? 's' : k === 'receipt' ? 's' : ''}`).join(', ')}`);
   L.push('');
   L.push(`${'when (UTC)'.padEnd(17)}${'session'.padEnd(10)}${'repo'.padEnd(22)}${'kind'.padEnd(16)}detail`);
   for (const l of lines) L.push(`${l.ts.replace('T', ' ').slice(0, 16).padEnd(17)}${l.session.slice(0, 8).padEnd(10)}${(l.repo ?? '').slice(0, 20).padEnd(22)}${l.kind.replace('_', ' ').padEnd(16)}${l.detail}${l.by ? `  [${l.by}]` : ''}`);
@@ -77,7 +77,7 @@ export async function run(args: Args): Promise<number | void> {
   const sinceText = flag(args, 'since') ?? '30d';
   const lines = collectAudit({ since: parseSince(sinceText), repo: flag(args, 'repo') });
   if (has(args, 'json')) {
-    process.stdout.write(JSON.stringify({ schema: 'tally.audit.v1', since: sinceText, generated_at: new Date().toISOString(), entries: lines }, null, 2) + '\n');
+    process.stdout.write(JSON.stringify({ schema: 'sigil.audit.v1', since: sinceText, generated_at: new Date().toISOString(), entries: lines }, null, 2) + '\n');
     return;
   }
   process.stdout.write(renderAudit(lines, sinceText) + '\n');

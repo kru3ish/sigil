@@ -1,20 +1,20 @@
 /* Opt-in anonymous metrics. Off by default; the first interactive run asks once, default No.
 
-   What can be sent, and nothing else (the schema is the allowlist below and is published in PRIVACY.md): Tally
+   What can be sent, and nothing else (the schema is the allowlist below and is published in PRIVACY.md): Sigil
    version, agent product, command name, success or failure, criterion counts by status, the verdict word, feedback
    labels, the usefulness answer, a random installation id, a timestamp. Never: prompts, code, diffs, file names, repo
    names, task text, terminal output, hostnames, usernames.
 
    Sending never blocks a command: events are appended to a local queue and a detached child process posts them with a
-   short timeout; failures are silent and the queue is bounded. `TALLY_TELEMETRY=0`, a CI environment, `tally
+   short timeout; failures are silent and the queue is bounded. `SIGIL_TELEMETRY=0`, a CI environment, `sigil
    telemetry off` and a missing endpoint all mean nothing is sent. */
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { appendLine, ensureDir, packageRoot, readJson, tallyHome, writeJson } from '../paths.js';
+import { appendLine, ensureDir, packageRoot, readJson, sigilHome, writeJson } from '../paths.js';
 
-export const TELEMETRY_SCHEMA = 'tally.telemetry.v1';
+export const TELEMETRY_SCHEMA = 'sigil.telemetry.v1';
 /* the default endpoint is empty on purpose: until a receiving endpoint exists nothing can be sent even when enabled */
 export const DEFAULT_ENDPOINT = '';
 
@@ -27,14 +27,14 @@ export interface TelemetryState {
 }
 
 /* the whole allowlist; an event with any other key is rejected before it reaches the queue */
-export const ALLOWED_FIELDS = ['schema', 'ts', 'installation_id', 'tally_version', 'agent', 'command', 'success', 'criteria', 'verdict', 'feedback_label', 'false_verified', 'usefulness_answer'] as const;
+export const ALLOWED_FIELDS = ['schema', 'ts', 'installation_id', 'sigil_version', 'agent', 'command', 'success', 'criteria', 'verdict', 'feedback_label', 'false_verified', 'usefulness_answer'] as const;
 export type AllowedField = (typeof ALLOWED_FIELDS)[number];
 
 export interface TelemetryEvent {
   schema: typeof TELEMETRY_SCHEMA;
   ts: string;
   installation_id: string;
-  tally_version: string;
+  sigil_version: string;
   agent?: 'claude-code' | 'codex' | 'gemini' | 'cursor' | 'unknown';
   command: string;
   success: boolean;
@@ -46,11 +46,11 @@ export interface TelemetryEvent {
 }
 
 export function telemetryFile(): string {
-  return path.join(tallyHome(), 'telemetry.json');
+  return path.join(sigilHome(), 'telemetry.json');
 }
 
 export function queueFile(): string {
-  return path.join(tallyHome(), 'telemetry-queue.jsonl');
+  return path.join(sigilHome(), 'telemetry-queue.jsonl');
 }
 
 export function readTelemetry(): TelemetryState {
@@ -58,7 +58,7 @@ export function readTelemetry(): TelemetryState {
 }
 
 function save(s: TelemetryState): void {
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   writeJson(telemetryFile(), s);
 }
 
@@ -69,12 +69,12 @@ export function isCI(env: NodeJS.ProcessEnv = process.env): boolean {
 /* the effective state: enabled in the file, not disabled by the environment, and an endpoint to send to */
 export function telemetryActive(env: NodeJS.ProcessEnv = process.env): { active: boolean; reason: string; state: TelemetryState; endpoint: string } {
   const state = readTelemetry();
-  const endpoint = env.TALLY_TELEMETRY_ENDPOINT || state.endpoint || DEFAULT_ENDPOINT;
-  if (env.TALLY_TELEMETRY === '0' || env.TALLY_TELEMETRY === 'off' || env.TALLY_TELEMETRY === 'false') return { active: false, reason: 'TALLY_TELEMETRY=0 in the environment', state, endpoint };
+  const endpoint = env.SIGIL_TELEMETRY_ENDPOINT || state.endpoint || DEFAULT_ENDPOINT;
+  if (env.SIGIL_TELEMETRY === '0' || env.SIGIL_TELEMETRY === 'off' || env.SIGIL_TELEMETRY === 'false') return { active: false, reason: 'SIGIL_TELEMETRY=0 in the environment', state, endpoint };
   if (isCI(env)) return { active: false, reason: 'CI environment detected', state, endpoint };
-  if (env.TALLY_INTERNAL === '1' || env.TALLY_LLM === 'stub') return { active: false, reason: "one of Tally's own runs", state, endpoint };
-  if (!state.enabled) return { active: false, reason: state.asked ? 'declined (tally telemetry on to enable)' : 'not asked yet; default is off', state, endpoint };
-  if (!endpoint) return { active: false, reason: 'enabled, but no endpoint is configured (TALLY_TELEMETRY_ENDPOINT); nothing is sent', state, endpoint };
+  if (env.SIGIL_INTERNAL === '1' || env.SIGIL_LLM === 'stub') return { active: false, reason: "one of Sigil's own runs", state, endpoint };
+  if (!state.enabled) return { active: false, reason: state.asked ? 'declined (sigil telemetry on to enable)' : 'not asked yet; default is off', state, endpoint };
+  if (!endpoint) return { active: false, reason: 'enabled, but no endpoint is configured (SIGIL_TELEMETRY_ENDPOINT); nothing is sent', state, endpoint };
   return { active: true, reason: `enabled, sending to ${endpoint}`, state, endpoint };
 }
 
@@ -114,7 +114,7 @@ export const CONSENT_QUESTION = 'Enable anonymous metrics? Version, command name
 export function shouldAskConsent(opts: { interactive: boolean; env?: NodeJS.ProcessEnv }): boolean {
   const env = opts.env ?? process.env;
   if (!opts.interactive || isCI(env)) return false;
-  if (env.TALLY_TELEMETRY !== undefined || env.TALLY_INTERNAL === '1' || env.TALLY_LLM === 'stub') return false;
+  if (env.SIGIL_TELEMETRY !== undefined || env.SIGIL_INTERNAL === '1' || env.SIGIL_LLM === 'stub') return false;
   return !readTelemetry().asked;
 }
 
@@ -124,7 +124,7 @@ function version(): string {
 
 /* build a full event from partial fields; unknown keys are dropped, so a caller cannot widen the schema by accident */
 export function makeEvent(fields: Partial<TelemetryEvent> & { command: string; success: boolean }, state: TelemetryState): TelemetryEvent {
-  const raw: Record<string, unknown> = { ...fields, schema: TELEMETRY_SCHEMA, ts: new Date().toISOString(), installation_id: state.installation_id ?? 'none', tally_version: version() };
+  const raw: Record<string, unknown> = { ...fields, schema: TELEMETRY_SCHEMA, ts: new Date().toISOString(), installation_id: state.installation_id ?? 'none', sigil_version: version() };
   const ev: Record<string, unknown> = {};
   for (const k of ALLOWED_FIELDS) if (raw[k] !== undefined) ev[k] = raw[k];
   return ev as unknown as TelemetryEvent;
@@ -137,7 +137,7 @@ export function record(fields: Partial<TelemetryEvent> & { command: string; succ
   const t = telemetryActive();
   if (!t.active) return null;
   const ev = makeEvent(fields, t.state);
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   try {
     const q = queueFile();
     if (fs.existsSync(q) && fs.readFileSync(q, 'utf8').split('\n').filter(Boolean).length >= QUEUE_CAP) return ev;
@@ -145,7 +145,7 @@ export function record(fields: Partial<TelemetryEvent> & { command: string; succ
   } catch {
     return ev;
   }
-  if (opts.spawnFlush !== false && !process.env.TALLY_NO_SPAWN) {
+  if (opts.spawnFlush !== false && !process.env.SIGIL_NO_SPAWN) {
     try {
       const child = spawn(process.execPath, [path.join(packageRoot(), 'dist', 'cli.js'), 'telemetry', 'flush', '--auto'], { detached: true, stdio: 'ignore', windowsHide: true, env: process.env });
       child.unref();
@@ -181,7 +181,7 @@ export async function flush(opts: { timeoutMs?: number; fetchImpl?: typeof fetch
   }
 }
 
-/* an example event for `tally telemetry show`: the exact shape, with representative values */
+/* an example event for `sigil telemetry show`: the exact shape, with representative values */
 export function exampleEvent(state: TelemetryState): TelemetryEvent {
   return makeEvent({ command: 'verify', success: true, agent: 'claude-code', criteria: { verified: 2, supported: 1, unverified: 1, unmet: 0 }, verdict: 'borderline' }, { ...state, installation_id: state.installation_id ?? '<random uuid, created on opt-in>' });
 }

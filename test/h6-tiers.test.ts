@@ -31,7 +31,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function repo(): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-tier-');
+  const cwd = tmpDir('sigil-tier-');
   git(cwd, 'init', '-q', '-b', 'main');
   git(cwd, 'config', 'user.email', 't@t');
   git(cwd, 'config', 'user.name', 't');
@@ -50,7 +50,7 @@ function repo(): { cwd: string; base: string } {
 const events = (cwd: string, base: string) => readEventsFile(path.join(basicFixture, 'events.jsonl')).map((e) => (e.type === 'session_start' ? { ...e, cwd, data: { ...e.data, git_head: base } } : { ...e, cwd }));
 
 function task(cwd: string, criteria: Task['criteria']): Task {
-  return { session: 't', cwd, created_at: 'x', frozen: true, source: { kind: 'text', ref: 'x' }, title: 'T', body_excerpt: '', labels: [], criteria, spec_quality: { score: 7, missing: [], questions: [] }, needs_clarification: false, estimate: { hours: 2, basis: 'llm' }, budget_usd: 10, hourly_rate: 75, tally_cost_usd: 0, model: 'fixture' };
+  return { session: 't', cwd, created_at: 'x', frozen: true, source: { kind: 'text', ref: 'x' }, title: 'T', body_excerpt: '', labels: [], criteria, spec_quality: { score: 7, missing: [], questions: [] }, needs_clarification: false, estimate: { hours: 2, basis: 'llm' }, budget_usd: 10, hourly_rate: 75, sigil_cost_usd: 0, model: 'fixture' };
 }
 
 describe('tier selection', () => {
@@ -102,7 +102,7 @@ describe('mechanical checks (tier 0)', () => {
     expect(j.tiers.ran).toEqual(['tier0']);
     expect(j.tiers.calls.length).toBe(0);
     expect(j.tiers.llm_cost_usd).toBe(0);
-    expect(j.cost.tally_own_usd).toBe(0);
+    expect(j.cost.sigil_own_usd).toBe(0);
     expect(j.judge_model).toBe('mechanical');
     expect(j.quality.reason).toContain('mechanical proxy');
     expect(j.recommendations.length).toBe(3);
@@ -251,7 +251,7 @@ describe('intake cache and receipt dedupe', () => {
     const b = await intake({ session: 'i2', cwd: 'C:/x', text: 'Document the limit in README', cfg: loadConfig(), llm, deps: noFetch });
     expect(llm.calls.length).toBe(1);
     expect(b.task.cached).toBe(true);
-    expect(b.task.tally_cost_usd).toBe(0);
+    expect(b.task.sigil_cost_usd).toBe(0);
     expect(b.task.criteria).toEqual(a.task.criteria);
     await intake({ session: 'i3', cwd: 'C:/x', text: 'Something else entirely', cfg: loadConfig(), llm, deps: noFetch });
     expect(llm.calls.length).toBe(2);
@@ -276,7 +276,7 @@ describe('coach llm gate', () => {
   it('makes no LLM call for sessions under $1 but still runs deterministic rules', async () => {
     const fixtureEvents = readEventsFile(path.join(basicFixture, 'events.jsonl'));
     const session = 'cheap';
-    const cwd = tmpDir('tally-cheap-');
+    const cwd = tmpDir('sigil-cheap-');
     for (const e of fixtureEvents) appendEvent({ ...e, session, cwd });
     const out = new PassThrough();
     let text = '';
@@ -300,14 +300,14 @@ describe('fixture replay with recorded tiers', () => {
     const r = await runFixture(c, { cfg: loadConfig() });
     expect(r.judge.tiers.ran[0]).toBe('tier0');
     expect(r.judge.criteria.filter((x) => x.resolved_by === 'tier0').length).toBeGreaterThanOrEqual(2);
-    expect(r.judge.cost.tally_own_usd).toBeCloseTo(c.recorded.calls.reduce((s, x) => s + x.cost_usd, 0), 4);
+    expect(r.judge.cost.sigil_own_usd).toBeCloseTo(c.recorded.calls.reduce((s, x) => s + x.cost_usd, 0), 4);
   }, 60000);
 });
 
 describe('file_contains on a directory', () => {
   const ev = { git: { files_changed: [], diff_stat: '', insertions: 0, deletions: 0, diff_excerpt: '' }, command_runs: [], ship_events: [], final_messages: [], prompts: [], tool_call_count: 0, edited_files: [] };
   it('searches the files under the directory instead of crashing with EISDIR', async () => {
-    const cwd = tmpDir('tally-dircheck-');
+    const cwd = tmpDir('sigil-dircheck-');
     fs.mkdirSync(path.join(cwd, 'test', 'nested'), { recursive: true });
     fs.writeFileSync(path.join(cwd, 'test', 'a.js'), "it('plain', () => {});\n");
     fs.writeFileSync(path.join(cwd, 'test', 'nested', 'b.js'), "it('withbracket[] literal', () => {});\n");

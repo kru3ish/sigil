@@ -22,9 +22,9 @@ afterEach(() => iso.restore());
 const HOOK = path.join(root, 'dist', 'hook.js');
 
 describe('H1 self-isolation', () => {
-  it('hooks exit at once and record nothing when TALLY_INTERNAL=1', () => {
+  it('hooks exit at once and record nothing when SIGIL_INTERNAL=1', () => {
     for (const ev of ['SessionStart', 'UserPromptSubmit', 'PostToolUse', 'Stop', 'SessionEnd']) {
-      const r = spawnSync(process.execPath, [HOOK, ev], { input: JSON.stringify({ session_id: 'internal-1', cwd: 'C:/x', prompt: 'hi', tool_name: 'Bash', tool_input: { command: 'git push' }, tool_response: 'ok' }), encoding: 'utf8', env: { ...process.env, TALLY_INTERNAL: '1', TALLY_NO_SPAWN: '1' } });
+      const r = spawnSync(process.execPath, [HOOK, ev], { input: JSON.stringify({ session_id: 'internal-1', cwd: 'C:/x', prompt: 'hi', tool_name: 'Bash', tool_input: { command: 'git push' }, tool_response: 'ok' }), encoding: 'utf8', env: { ...process.env, SIGIL_INTERNAL: '1', SIGIL_NO_SPAWN: '1' } });
       expect(r.status).toBe(0);
       expect(r.stdout).toBe('');
     }
@@ -33,36 +33,36 @@ describe('H1 self-isolation', () => {
     expect(fs.existsSync(path.join(iso.home, 'spawn.log'))).toBe(false);
   });
 
-  it('the internal claude -p launcher sets TALLY_INTERNAL, the isolation flags, and an internal cwd', async () => {
+  it('the internal claude -p launcher sets SIGIL_INTERNAL, the isolation flags, and an internal cwd', async () => {
     const fake = path.join(iso.home, 'fake-claude.js');
     fs.writeFileSync(
       fake,
-      `process.stdout.write(JSON.stringify({ structured_output: { env: process.env.TALLY_INTERNAL, entry: process.env.CLAUDE_CODE_ENTRYPOINT, args: process.argv.slice(2), cwd: process.cwd() }, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 }, modelUsage: { 'claude-haiku-4-5': {} } }));`,
+      `process.stdout.write(JSON.stringify({ structured_output: { env: process.env.SIGIL_INTERNAL, entry: process.env.CLAUDE_CODE_ENTRYPOINT, args: process.argv.slice(2), cwd: process.cwd() }, total_cost_usd: 0.001, usage: { input_tokens: 1, output_tokens: 1 }, modelUsage: { 'claude-haiku-4-5': {} } }));`,
     );
     const cli = new ClaudeCli({ claudeBin: fake, session: 'sess-x' });
     const r = await cli.complete<{ env: string; entry: string; args: string[]; cwd: string }>({ kind: 'coach', model: 'haiku', system: 'sys', prompt: 'hello', schema: { type: 'object' } });
     expect(r.data.env).toBe('1');
-    expect(r.data.entry).toBe('tally');
+    expect(r.data.entry).toBe('sigil');
     expect(isInternalCwd(r.data.cwd)).toBe(true);
     const a = r.data.args;
     for (const flag of ['--setting-sources', '--strict-mcp-config', '--no-session-persistence', '--tools', '--max-turns', '--json-schema', '--system-prompt']) expect(a).toContain(flag);
     expect(a[a.indexOf('--setting-sources') + 1]).toBe('');
     expect(a[a.indexOf('--tools') + 1]).toBe('');
     expect(r.cost_usd).toBe(0.001);
-    expect(fs.readFileSync(path.join(iso.home, 'tally-spend.jsonl'), 'utf8')).toContain('"sess-x"');
+    expect(fs.readFileSync(path.join(iso.home, 'sigil-spend.jsonl'), 'utf8')).toContain('"sess-x"');
     expect(fs.existsSync(path.join(iso.home, 'sessions'))).toBe(false);
   });
 
-  it('tags transcripts from internal cwds or the tally entrypoint and excludes them from stats', () => {
-    expect(isInternalCwd('C:\\Users\\x\\AppData\\Local\\Temp\\tally-llm-abc123')).toBe(true);
-    expect(isInternalCwd('/tmp/tally-llm-abc')).toBe(true);
+  it('tags transcripts from internal cwds or the sigil entrypoint and excludes them from stats', () => {
+    expect(isInternalCwd('C:\\Users\\x\\AppData\\Local\\Temp\\sigil-llm-abc123')).toBe(true);
+    expect(isInternalCwd('/tmp/sigil-llm-abc')).toBe(true);
     expect(isInternalCwd('C:/Users/x/dev/app')).toBe(false);
     const t = parseTranscriptFile(path.join(basicFixture, 'transcript.jsonl'));
     expect(t.internal).toBe(false);
     const { lines } = readTranscriptLines(path.join(basicFixture, 'transcript.jsonl'));
-    const tagged = parseTranscript(lines.map((l) => ({ ...l, cwd: '/tmp/tally-llm-xyz' })));
+    const tagged = parseTranscript(lines.map((l) => ({ ...l, cwd: '/tmp/sigil-llm-xyz' })));
     expect(tagged.internal).toBe(true);
-    const byEntry = parseTranscript(lines.map((l) => ({ ...l, entrypoint: 'tally' })));
+    const byEntry = parseTranscript(lines.map((l) => ({ ...l, entrypoint: 'sigil' })));
     expect(byEntry.internal).toBe(true);
 
     const repo = 'c:/repo';
@@ -72,7 +72,7 @@ describe('H1 self-isolation', () => {
       { ts: '2026-09-03T00:00:00Z', kind: 'session', session: 'c', repo, loaded: { mcp: ['x'], skills: [], plugins: [] }, used: { mcp: [], skills: [] }, first_turn_tokens: 40000 },
       { ts: '2026-09-04T00:00:00Z', kind: 'session', session: 'i1', repo, internal: true, loaded: { mcp: ['x'], skills: [], plugins: [] }, used: { mcp: [], skills: [] }, first_turn_tokens: 7000 },
       { ts: '2026-09-04T00:00:00Z', session: 'i2', repo, internal: true, verdict: 'worth it', completion_pct: 100, cost_usd: 0.01 },
-      { ts: '2026-09-05T00:00:00Z', session: 'i3', repo: '/tmp/tally-llm-q', verdict: 'worth it', completion_pct: 100, cost_usd: 0.01 },
+      { ts: '2026-09-05T00:00:00Z', session: 'i3', repo: '/tmp/sigil-llm-q', verdict: 'worth it', completion_pct: 100, cost_usd: 0.01 },
       { ts: '2026-09-05T00:00:00Z', session: 'r1', repo, verdict: 'borderline', completion_pct: 50, cost_usd: 2, linked: true },
     ];
     fs.writeFileSync(path.join(iso.home, 'history.jsonl'), h.map((x) => JSON.stringify(x)).join('\n') + '\n');

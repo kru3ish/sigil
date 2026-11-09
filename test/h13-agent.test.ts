@@ -32,7 +32,7 @@ function git(cwd: string, args: string[]): string {
 }
 
 function repoWithTask(session: string) {
-  const cwd = tmpDir('tally-agent-');
+  const cwd = tmpDir('sigil-agent-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.writeFileSync(path.join(cwd, 'README.md'), '# app\n');
   fs.writeFileSync(path.join(cwd, 'src.js'), 'module.exports = 200;\n');
@@ -45,7 +45,7 @@ function repoWithTask(session: string) {
 }
 
 describe('quick checks and the MCP server', () => {
-  it('resolve mechanical checks against the working tree and answer tally_task / tally_unmet', async () => {
+  it('resolve mechanical checks against the working tree and answer sigil_task / sigil_unmet', async () => {
     const session = 'agent-session-0001';
     const { cwd, llm } = repoWithTask(session);
     await intake({ session, cwd, text: 'rate limit login', cfg: loadConfig(), llm });
@@ -57,21 +57,21 @@ describe('quick checks and the MCP server', () => {
     fs.appendFileSync(path.join(cwd, 'README.md'), 'Limit: 5 per 15 min\n');
     p = quickChecks(session, cwd);
     expect(p.items.map((i) => i.status)).toEqual(['met', 'met', 'unknown']);
-    const unmet = callTool('tally_unmet', cwd) as { content: Array<{ text: string }> };
+    const unmet = callTool('sigil_unmet', cwd) as { content: Array<{ text: string }> };
     expect(unmet.content[0]!.text).toContain('Every mechanical check passes');
-    const task = callTool('tally_task', cwd) as { content: Array<{ text: string }> };
+    const task = callTool('sigil_task', cwd) as { content: Array<{ text: string }> };
     expect(task.content[0]!.text).toContain('Task: Rate limit login');
     expect(task.content[0]!.text).toContain('✔ c1');
     expect(task.content[0]!.text).toContain('? c3');
-    const receipt = callTool('tally_receipt', cwd) as { content: Array<{ text: string }> };
+    const receipt = callTool('sigil_receipt', cwd) as { content: Array<{ text: string }> };
     expect(receipt.content[0]!.text).toContain('no receipt yet');
     /* the stdio server speaks JSON-RPC: initialize, tools/list, tools/call */
-    const msgs = ['{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}', '{"jsonrpc":"2.0","method":"notifications/initialized"}', '{"jsonrpc":"2.0","id":2,"method":"tools/list"}', '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tally_task","arguments":{}}}'].join('\n') + '\n';
+    const msgs = ['{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}', '{"jsonrpc":"2.0","method":"notifications/initialized"}', '{"jsonrpc":"2.0","id":2,"method":"tools/list"}', '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sigil_task","arguments":{}}}'].join('\n') + '\n';
     const r = spawnSync(process.execPath, [CLI, 'mcp'], { cwd, input: msgs, encoding: 'utf8', env: { ...process.env, CLAUDE_SESSION_ID: session }, timeout: 20000 });
     const lines = r.stdout.trim().split('\n').map((l) => JSON.parse(l) as { id: number; result: Record<string, unknown> });
     expect(lines.map((l) => l.id)).toEqual([1, 2, 3]);
-    expect((lines[0]!.result.serverInfo as { name: string }).name).toBe('tally');
-    expect((lines[1]!.result.tools as Array<{ name: string }>).map((t) => t.name)).toEqual(['tally_task', 'tally_unmet', 'tally_receipt', 'tally_flags', 'tally_budget']);
+    expect((lines[0]!.result.serverInfo as { name: string }).name).toBe('sigil');
+    expect((lines[1]!.result.tools as Array<{ name: string }>).map((t) => t.name)).toEqual(['sigil_task', 'sigil_unmet', 'sigil_receipt', 'sigil_flags', 'sigil_budget']);
     expect(JSON.stringify(lines[2]!.result)).toContain('Rate limit login');
   });
 });
@@ -86,7 +86,7 @@ describe('definition-of-done gate', () => {
     /* the gate has standing only for a confirmed (or source-linked) contract after an edit in the session */
     confirmTask(session);
     appendEvent({ ts: new Date().toISOString(), type: 'pre_tool', session, cwd, data: { tool_name: 'Edit', tool_input: { file_path: 'src.js' }, tool_use_id: 'gate-edit' } });
-    const stop = (extra: Record<string, unknown> = {}) => spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd, last_assistant_message: 'Done.', ...extra }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    const stop = (extra: Record<string, unknown> = {}) => spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd, last_assistant_message: 'Done.', ...extra }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
     const first = stop();
     expect(first.status).toBe(0);
     const out = JSON.parse(first.stdout) as { decision: string; reason: string };
@@ -127,7 +127,7 @@ describe('status line ticks and rate limits', () => {
     expect(s.length).toBe(1);
     expect(s[0]!.title).toBe('5-hour usage limit at 84%');
     expect(s[0]!.action.kind).toBe('inject');
-    expect((s[0]!.action as { note: string }).note).toMatch(/^Tally observed the 5-hour usage limit at 84%/);
+    expect((s[0]!.action as { note: string }).note).toMatch(/^Sigil observed the 5-hour usage limit at 84%/);
     writeJson(path.join(sessionDir(session), 'rate-limits.json'), { ts: new Date().toISOString(), five_hour: { used_percentage: 40 } });
     expect(rateLimit.evaluate(ctx).length).toBe(0);
   });
@@ -155,14 +155,14 @@ describe('security watch', () => {
     expect(s.length).toBe(4);
     for (const x of s) {
       expect(x.severity).toBe('critical');
-      expect((x.action as { note: string }).note).toMatch(/^Tally observed /);
+      expect((x.action as { note: string }).note).toMatch(/^Sigil observed /);
     }
   });
 });
 
 describe('quick checks and guessed paths', () => {
   it('reports a file_contains check on a path whose directory does not exist as unknown, not unmet', () => {
-    const cwd = tmpDir('tally-guess-');
+    const cwd = tmpDir('sigil-guess-');
     fs.mkdirSync(path.join(cwd, 'tests'));
     const session = 'guess-0001';
     writeJson(path.join(sessionDir(session), 'task.json'), {

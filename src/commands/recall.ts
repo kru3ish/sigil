@@ -1,4 +1,4 @@
-/* `tally recall [query | <session-prefix>] [--json] [--all]`: what past sessions in this repository already produced.
+/* `sigil recall [query | <session-prefix>] [--json] [--all]`: what past sessions in this repository already produced.
    No argument lists the most recent cards; words rank the cards by similarity; a session prefix prints one card. */
 import { type Args, flag, has } from '../cli.js';
 import { readCards, matchRecall, renderCard, backfillCards } from '../recall/index.js';
@@ -7,7 +7,7 @@ export async function run(args: Args): Promise<number | void> {
   const cwd = process.cwd();
   if (has(args, 'backfill')) {
     const r = backfillCards(cwd, { since: flag(args, 'since'), force: has(args, 'force') });
-    process.stdout.write(`Recall cards for this repository: ${r.written} written from ${r.sessions} past sessions (${r.skipped} skipped: no changes, Tally's own runs, or already carded).\n`);
+    process.stdout.write(`Recall cards for this repository: ${r.written} written from ${r.sessions} past sessions (${r.skipped} skipped: no changes, Sigil's own runs, or already carded).\n`);
     return;
   }
   const cards = readCards(cwd);
@@ -35,6 +35,6 @@ export async function run(args: Args): Promise<number | void> {
     const c = r.card;
     L.push(`  ${c.session.slice(0, 8)}  ${(c.started ?? c.updated).slice(0, 10)}  ${`$${c.cost_usd.toFixed(2)}`.padStart(8)}${r.similarity !== undefined ? `  ${r.similarity.toFixed(2)}` : ''}  ${c.title.slice(0, 70)}`);
   }
-  L.push('', 'One card: tally recall <session-prefix>. Cards are local JSON (tally config: recall.dir to keep them somewhere shared).');
+  L.push('', 'One card: sigil recall <session-prefix>. Cards are local JSON (sigil config: recall.dir to keep them somewhere shared).');
   process.stdout.write(L.join('\n') + '\n');
 }

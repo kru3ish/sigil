@@ -26,7 +26,7 @@ export class SessionNotFound extends Error {
   }
 }
 
-/* every session id Tally knows: directories under ~/.tally/sessions plus the ids in active.json */
+/* every session id Sigil knows: directories under ~/.sigil/sessions plus the ids in active.json */
 export function knownSessionIds(): string[] {
   const root = path.join(path.dirname(sessionDir('x')), '');
   const dirs = fs.existsSync(root) ? fs.readdirSync(root).filter((d) => fs.statSync(path.join(root, d)).isDirectory()) : [];
@@ -47,7 +47,7 @@ export function resolveSessionId(given: string): string {
   if (hits.length > 1) throw new SessionNotFound(`"${id}" matches ${hits.length} sessions (${hits.map((h) => h.slice(0, uniquePrefixLength(known))).join(', ')}); give more characters`);
   /* a full id that has no directory yet (a hook's first event is on its way): accept it, the caller will find nothing to read */
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return id;
-  throw new SessionNotFound(`no session starting with "${id}" (tally sessions lists them)`);
+  throw new SessionNotFound(`no session starting with "${id}" (sigil sessions lists them)`);
 }
 
 /* the shortest prefix length (at least 8) that tells every known session apart */

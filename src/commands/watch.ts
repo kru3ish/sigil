@@ -8,7 +8,7 @@ export async function run(args: Args): Promise<number | void> {
   const cfg = loadConfig();
   const session = resolveSession(args._[0] ?? flag(args, 'session'), process.cwd());
   if (!session) {
-    process.stderr.write('No active session. Start Claude Code in a repo with Tally hooks installed, then run `tally watch` again.\n');
+    process.stderr.write('No active session. Start Claude Code in a repo with Sigil hooks installed, then run `sigil watch` again.\n');
     return 1;
   }
   const cwd = sessionCwd(session) ?? process.cwd();

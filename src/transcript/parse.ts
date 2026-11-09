@@ -65,7 +65,7 @@ export interface Transcript {
   finalAssistantText: string;
   skills: Array<{ name: string; ts: string; turn: number; messageId: string }>;
   mcpCalls: Array<{ server: string; tool: string; ts: string; turn: number; messageId: string; isError: boolean }>;
-  /* true when the transcript came from one of Tally's own headless runs; excluded from every stat */
+  /* true when the transcript came from one of Sigil's own headless runs; excluded from every stat */
   internal: boolean;
   entrypoint?: string;
   format: TranscriptFormat;
@@ -80,9 +80,9 @@ export interface TranscriptFormat {
   unknown_types: string[];
 }
 
-/* Transcript layouts Tally has been verified against (Claude Code major.minor). */
+/* Transcript layouts Sigil has been verified against (Claude Code major.minor). */
 export const KNOWN_FORMAT_VERSIONS = ['2.1'];
-/* Line types seen in Claude Code 2.1.x transcripts. Unknown types are reported by `tally doctor` but do not
+/* Line types seen in Claude Code 2.1.x transcripts. Unknown types are reported by `sigil doctor` but do not
    by themselves lower cost confidence: only unparseable lines, assistant lines without usage, or an
    unverified major.minor do. */
 const KNOWN_LINE_TYPES = new Set(['assistant', 'user', 'system', 'attachment', 'permission-mode', 'mode', 'summary', 'progress', 'queue-operation', 'file-history-snapshot', 'file-history-delta', 'atis-latch', 'custom-title', 'last-prompt', 'ai-title', 'pr-link', 'agent-name']);
@@ -382,7 +382,7 @@ export function parseTranscript(lines: RawLine[], pricing: Pricing = loadPricing
     t.contextTokensNow = lastMainMessage.usage.input + lastMainMessage.usage.cache_read + lastMainMessage.usage.cache_write;
   }
   t.finalAssistantText = lastAssistantText;
-  t.internal = isInternalCwd(t.cwd) || t.entrypoint === 'tally';
+  t.internal = isInternalCwd(t.cwd) || t.entrypoint === 'sigil';
   t.format.version = t.version;
   t.format.known = isKnownFormatVersion(t.version);
   t.format.unknown_types = [...unknownTypes].sort();

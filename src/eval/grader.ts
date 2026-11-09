@@ -1,7 +1,7 @@
 /* The blind evaluator: a separate model process with fresh context that grades the finished repository against the
-   Task Contract and never sees Tally's statuses, verdict, quality score or recommendations. It gets the task text, the
+   Task Contract and never sees Sigil's statuses, verdict, quality score or recommendations. It gets the task text, the
    criteria, the repository path, the base commit and the test command, and may read files and run git and the tests.
-   Its answer is compared with Tally's afterwards; disagreements are the evaluation's product. */
+   Its answer is compared with Sigil's afterwards; disagreements are the evaluation's product. */
 import { spawnSync } from 'node:child_process';
 import type { GradeStatus } from './ledger.js';
 
@@ -81,13 +81,13 @@ export function parseGraderJson(text: string): Omit<GraderOutput, 'duration_s' |
   };
 }
 
-/* Runs `claude -p` as the grader in a fresh process. Settings sources are cleared so the user's hooks (Tally's
-   included) never see the grader as a session, MCP servers are not loaded, and TALLY_INTERNAL marks it internal. */
+/* Runs `claude -p` as the grader in a fresh process. Settings sources are cleared so the user's hooks (Sigil's
+   included) never see the grader as a session, MCP servers are not loaded, and SIGIL_INTERNAL marks it internal. */
 export function runClaudeGrader(input: GraderInput, opts: { model?: string; bin?: string; timeoutMs?: number } = {}): GraderOutput {
   const started = Date.now();
   const bin = opts.bin ?? process.env.CLAUDE_BIN ?? 'claude';
   const args = ['-p', graderPrompt(input), '--output-format', 'json', '--json-schema', JSON.stringify(GRADER_SCHEMA), '--model', opts.model ?? 'opus', '--setting-sources', '', '--strict-mcp-config', '--permission-mode', 'acceptEdits', '--max-turns', '40', '--allowedTools', 'Read', 'Grep', 'Glob', 'Bash(git *)', 'Bash(npm test*)', 'Bash(npm run*)', 'Bash(npx *)', 'Bash(node *)', 'Bash(ls*)', 'Bash(cat *)', 'Bash(python*)', 'Bash(pytest*)', 'Bash(go *)', 'Bash(cargo *)', '--add-dir', input.repoPath];
-  const r = spawnSync(bin, args, { cwd: input.repoPath, encoding: 'utf8', env: { ...process.env, TALLY_INTERNAL: '1' }, timeout: opts.timeoutMs ?? 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024, windowsHide: true });
+  const r = spawnSync(bin, args, { cwd: input.repoPath, encoding: 'utf8', env: { ...process.env, SIGIL_INTERNAL: '1' }, timeout: opts.timeoutMs ?? 20 * 60 * 1000, maxBuffer: 20 * 1024 * 1024, windowsHide: true });
   const duration_s = Math.round((Date.now() - started) / 1000);
   let envelope: { result?: string; structured_output?: unknown; total_cost_usd?: number; modelUsage?: Record<string, unknown>; is_error?: boolean } = {};
   try {

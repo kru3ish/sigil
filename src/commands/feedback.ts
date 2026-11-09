@@ -1,9 +1,9 @@
-/* `tally feedback <criterion> correct|wrong|unsure [--comment "..."] [--session id]`
+/* `sigil feedback <criterion> correct|wrong|unsure [--comment "..."] [--session id]`
      Label a criterion on the current receipt. Stored next to the receipt; nothing leaves the machine.
-   `tally feedback wrong <criterion> --report [--out bug.json] [--include-comment] [--yes]`
+   `sigil feedback wrong <criterion> --report [--out bug.json] [--include-comment] [--yes]`
      Also build the sanitized wrong-verdict bundle, scan it for secrets, show it, and (after a separate, default-No
      question) open a pre-filled GitHub issue. `--out` writes the bundle to a file instead of opening anything.
-   `tally feedback` with no arguments lists the criteria of the current receipt with their ids. */
+   `sigil feedback` with no arguments lists the criteria of the current receipt with their ids. */
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -36,19 +36,19 @@ function openInBrowser(url: string): void {
   child.unref();
 }
 
-const USAGE = 'Usage: tally feedback <c2> correct|wrong|unsure [--comment "..."] [--session id]\n       tally feedback wrong <c2> --report [--out bug.json] [--include-comment] [--yes]\n       tally feedback            list the criteria of the current receipt\n';
+const USAGE = 'Usage: sigil feedback <c2> correct|wrong|unsure [--comment "..."] [--session id]\n       sigil feedback wrong <c2> --report [--out bug.json] [--include-comment] [--yes]\n       sigil feedback            list the criteria of the current receipt\n';
 
 export async function run(args: Args): Promise<number | void> {
   const cwd = process.cwd();
   const sessionArg = flag(args, 'session');
   const session = sessionArg ? resolveSessionPrefix(sessionArg) : resolveSession(undefined, cwd);
   if (!session) {
-    process.stderr.write('No session found. Pass --session <id>, or run from a repository with a Tally session.\n');
+    process.stderr.write('No session found. Pass --session <id>, or run from a repository with a Sigil session.\n');
     return 2;
   }
   const j = loadJudge(session);
   if (!j) {
-    process.stderr.write(`No receipt for session ${session.slice(0, 8)}. Run \`tally verify\` or \`tally judge\` first.\n`);
+    process.stderr.write(`No receipt for session ${session.slice(0, 8)}. Run \`sigil verify\` or \`sigil judge\` first.\n`);
     return 2;
   }
   /* the plugin passes one string: "<criterion> <label> <comment…>" */
@@ -57,7 +57,7 @@ export async function run(args: Args): Promise<number | void> {
   if (fromArgs !== undefined) {
     const m = /^\s*(c\d+)\s+(correct|wrong|unsure)\s*(.*)$/i.exec(fromArgs);
     if (!m) {
-      process.stderr.write('Usage: /tally:feedback <c2> <correct|wrong|unsure> [comment]\n');
+      process.stderr.write('Usage: /sigil:feedback <c2> <correct|wrong|unsure> [comment]\n');
       return 1;
     }
     a0 = m[1]!.toLowerCase();
@@ -72,7 +72,7 @@ export async function run(args: Args): Promise<number | void> {
       const fb = prior.filter((f) => f.criterion === c.id).pop();
       process.stdout.write(`  ${c.id.padEnd(4)} ${st.padEnd(11)} ${c.text.slice(0, 80)}${fb ? `   [you: ${fb.label}]` : ''}\n`);
     }
-    process.stdout.write('\nLabel one: tally feedback <c#> correct|wrong|unsure [--comment "..."]\n');
+    process.stdout.write('\nLabel one: sigil feedback <c#> correct|wrong|unsure [--comment "..."]\n');
     return;
   }
   /* accept both orders: `feedback c2 wrong` and `feedback wrong c2` */
@@ -94,7 +94,7 @@ export async function run(args: Args): Promise<number | void> {
     process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
     return 1;
   }
-  process.stdout.write(`Recorded: ${entry.criterion} ${entry.assurance} (${entry.judge_status}, ${entry.resolved_by}) → ${entry.label}${entry.comment ? ` · "${entry.comment}"` : ''}. Stored locally in the session's feedback.jsonl.${entry.false_verified ? '\nA wrong VERIFIED is the bug class Tally treats as release-blocking; `tally feedback wrong ' + entry.criterion + ' --report` builds a sanitized report for an issue.' : ''}\n`);
+  process.stdout.write(`Recorded: ${entry.criterion} ${entry.assurance} (${entry.judge_status}, ${entry.resolved_by}) → ${entry.label}${entry.comment ? ` · "${entry.comment}"` : ''}. Stored locally in the session's feedback.jsonl.${entry.false_verified ? '\nA wrong VERIFIED is the bug class Sigil treats as release-blocking; `sigil feedback wrong ' + entry.criterion + ' --report` builds a sanitized report for an issue.' : ''}\n`);
 
   if (!has(args, 'report')) return;
   if (label !== 'wrong') {
@@ -124,7 +124,7 @@ export async function run(args: Args): Promise<number | void> {
     process.stdout.write('Discarded.\n');
     return;
   }
-  const file = path.join(cwd, `tally-wrong-verdict-${entry.criterion}-${session.slice(0, 8)}.json`);
+  const file = path.join(cwd, `sigil-wrong-verdict-${entry.criterion}-${session.slice(0, 8)}.json`);
   fs.writeFileSync(file, payload + '\n');
   process.stdout.write(`Saved ${file}.\n`);
   if (has(args, 'yes') && !process.stdin.isTTY) return;
@@ -133,5 +133,5 @@ export async function run(args: Args): Promise<number | void> {
     const url = issueUrl(report);
     openInBrowser(url);
     process.stdout.write('Opened. Add what was actually true in your own words before submitting.\n');
-  } else process.stdout.write(`Not opened. The file above is enough for an issue at https://github.com/kru3ish/tally/issues/new?template=wrong_verdict.md\n`);
+  } else process.stdout.write(`Not opened. The file above is enough for an issue at https://github.com/kru3ish/sigil/issues/new?template=wrong_verdict.md\n`);
 }

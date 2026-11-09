@@ -81,7 +81,7 @@ export interface Worktree {
 }
 
 export function addWorktree(cwd: string, sha: string, exec: Exec = gitExecRaw): Worktree {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-wt-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-wt-'));
   fs.rmdirSync(dir);
   const r = exec('git', ['worktree', 'add', '--detach', dir, sha], cwd);
   if (!r.ok) throw new Error(`git worktree add failed: ${r.stderr.trim().slice(0, 200)}`);

@@ -7,11 +7,11 @@ const STATUS_ICON: Record<string, string> = { met: '✔', partial: '◐', unmet:
 
 export function renderReport(j: Judge): string {
   const L: string[] = [];
-  L.push(`# Tally receipt: ${j.task.title}`);
+  L.push(`# Sigil receipt: ${j.task.title}`);
   L.push('');
   L.push(`Session \`${j.session}\` · judged ${j.judged_at} on ${j.reason} · judge model ${j.judge_model}`);
   if (j.task.source.url) L.push(`Source: ${j.task.source.url}`);
-  if (!j.task.linked) L.push('> No task was linked. Criteria were inferred from the first prompt; link a ticket next time with `tally task <url>`.');
+  if (!j.task.linked) L.push('> No task was linked. Criteria were inferred from the first prompt; link a ticket next time with `sigil task <url>`.');
   L.push('');
   L.push(`## Verdict (experimental, model-assisted): **${j.verdict.verdict.toUpperCase()}**${j.followup ? ` → after follow-up: **${j.followup.final_verdict.toUpperCase()}** (${j.followup.final_status})` : ''}`);
   L.push('');
@@ -76,8 +76,8 @@ Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')} (fl
   L.push('');
   L.push(`## Cost (${j.cost.label}) — ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` of ${fmtUsd(j.cost.budget_usd)} budget (${j.cost.budget_used_pct}%)` : ', no budget (no comparable past task, no cap set)'}`);
   L.push('');
-  L.push(`Per completed criterion: ${j.cost.per_completed_criterion_usd === null ? 'n/a (none met)' : fmtUsd(j.cost.per_completed_criterion_usd)} · Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, counted separately) · models: ${j.cost.models.join(', ')}`);
-  if (j.cost.confidence === 'partial') L.push(`\n> **Cost is partial.** Transcript format ${j.cost.format.version ?? 'unknown'}${j.cost.format.known ? '' : ' is not a verified layout'}; ${j.cost.format.unparseable_lines} of ${j.cost.format.total_lines} lines could not be parsed${j.cost.format.unknown_types.length ? `; unknown line types: ${j.cost.format.unknown_types.join(', ')}` : ''}. Run \`tally doctor\`.`);
+  L.push(`Per completed criterion: ${j.cost.per_completed_criterion_usd === null ? 'n/a (none met)' : fmtUsd(j.cost.per_completed_criterion_usd)} · Sigil's own spend: ${fmtUsd(j.cost.sigil_own_usd)} (${j.cost.sigil_share_pct}% of session spend, counted separately) · models: ${j.cost.models.join(', ')}`);
+  if (j.cost.confidence === 'partial') L.push(`\n> **Cost is partial.** Transcript format ${j.cost.format.version ?? 'unknown'}${j.cost.format.known ? '' : ' is not a verified layout'}; ${j.cost.format.unparseable_lines} of ${j.cost.format.total_lines} lines could not be parsed${j.cost.format.unknown_types.length ? `; unknown line types: ${j.cost.format.unknown_types.join(', ')}` : ''}. Run \`sigil doctor\`.`);
   if (j.cost.otel?.available) L.push(`\nOTel cross-check: ${fmtUsd(j.cost.otel.total_usd ?? 0)} reported by Claude Code telemetry (${(j.cost.otel.delta_usd ?? 0) >= 0 ? '+' : ''}${fmtUsd(j.cost.otel.delta_usd ?? 0)} vs transcript).`);
   L.push('');
   L.push('| Phase | Spend | Calls |');
@@ -145,7 +145,7 @@ export function renderSummary(j: Judge, color = true): string {
   const assuranceOf = (id: string, cr: Judge['criteria'][number]) => a?.criteria.find((x) => x.id === id)?.status ?? statusFromJudge(cr);
   const A_COLOR: Record<string, string> = { VERIFIED: '32', SUPPORTED: '33', UNVERIFIED: '90', UNMET: '31' };
   const A_MARK: Record<string, string> = { VERIFIED: '✓', SUPPORTED: '△', UNVERIFIED: '?', UNMET: '✗' };
-  L.push(c('1', `Tally receipt · ${j.task.title}`));
+  L.push(c('1', `Sigil receipt · ${j.task.title}`));
   if (a) L.push(c('90', `Agent ${a.agent.product}${a.agent.version ? ' ' + a.agent.version : ''}${a.model ? ` · model ${a.model.model} (${a.model.provider})` : ''}${a.task.status === 'needs_confirmation' ? ' · contract NOT CONFIRMED' : a.task.status === 'linked' ? ' · contract linked, not confirmed by a person' : ''}`));
   if (j.task.frozen_after_work) L.push(c('33', `Contract frozen at ${j.task.frozen_after_work.frozen_at.slice(0, 16).replace('T', ' ')} UTC, after the session's last edit at ${j.task.frozen_after_work.last_edit_at.slice(0, 16).replace('T', ' ')} UTC: the criteria were set with the work in view.`));
   const sum = a?.summary ?? j.criteria.reduce((acc, cr) => {
@@ -168,7 +168,7 @@ export function renderSummary(j: Judge, color = true): string {
   if (a?.scope.unnamed_areas.length) L.push(c('33', `Scope: changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')} (flagged, not judged wrong)`));
   if (j.review) for (const line of renderReview(j.review as Review)) L.push(line);
   L.push(`Cost (API-equivalent${j.cost.confidence === 'partial' ? ', PARTIAL: transcript not fully parsed' : ''}): ${fmtUsd(j.cost.total_usd)}${j.cost.budget_usd > 0 ? ` / budget ${fmtUsd(j.cost.budget_usd)} (${j.cost.budget_used_pct}%)` : ' / no budget'} · per met criterion ${j.cost.per_completed_criterion_usd === null ? 'n/a' : fmtUsd(j.cost.per_completed_criterion_usd)} · waste ${fmtUsd(j.waste.total_usd)}`);
-  L.push(`  Tally's own spend: ${fmtUsd(j.cost.tally_own_usd)} (${j.cost.tally_share_pct}% of session spend, separate)${j.cost.otel?.available ? ` · OTel cross-check ${fmtUsd(j.cost.otel.total_usd ?? 0)}` : ''}`);
+  L.push(`  Sigil's own spend: ${fmtUsd(j.cost.sigil_own_usd)} (${j.cost.sigil_share_pct}% of session spend, separate)${j.cost.otel?.available ? ` · OTel cross-check ${fmtUsd(j.cost.otel.total_usd ?? 0)}` : ''}`);
   const avoidable: string[] = [];
   for (const l of j.waste.failed_loops) avoidable.push(`${fmtUsd(l.usd)}  ${l.repeats} identical failing runs of \`${l.command}\``);
   for (const r of j.waste.repeated_reads) avoidable.push(`${fmtUsd(r.usd)}  ${r.reads} reads of ${r.file}`);

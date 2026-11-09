@@ -1,4 +1,4 @@
-/* `tally telemetry show|status|on|off|flush`: exactly what would be sent, whether it is, and the switch. */
+/* `sigil telemetry show|status|on|off|flush`: exactly what would be sent, whether it is, and the switch. */
 import fs from 'node:fs';
 import { type Args, has } from '../cli.js';
 import { telemetryActive, enableTelemetry, disableTelemetry, exampleEvent, flush, queueFile, ALLOWED_FIELDS, TELEMETRY_SCHEMA } from '../telemetry/index.js';
@@ -8,7 +8,7 @@ export async function run(args: Args): Promise<number | void> {
   if (sub === 'on') {
     const s = enableTelemetry();
     const t = telemetryActive();
-    process.stdout.write(`Anonymous metrics on. Installation id ${s.installation_id} (random, created now, deleted by \`tally telemetry off\`).\n${t.active ? `Sending to ${t.endpoint}.` : `Nothing is sent yet: ${t.reason}.`}\n`);
+    process.stdout.write(`Anonymous metrics on. Installation id ${s.installation_id} (random, created now, deleted by \`sigil telemetry off\`).\n${t.active ? `Sending to ${t.endpoint}.` : `Nothing is sent yet: ${t.reason}.`}\n`);
     return;
   }
   if (sub === 'off') {
@@ -32,9 +32,9 @@ export async function run(args: Args): Promise<number | void> {
   }
   if (sub === 'status') {
     const t = telemetryActive();
-    process.stdout.write(`Anonymous metrics: ${t.state.enabled ? 'on' : 'off'}; ${t.active ? 'sending' : 'not sending'} (${t.reason}).${t.state.installation_id ? ` Installation id ${t.state.installation_id}.` : ''}\n\`tally telemetry show\` prints exactly what would be sent; \`tally telemetry on|off\` switches it; TALLY_TELEMETRY=0 disables it in the environment.\n`);
+    process.stdout.write(`Anonymous metrics: ${t.state.enabled ? 'on' : 'off'}; ${t.active ? 'sending' : 'not sending'} (${t.reason}).${t.state.installation_id ? ` Installation id ${t.state.installation_id}.` : ''}\n\`sigil telemetry show\` prints exactly what would be sent; \`sigil telemetry on|off\` switches it; SIGIL_TELEMETRY=0 disables it in the environment.\n`);
     return;
   }
-  process.stderr.write('Usage: tally telemetry show|status|on|off\n');
+  process.stderr.write('Usage: sigil telemetry show|status|on|off\n');
   return 1;
 }

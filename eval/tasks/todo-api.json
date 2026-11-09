@@ -1,9 +1,9 @@
 {
   "id": "todo-api",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/todo-api",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/todo-api",
   "base": "eea6e126b4a59b4eee068647d669ffb20c347cdf",
-  "task": "C:/Users/Mehta/dev/tally-eval/todo-api/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/todo-api/task.md",
   "setup": [],
   "tags": [
     "javascript",

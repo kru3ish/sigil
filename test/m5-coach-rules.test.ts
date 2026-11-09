@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isolate, basicFixture, tmpDir } from './helpers.js';
 import { loadConfig } from '../src/config.js';
-import { readEventsFile, type TallyEvent } from '../src/store/events.js';
+import { readEventsFile, type SigilEvent } from '../src/store/events.js';
 import { parseTranscriptFile } from '../src/transcript/parse.js';
 import { buildContext } from '../src/coach/context.js';
 import { CoachEngine, loadState, isMuted } from '../src/coach/engine.js';
@@ -27,7 +27,7 @@ function ctx(over: Partial<RuleContext> = {}): RuleContext {
   return { ...base, ...over };
 }
 
-function ev(type: TallyEvent['type'], data: Record<string, unknown>, ts = '2026-09-10T14:00:00.000Z'): TallyEvent {
+function ev(type: SigilEvent['type'], data: Record<string, unknown>, ts = '2026-09-10T14:00:00.000Z'): SigilEvent {
   return { ts, type, session: 'fx', cwd: CWD, data };
 }
 
@@ -46,7 +46,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   estimate: { hours: 2, basis: 'llm' },
   budget_usd: 10,
   hourly_rate: 75,
-  tally_cost_usd: 0,
+  sigil_cost_usd: 0,
   model: 'stub',
   ...over,
 });

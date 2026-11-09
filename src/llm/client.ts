@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { appendLine, tallyHome, log } from '../paths.js';
+import { appendLine, sigilHome, log } from '../paths.js';
 import { canonicalModel, type Usage } from '../cost/pricing.js';
 import { loadConfig } from '../config.js';
 import { OpenAICompatible } from './openai.js';
@@ -31,21 +31,21 @@ export interface LlmClient {
   readonly noModel?: boolean;
 }
 
-/* No model at all (CI without an API key, `TALLY_LLM=none`): intake keeps the ticket's listed criteria verbatim, the
+/* No model at all (CI without an API key, `SIGIL_LLM=none`): intake keeps the ticket's listed criteria verbatim, the
    judge resolves mechanical checks and runs the tests, and everything that needs a reading stays unverifiable. */
 export class NoModelLlm implements LlmClient {
   readonly noModel = true;
   async complete<T>(req: LlmRequest): Promise<LlmResult<T>> {
-    throw new Error(`no model in this run (${req.kind}): set TALLY_LLM_API_KEY, or use mechanical checks`);
+    throw new Error(`no model in this run (${req.kind}): set SIGIL_LLM_API_KEY, or use mechanical checks`);
   }
 }
 
-export function tallySpendFile(): string {
-  return path.join(tallyHome(), 'tally-spend.jsonl');
+export function sigilSpendFile(): string {
+  return path.join(sigilHome(), 'sigil-spend.jsonl');
 }
 
-export function recordTallySpend(entry: { kind: string; model: string; cost_usd: number; usage: Usage; session?: string }): void {
-  appendLine(tallySpendFile(), JSON.stringify({ ts: new Date().toISOString(), ...entry }));
+export function recordSigilSpend(entry: { kind: string; model: string; cost_usd: number; usage: Usage; session?: string }): void {
+  appendLine(sigilSpendFile(), JSON.stringify({ ts: new Date().toISOString(), ...entry }));
 }
 
 interface CliOutput {
@@ -78,7 +78,7 @@ export class ClaudeCli implements LlmClient {
 
   private async completeOnce<T>(req: LlmRequest, maxTurns: number): Promise<LlmResult<T>> {
     const started = Date.now();
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-llm-'));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-llm-'));
     /* long evidence packs go over stdin: Windows caps a command line at ~32k characters */
     const viaStdin = req.prompt.length > 6000;
     const args = [
@@ -101,9 +101,9 @@ export class ClaudeCli implements LlmClient {
       '',
       '--strict-mcp-config',
     ];
-    const resolved = resolveClaudeBin(this.opts.claudeBin ?? process.env.TALLY_CLAUDE_BIN);
-    /* TALLY_INTERNAL marks the run so Tally's own hooks exit at once (belt: --setting-sources "" already skips hooks). */
-    const out = await runProcess(resolved.bin, [...resolved.prefix, ...args], { cwd, timeoutMs: req.timeoutMs ?? 240000, env: { TALLY_INTERNAL: '1', CLAUDE_CODE_ENTRYPOINT: 'tally' }, input: viaStdin ? req.prompt : undefined });
+    const resolved = resolveClaudeBin(this.opts.claudeBin ?? process.env.SIGIL_CLAUDE_BIN);
+    /* SIGIL_INTERNAL marks the run so Sigil's own hooks exit at once (belt: --setting-sources "" already skips hooks). */
+    const out = await runProcess(resolved.bin, [...resolved.prefix, ...args], { cwd, timeoutMs: req.timeoutMs ?? 240000, env: { SIGIL_INTERNAL: '1', CLAUDE_CODE_ENTRYPOINT: 'sigil' }, input: viaStdin ? req.prompt : undefined });
     fs.rmSync(cwd, { recursive: true, force: true });
     let parsed: CliOutput;
     try {
@@ -111,8 +111,8 @@ export class ClaudeCli implements LlmClient {
     } catch {
       throw new Error(`claude -p returned non-JSON output: ${out.stdout.slice(0, 300)} ${out.stderr.slice(0, 300)}`);
     }
-    if (parsed.is_error || process.env.TALLY_LLM_DEBUG) {
-      const dir = path.join(tallyHome(), 'llm-debug');
+    if (parsed.is_error || process.env.SIGIL_LLM_DEBUG) {
+      const dir = path.join(sigilHome(), 'llm-debug');
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, `${Date.now()}-${req.kind}${req.tier ?? ''}.json`), JSON.stringify({ model: req.model, args: args.map((a) => (a.length > 4000 ? a.slice(0, 4000) + '…' : a)), stdout: out.stdout.slice(0, 20000), stderr: out.stderr.slice(0, 4000), code: out.code, timedOut: out.timedOut }, null, 2));
     }
@@ -143,7 +143,7 @@ export class ClaudeCli implements LlmClient {
     const modelKey = usageEntries.find(([k]) => canonicalModel(k) === wanted)?.[0] ?? usageEntries.sort((a, b) => (b[1].costUSD ?? 0) - (a[1].costUSD ?? 0))[0]?.[0];
     const model = canonicalModel(modelKey ?? req.model);
     const cost_usd = parsed.total_cost_usd ?? 0;
-    recordTallySpend({ kind: req.tier ? `${req.kind}:tier${req.tier}` : req.kind, model, cost_usd, usage, session: this.opts.session });
+    recordSigilSpend({ kind: req.tier ? `${req.kind}:tier${req.tier}` : req.kind, model, cost_usd, usage, session: this.opts.session });
     log(`llm ${req.kind}${req.tier ? ':tier' + req.tier : ''} model=${model} cost=${cost_usd.toFixed(4)} ms=${Date.now() - started}`);
     return { data, usage, cost_usd, model, duration_ms: Date.now() - started };
   }
@@ -161,7 +161,7 @@ export class StubLlm implements LlmClient {
     if (!r) throw new Error(`StubLlm: no responder for ${req.kind}`);
     const usage: Usage = { input: 1200, output: 400, cache_write: 0, cache_write_1h: 0, cache_read: 0 };
     const cost_usd = req.kind === 'judge' ? (req.tier === 1 ? 0.012 : 0.05) : 0.004;
-    recordTallySpend({ kind: req.kind, model: `stub:${req.model}`, cost_usd, usage, session: this.session });
+    recordSigilSpend({ kind: req.kind, model: `stub:${req.model}`, cost_usd, usage, session: this.session });
     return { data: r(req) as T, usage, cost_usd, model: `stub:${req.model}`, duration_ms: 1 };
   }
 }
@@ -236,8 +236,8 @@ export function runProcess(bin: string, args: string[], opts: { cwd?: string; ti
 }
 
 export function makeLlm(opts: { session?: string; stub?: Partial<Record<LlmRequest['kind'], StubResponder>> } = {}): LlmClient {
-  if (opts.stub || process.env.TALLY_LLM === 'stub') return new StubLlm(opts.stub ?? defaultStubs(), opts.session);
-  if (process.env.TALLY_LLM === 'none') return new NoModelLlm();
+  if (opts.stub || process.env.SIGIL_LLM === 'stub') return new StubLlm(opts.stub ?? defaultStubs(), opts.session);
+  if (process.env.SIGIL_LLM === 'none') return new NoModelLlm();
   const models = loadConfig().models;
   if (models.provider === 'openai-compatible') return new OpenAICompatible({ baseUrl: models.base_url, apiKey: process.env[models.api_key_env], session: opts.session, usdPerMillionInput: models.usd_per_million_input, usdPerMillionOutput: models.usd_per_million_output });
   return new ClaudeCli({ session: opts.session });

@@ -5,7 +5,7 @@
    stream. Nothing here branches on which agent produced an event: the adapter already said who it was (`agent`), the
    model string says which model (`model`), and the rest is what happened. Raw provenance is kept on every event
    (`source`) so a claim on a receipt can be traced back to the line that produced it. */
-import type { TallyEvent } from '../store/events.js';
+import type { SigilEvent } from '../store/events.js';
 import type { Transcript } from '../transcript/parse.js';
 import type { Usage } from '../cost/pricing.js';
 
@@ -99,7 +99,7 @@ function shipType(kind: unknown): NormalizedEventType {
 }
 
 /* Project a session's raw events (and its transcript, when there is one) into the normalised stream, in time order. */
-export function normalizeSession(raw: TallyEvent[], transcript?: Transcript | null): NormalizedEvent[] {
+export function normalizeSession(raw: SigilEvent[], transcript?: Transcript | null): NormalizedEvent[] {
   const out: NormalizedEvent[] = [];
   const start = raw.find((e) => e.type === 'session_start');
   const agent: AgentIdentity = { product: String(start?.data.agent ?? 'claude-code'), version: typeof start?.data.version === 'string' ? start.data.version : undefined };
@@ -171,7 +171,7 @@ export function normalizeSession(raw: TallyEvent[], transcript?: Transcript | nu
         break;
       }
       default:
-        /* coach, task, judge, inject, apply, skip, mute, note, budget_approved, dispute: Tally's own bookkeeping, not agent activity */
+        /* coach, task, judge, inject, apply, skip, mute, note, budget_approved, dispute: Sigil's own bookkeeping, not agent activity */
         break;
     }
   });

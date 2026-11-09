@@ -1,9 +1,9 @@
 {
   "id": "rate-limiter",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/rate-limiter",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/rate-limiter",
   "base": "14ac86ff0528874cb4d6183536a50e8f3d92e9f2",
-  "task": "C:/Users/Mehta/dev/tally-eval/rate-limiter/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/rate-limiter/task.md",
   "setup": [],
   "tags": [
     "javascript",

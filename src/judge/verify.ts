@@ -105,7 +105,7 @@ export function failureAttributable(v: VerificationResult): boolean | undefined 
    session's node_modules when present), then remove the worktree. Never touches the session's tree. */
 export async function runAtBase(cwd: string, base: string, command: string, timeoutMs: number, overlay: string[] = []): Promise<NonNullable<VerificationResult['at_base']>> {
   const started = Date.now();
-  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-base-'));
+  const wt = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-base-'));
   const dir = path.join(wt, 'repo');
   try {
     const add = await runProcess('git', ['worktree', 'add', '--detach', dir, base], { cwd, timeoutMs: 120000 });
@@ -155,10 +155,10 @@ export function scrubEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
   for (const [k, v] of Object.entries(env)) {
     if (v === undefined) continue;
     if (ENV_KEEP.has(k)) out[k] = v;
-    else if (!SECRET_LIKE.test(k) && !/^(TALLY_|CLAUDE_)/.test(k) && !/^[A-Z0-9_]*(TOKEN|KEY|SECRET)[A-Z0-9_]*$/i.test(k) && v.length < 200 && !/^(sk-|ghp_|xox|AKIA|eyJ)/.test(v)) out[k] = v;
+    else if (!SECRET_LIKE.test(k) && !/^(SIGIL_|CLAUDE_)/.test(k) && !/^[A-Z0-9_]*(TOKEN|KEY|SECRET)[A-Z0-9_]*$/i.test(k) && v.length < 200 && !/^(sk-|ghp_|xox|AKIA|eyJ)/.test(v)) out[k] = v;
   }
-  out.TALLY_INTERNAL = '1';
-  out.TALLY_TEST_RERUN = '1';
+  out.SIGIL_INTERNAL = '1';
+  out.SIGIL_TEST_RERUN = '1';
   return out;
 }
 

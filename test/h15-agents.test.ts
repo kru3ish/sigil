@@ -17,13 +17,13 @@ let home: string;
 const prevEnv: Record<string, string | undefined> = {};
 beforeEach(() => {
   iso = isolate();
-  home = tmpDir('tally-agent-home-');
-  for (const k of ['USERPROFILE', 'HOME', 'CODEX_HOME', 'GEMINI_SESSION_ID', 'TALLY_AGENT']) prevEnv[k] = process.env[k];
+  home = tmpDir('sigil-agent-home-');
+  for (const k of ['USERPROFILE', 'HOME', 'CODEX_HOME', 'GEMINI_SESSION_ID', 'SIGIL_AGENT']) prevEnv[k] = process.env[k];
   process.env.USERPROFILE = home;
   process.env.HOME = home;
   delete process.env.CODEX_HOME;
   delete process.env.GEMINI_SESSION_ID;
-  delete process.env.TALLY_AGENT;
+  delete process.env.SIGIL_AGENT;
 });
 afterEach(() => {
   for (const [k, v] of Object.entries(prevEnv)) {
@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 function hook(agentId: string, event: string, input: Record<string, unknown>) {
-  return spawnSync(process.execPath, [HOOK, event, '--agent', agentId], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' }, timeout: 20000 });
+  return spawnSync(process.execPath, [HOOK, event, '--agent', agentId], { input: JSON.stringify(input), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' }, timeout: 20000 });
 }
 
 describe('agent adapters', () => {
@@ -67,7 +67,7 @@ describe('agent adapters', () => {
     expect(xs.tool_input?.command).toBe('bash -lc npm test');
   });
 
-  it('shape Tally\'s answers the way each agent expects', () => {
+  it('shape Sigil\'s answers the way each agent expects', () => {
     expect(agent('claude-code').output({ kind: 'deny', reason: 'r' })).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'r' } });
     expect(agent('codex').output({ kind: 'block', reason: 'r' })).toEqual({ decision: 'block', reason: 'r' });
     expect(agent('gemini').output({ kind: 'deny', reason: 'r' })).toMatchObject({ decision: 'deny', reason: 'r' });
@@ -77,11 +77,11 @@ describe('agent adapters', () => {
     expect(agent('cursor').output({ kind: 'context', event: 'SessionStart', text: 't' })).toEqual({ additional_context: 't' });
   });
 
-  it('is selected by --agent (anywhere in argv) or TALLY_AGENT, defaulting to Claude Code', () => {
+  it('is selected by --agent (anywhere in argv) or SIGIL_AGENT, defaulting to Claude Code', () => {
     expect(agentFromArgv(['Stop', '--agent', 'codex']).adapter.id).toBe('codex');
     expect(agentFromArgv(['--agent=gemini', 'BeforeTool']).rest).toEqual(['BeforeTool']);
     expect(agentFromArgv(['Stop']).adapter.id).toBe('claude-code');
-    process.env.TALLY_AGENT = 'cursor';
+    process.env.SIGIL_AGENT = 'cursor';
     expect(agentFromArgv(['stop']).adapter.id).toBe('cursor');
     process.env.GEMINI_SESSION_ID = 'g-1';
     expect(sessionFromEnv()).toBe('g-1');
@@ -117,7 +117,7 @@ describe('agent adapters', () => {
     expect(readEvents('cdx-1')[0]!.data.tool_name).toBe('Edit');
   });
 
-  it('install --agent writes the agent\'s hook file with a backup and uninstall removes only Tally\'s hooks', () => {
+  it('install --agent writes the agent\'s hook file with a backup and uninstall removes only Sigil\'s hooks', () => {
     for (const id of ['codex', 'gemini', 'cursor'] as const) {
       const a = agent(id);
       fs.mkdirSync(path.dirname(a.hooksFile()), { recursive: true });
@@ -148,7 +148,7 @@ describe('agent adapters', () => {
 
 describe('Codex rollout transcripts', () => {
   const rollout = (lines: unknown[]) => {
-    const dir = path.join(tmpDir('tally-codex-'), '2026', '09', '26');
+    const dir = path.join(tmpDir('sigil-codex-'), '2026', '09', '26');
     fs.mkdirSync(dir, { recursive: true });
     const f = path.join(dir, 'rollout-2026-09-26T10-00-00-abc123.jsonl');
     fs.writeFileSync(f, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');

@@ -32,7 +32,7 @@ function git(cwd: string, args: string[]): string {
 
 /* a repo with one pre-existing test; the "agent" then changes src/login.js and adds a test that names the 429 behaviour */
 function makeRepo(opts: { agentAddsTest: boolean; testPasses?: boolean }): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-assure-');
+  const cwd = tmpDir('sigil-assure-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.mkdirSync(path.join(cwd, 'test'));
@@ -153,7 +153,7 @@ describe('assurance engine', () => {
     await intake({ session: 'assure-1', cwd, text: 'Rate limit the login endpoint', cfg, llm, deps });
     const j = await judgeSession({ session: 'assure-1', cwd, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), cfg, llm, reason: 'push', events: fixtureEvents(cwd, base), consent: true });
     const a = j.assurance!;
-    expect(a.schema).toBe('tally.verify.v1');
+    expect(a.schema).toBe('sigil.verify.v1');
     const by = Object.fromEntries(a.criteria.map((c) => [c.id, c]));
     /* c1: the model said met and src/login.js changed, but no test names the behaviour: supported, not verified */
     expect(by.c1!.status).toBe('SUPPORTED');
@@ -194,7 +194,7 @@ describe('assurance engine', () => {
     expect(summary).toContain('✗ UNMET');
     expect(summary.indexOf('Experimental')).toBeGreaterThan(summary.indexOf('UNMET'));
     const text = renderVerify(a, { color: false });
-    expect(text).toContain('Tally Verify');
+    expect(text).toContain('Sigil Verify');
     expect(text).toContain('✓ VERIFIED    Login returns 429');
     expect(text).toContain('✗ UNMET       README documents the limit');
     expect(text).toContain('pre-existing tests: 2 file(s)');
@@ -233,29 +233,29 @@ describe('assurance engine', () => {
     expect(parsePassedCount('nothing here')).toBeNull();
   });
 
-  it('tally verify --json emits the schema and --ci exits 1 on an UNMET criterion', async () => {
+  it('sigil verify --json emits the schema and --ci exits 1 on an UNMET criterion', async () => {
     const { cwd, base } = makeRepo({ agentAddsTest: true });
     const llm = new StubLlm(stubFor(['met', 'met', 'unmet']), 'assure-4');
     const cfg = loadConfig();
     cfg.judge.maintainer_review = 'off';
     await intake({ session: 'assure-4', cwd, text: 'Rate limit the login endpoint', cfg, llm, deps });
     await judgeSession({ session: 'assure-4', cwd, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), cfg, llm, reason: 'push', events: fixtureEvents(cwd, base), consent: true });
-    const json = spawnSync(process.execPath, [CLI, 'verify', 'assure-4', '--json'], { cwd, encoding: 'utf8', env: { ...process.env, TALLY_LLM: 'stub' } });
+    const json = spawnSync(process.execPath, [CLI, 'verify', 'assure-4', '--json'], { cwd, encoding: 'utf8', env: { ...process.env, SIGIL_LLM: 'stub' } });
     expect(json.status).toBe(0);
     const doc = JSON.parse(json.stdout) as { schema: string; summary: { unmet: number } };
-    expect(doc.schema).toBe('tally.verify.v1');
+    expect(doc.schema).toBe('sigil.verify.v1');
     expect(doc.summary.unmet).toBe(1);
-    const ci = spawnSync(process.execPath, [CLI, 'verify', 'assure-4', '--ci'], { cwd, encoding: 'utf8', env: { ...process.env, TALLY_LLM: 'stub' } });
+    const ci = spawnSync(process.execPath, [CLI, 'verify', 'assure-4', '--ci'], { cwd, encoding: 'utf8', env: { ...process.env, SIGIL_LLM: 'stub' } });
     expect(ci.status).toBe(1);
     expect(ci.stderr).toContain('UNMET');
-    expect(ci.stdout).toContain('Tally Verify');
+    expect(ci.stdout).toContain('Sigil Verify');
   });
 });
 
 describe('adversarial rules', () => {
   it('a runner that runs nothing is inconclusive; a real runner with output is conclusive', async () => {
     const { runLooksConclusive } = await import('../src/judge/checks.js');
-    const cwd = tmpDir('tally-runner-');
+    const cwd = tmpDir('sigil-runner-');
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'echo ok' } }));
     expect(runLooksConclusive('ok', cwd, 'npm test')).toBe(false);
     expect(runLooksConclusive('', cwd, 'node test.js')).toBe(false);
@@ -312,7 +312,7 @@ describe('the tree is evidence only when it is the receipt repository', () => {
     await intake({ session: 'assure-tree', cwd, text: 'Rate limit the login endpoint', cfg, llm, deps });
     const j = await judgeSession({ session: 'assure-tree', cwd, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), cfg, llm, reason: 'push', events: fixtureEvents(cwd, base), consent: true });
     /* another repository whose test files mention 429 everywhere */
-    const other = tmpDir('tally-other-');
+    const other = tmpDir('sigil-other-');
     git(other, ['init', '-q', '-b', 'main']);
     fs.mkdirSync(path.join(other, 'test'));
     fs.writeFileSync(path.join(other, 'test', 'decoy.test.js'), "it('429 429 429', () => {});\n");
@@ -333,7 +333,7 @@ describe('the tree is evidence only when it is the receipt repository', () => {
     expect(criterionKeywords('exposes getRateLimit() in src/limits.js')).toEqual(expect.arrayContaining(['getRateLimit', 'src/limits.js']));
   });
 
-  it('tally verify uses the repository the receipt was made in, and never re-judges a receipt whose repository is gone', async () => {
+  it('sigil verify uses the repository the receipt was made in, and never re-judges a receipt whose repository is gone', async () => {
     const { verifySession } = await import('../src/commands/verify.js');
     const { cwd, base } = makeRepo({ agentAddsTest: true });
     const llm = new StubLlm(stubFor(['met', 'met', 'unmet']), 'assure-verify');
@@ -342,7 +342,7 @@ describe('the tree is evidence only when it is the receipt repository', () => {
     await intake({ session: 'assure-verify', cwd, text: 'Rate limit the login endpoint', cfg, llm, deps });
     const j = await judgeSession({ session: 'assure-verify', cwd, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), cfg, llm, reason: 'push', events: fixtureEvents(cwd, base), consent: true });
     expect(j.cwd).toBe(cwd);
-    const elsewhere = tmpDir('tally-elsewhere-');
+    const elsewhere = tmpDir('sigil-elsewhere-');
     const a = await verifySession('assure-verify', { cwd: elsewhere, quiet: true });
     expect(a).toBeTruthy();
     expect(a!.criteria.find((c) => c.id === 'c1')!.status).toBe('VERIFIED');
@@ -376,7 +376,7 @@ describe('a failed run is attributed before it counts', () => {
 
   it('a suite that was already red at the base commit is recorded next to the failure; the failure stays unmet and the reader sees both runs', async () => {
     /* base: a pre-existing test fails; the agent's change leaves it failing and adds a passing test of its own */
-    const cwd = tmpDir('tally-redbase-');
+    const cwd = tmpDir('sigil-redbase-');
     git(cwd, ['init', '-q', '-b', 'main']);
     fs.mkdirSync(path.join(cwd, 'src'));
     fs.mkdirSync(path.join(cwd, 'test'));

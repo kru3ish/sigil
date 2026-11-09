@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { setTestRerunConsent, type Config } from '../config.js';
 import { appendEvent } from '../store/events.js';
-import { ensureDir, tallyHome } from '../paths.js';
+import { ensureDir, sigilHome } from '../paths.js';
 import { enqueueInject } from './inject.js';
 import { confirmTask } from '../task/intake.js';
 import { recordChange } from './undo.js';
@@ -44,7 +44,7 @@ export function applySuggestion(s: Suggestion, opts: { session: string; cwd: str
       break;
     }
     case 'snippet': {
-      const dir = path.join(tallyHome(), 'snippets');
+      const dir = path.join(sigilHome(), 'snippets');
       ensureDir(dir);
       const f = path.join(dir, `${s.key.replace(/[^a-z0-9]+/gi, '-')}.txt`);
       fs.writeFileSync(f, `${a.snippet}\n# ${a.where}\n`);
@@ -66,7 +66,7 @@ export function applySuggestion(s: Suggestion, opts: { session: string; cwd: str
       ensureDir(path.dirname(a.file));
       fs.writeFileSync(a.file, after);
       recordChange({ session: opts.session, rule: s.rule, label: a.label, file: a.file, before, after });
-      result = { ok: true, detail: `updated ${path.relative(opts.cwd, a.file) || a.file} (undo with \`tally undo\`)`, file: a.file };
+      result = { ok: true, detail: `updated ${path.relative(opts.cwd, a.file) || a.file} (undo with \`sigil undo\`)`, file: a.file };
       break;
     }
     case 'confirm': {
@@ -76,7 +76,7 @@ export function applySuggestion(s: Suggestion, opts: { session: string; cwd: str
     }
     case 'consent': {
       setTestRerunConsent(opts.cwd, true);
-      result = { ok: true, detail: `test re-runs allowed in this repo (\`${a.command}\`); revoke with: tally config consent off` };
+      result = { ok: true, detail: `test re-runs allowed in this repo (\`${a.command}\`); revoke with: sigil config consent off` };
       break;
     }
     default:
@@ -91,7 +91,7 @@ export function applySuggestion(s: Suggestion, opts: { session: string; cwd: str
 }
 
 export function injectSuggestion(s: Suggestion, opts: { session: string; cwd: string }): ApplyResult {
-  const note = s.action.kind === 'inject' ? s.action.note : s.inject_note ?? `Tally observed: ${s.title}. ${s.message.split('\n')[0]}`;
+  const note = s.action.kind === 'inject' ? s.action.note : s.inject_note ?? `Sigil observed: ${s.title}. ${s.message.split('\n')[0]}`;
   enqueueInject(opts.session, note, s.rule, opts.cwd);
   return { ok: true, detail: 'note queued; Claude sees it on the next turn', injected: true };
 }

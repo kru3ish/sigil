@@ -28,7 +28,7 @@ export const reread: Rule = {
         action: {
           kind: 'inject',
           label: 'Ask Claude to keep notes instead of re-reading',
-          note: `Tally observed ${shortPath(file, ctx.cwd)} being read ${evs.length} times this session (~${tokens.toLocaleString('en-US')} tokens each time); the file has not changed between reads.`,
+          note: `Sigil observed ${shortPath(file, ctx.cwd)} being read ${evs.length} times this session (~${tokens.toLocaleString('en-US')} tokens each time); the file has not changed between reads.`,
         },
       });
     }

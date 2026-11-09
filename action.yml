@@ -1,4 +1,4 @@
-name: 'Tally check'
+name: 'Sigil check'
 description: 'An independent verification receipt for a pull request: acceptance criteria against evidence, the tests run in the clean checkout, the mutation check, scope. Fails the check per the repo policy.'
 author: 'kru3ish'
 branding:
@@ -10,7 +10,7 @@ inputs:
     description: 'Issue URL, a tasks/*.md path, or text. Default: taken from the PR body (a .md it names, "#12" / "fixes #12", or an issue URL), else the PR title and body.'
     default: ''
   require:
-    description: 'no-unmet | sufficient | verified. Default: verification.required in tally.json, else no-unmet.'
+    description: 'no-unmet | sufficient | verified. Default: verification.required in sigil.json, else no-unmet.'
     default: ''
   comment:
     description: 'Post one receipt comment on the PR and keep it updated.'
@@ -19,7 +19,7 @@ inputs:
     description: 'Base commit or branch. Default: the merge-base with the PR base branch (needs actions/checkout fetch-depth: 0).'
     default: ''
   version:
-    description: 'The @kru3ish/tally version to install.'
+    description: 'The sigil version to install.'
     default: 'latest'
   node-version:
     description: 'Node.js version for the runner.'
@@ -46,20 +46,20 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
     - shell: bash
-      run: npm install -g "@kru3ish/tally@${{ inputs.version }}"
+      run: npm install -g "sigil@${{ inputs.version }}"
     - id: check
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-        TALLY_TELEMETRY: '0'
-        TALLY_INPUT_TASK: ${{ inputs.task }}
-        TALLY_INPUT_REQUIRE: ${{ inputs.require }}
-        TALLY_INPUT_BASE: ${{ inputs.base }}
-        TALLY_INPUT_COMMENT: ${{ inputs.comment }}
+        SIGIL_TELEMETRY: '0'
+        SIGIL_INPUT_TASK: ${{ inputs.task }}
+        SIGIL_INPUT_REQUIRE: ${{ inputs.require }}
+        SIGIL_INPUT_BASE: ${{ inputs.base }}
+        SIGIL_INPUT_COMMENT: ${{ inputs.comment }}
       run: |
         args=()
-        [ -n "$TALLY_INPUT_TASK" ] && args+=(--task "$TALLY_INPUT_TASK")
-        [ -n "$TALLY_INPUT_REQUIRE" ] && args+=(--require "$TALLY_INPUT_REQUIRE")
-        [ -n "$TALLY_INPUT_BASE" ] && args+=(--base "$TALLY_INPUT_BASE")
-        [ "$TALLY_INPUT_COMMENT" = "true" ] || args+=(--no-comment)
-        tally check "${args[@]}"
+        [ -n "$SIGIL_INPUT_TASK" ] && args+=(--task "$SIGIL_INPUT_TASK")
+        [ -n "$SIGIL_INPUT_REQUIRE" ] && args+=(--require "$SIGIL_INPUT_REQUIRE")
+        [ -n "$SIGIL_INPUT_BASE" ] && args+=(--base "$SIGIL_INPUT_BASE")
+        [ "$SIGIL_INPUT_COMMENT" = "true" ] || args+=(--no-comment)
+        sigil check "${args[@]}"

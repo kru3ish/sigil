@@ -18,11 +18,11 @@ let cwd0: string;
 beforeEach(() => {
   iso = isolate();
   cwd0 = process.cwd();
-  process.env.TALLY_LLM = 'stub';
+  process.env.SIGIL_LLM = 'stub';
 });
 afterEach(() => {
   process.chdir(cwd0);
-  delete process.env.TALLY_LLM;
+  delete process.env.SIGIL_LLM;
   iso.restore();
 });
 
@@ -33,7 +33,7 @@ function git(cwd: string, args: string[]): string {
 }
 
 function sourceRepo(): string {
-  const cwd = tmpDir('tally-eval-src-');
+  const cwd = tmpDir('sigil-eval-src-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'x', scripts: { test: 'node test.js' } }));
   fs.writeFileSync(path.join(cwd, 'src.js'), 'module.exports = () => 200;\n');
@@ -44,15 +44,15 @@ function sourceRepo(): string {
 }
 
 const baseResult = (over: Partial<EvalRunResult> = {}): EvalRunResult => ({
-  schema: 'tally.eval.v1',
+  schema: 'sigil.eval.v1',
   run_id: 'abc123',
   date: '2026-09-27T10:00:00.000Z',
-  tally: { version: '0.5.0', commit: 'deadbee' },
+  sigil: { version: '0.5.0', commit: 'deadbee' },
   task: { id: 't1', class: 'fixture', repo: 'x', base: 'b', head: 'h', tags: [], contamination: 'unlikely' },
   agent: { product: 'claude-code', model: 'claude-sonnet-5', turns: 5, duration_s: 30, cost_usd: 0.2 },
   grader: { product: 'claude-code', model: 'claude-opus-5', cost_usd: 0.3, blind: true },
   session: 's1',
-  tally_summary: { verified: 1, supported: 1, unverified: 0, unmet: 1, total: 3, verdict: 'borderline', completion_pct: 66.7 },
+  sigil_summary: { verified: 1, supported: 1, unverified: 0, unmet: 1, total: 3, verdict: 'borderline', completion_pct: 66.7 },
   grader_verdict: 'borderline',
   tests: { independent_ran: true, independent_passed: true, total_passed: 3, preexisting_files: 1, agent_added_files: 1, agent_cases_added: 2 },
   criteria: [],
@@ -64,7 +64,7 @@ const baseResult = (over: Partial<EvalRunResult> = {}): EvalRunResult => ({
 
 describe('eval task specs', () => {
   it('validates a spec and resolves local repos and task files relative to the spec', () => {
-    const dir = tmpDir('tally-eval-specs-');
+    const dir = tmpDir('sigil-eval-specs-');
     fs.mkdirSync(path.join(dir, 'eval', 'tasks'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'eval', 'tasks', 'one.json'), JSON.stringify({ id: 'one', class: 'fixture', repo: '../../repo', task: 'Do the thing', selected_because: 'test', added: '2026-09-27' }));
     fs.writeFileSync(path.join(dir, 'eval', 'tasks', 'two.json'), JSON.stringify({ id: 'two', class: 'real', repo: 'https://github.com/a/b.git', base: 'abc', task: 'two.md', selected_because: 'test', added: '2026-09-27', contamination: 'likely' }));
@@ -81,9 +81,9 @@ describe('eval task specs', () => {
 
 describe('eval ledger', () => {
   it('writes a public-safe result file and a ledger line, and aggregates by class and version', () => {
-    const dir = tmpDir('tally-eval-ledger-');
+    const dir = tmpDir('sigil-eval-ledger-');
     writeResult(baseResult(), dir);
-    writeResult(baseResult({ run_id: 'def456', task: { id: 't2', class: 'real', repo: 'y', base: 'b', head: 'h', tags: [], contamination: 'possible' }, agreement: { exact: 5, total: 5, false_verified: 0, false_unmet: 0, verified_vs_supported: 5 }, grader_verdict: 'worth it', tally_summary: { verified: 5, supported: 0, unverified: 0, unmet: 0, total: 5, verdict: 'worth it', completion_pct: 100 } }), dir);
+    writeResult(baseResult({ run_id: 'def456', task: { id: 't2', class: 'real', repo: 'y', base: 'b', head: 'h', tags: [], contamination: 'possible' }, agreement: { exact: 5, total: 5, false_verified: 0, false_unmet: 0, verified_vs_supported: 5 }, grader_verdict: 'worth it', sigil_summary: { verified: 5, supported: 0, unverified: 0, unmet: 0, total: 5, verdict: 'worth it', completion_pct: 100 } }), dir);
     const files = fs.readdirSync(path.join(dir, 'eval', 'results', 'fixture'));
     expect(files).toEqual(['2026-09-27-t1-abc123.json']);
     const lines = readLedger(dir);
@@ -98,12 +98,12 @@ describe('eval ledger', () => {
 });
 
 describe('blind grader', () => {
-  it('builds a prompt with the task, criteria, repo, base and test command, and none of Tally\'s answers', () => {
+  it('builds a prompt with the task, criteria, repo, base and test command, and none of Sigil\'s answers', () => {
     const p = graderPrompt({ taskText: '# Fix it', criteria: [{ id: 'c1', text: 'Returns 429' }], repoPath: 'C:/r', base: 'abc', testCommand: 'npm test', agentCost: 1.5, agentTurns: 12 });
     expect(p).toContain('# Fix it');
     expect(p).toContain('- c1: Returns 429');
     expect(p).toContain('Base commit');
-    expect(p).not.toMatch(/VERIFIED|SUPPORTED|verdict.*worth it.*Tally said/);
+    expect(p).not.toMatch(/VERIFIED|SUPPORTED|verdict.*worth it.*Sigil said/);
   });
 
   it('parses fenced, bare and slightly malformed JSON and normalises statuses', () => {
@@ -127,11 +127,11 @@ describe('discovery scoring', () => {
 describe('eval run', () => {
   it('prepares an isolated copy at the base with task.md and the policy committed, and writes hook settings', () => {
     const src = sourceRepo();
-    const dir = path.join(tmpDir('tally-eval-run-'), 'one');
+    const dir = path.join(tmpDir('sigil-eval-run-'), 'one');
     const { base } = prepareRepo({ id: 'one', class: 'fixture', repo: src, repoPath: src, task: 'Make it 429', taskText: 'Make it 429', criteria: [{ text: 'src.js returns 429' }], test_command: 'node test.js', setup: [], tags: [], selected_because: 't', contamination: 'unlikely', added: '2026-09-27' }, dir, () => {});
     expect(fs.existsSync(path.join(dir, 'task.md'))).toBe(true);
     expect(fs.readFileSync(path.join(dir, 'task.md'), 'utf8')).toContain('- src.js returns 429');
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'tally.json'), 'utf8')).test_command).toBe('node test.js');
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'sigil.json'), 'utf8')).test_command).toBe('node test.js');
     expect(git(dir, ['log', '--format=%s', '-1'])).toBe('eval: task contract');
     expect(base).toBe(git(dir, ['rev-parse', 'HEAD']));
     const settings = JSON.parse(fs.readFileSync(writeHookSettings(path.dirname(dir)), 'utf8')) as { hooks: Record<string, unknown> };
@@ -141,12 +141,12 @@ describe('eval run', () => {
 
   it('runs the whole loop with an injected agent and grader, records the result, the ledger and a blind-eval calibration entry', async () => {
     const src = sourceRepo();
-    const work = tmpDir('tally-eval-root-');
+    const work = tmpDir('sigil-eval-root-');
     process.chdir(work);
-    /* a fake agent: drives Tally's real hook with a scripted session, edits the repo, commits */
+    /* a fake agent: drives Sigil's real hook with a scripted session, edits the repo, commits */
     const agent = async ({ cwd, settingsFile }: { cwd: string; settingsFile: string }) => {
       const session = 'eval-fake-' + Date.now().toString(36);
-      const hook = (event: string, input: Record<string, unknown>) => spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify({ session_id: session, cwd, ...input }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+      const hook = (event: string, input: Record<string, unknown>) => spawnSync(process.execPath, [HOOK, event], { input: JSON.stringify({ session_id: session, cwd, ...input }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
       expect(fs.existsSync(settingsFile)).toBe(true);
       hook('SessionStart', { source: 'startup' });
       hook('UserPromptSubmit', { prompt: 'Implement the task described in task.md' });
@@ -164,7 +164,7 @@ describe('eval run', () => {
     };
     const grader = () => ({ criteria: [{ id: 'c1', status: 'met' as const, evidence: 'src.js returns 429 and the test asserts it' }], verdict: 'worth it' as const, quality_note: 'fine', model: 'fake-grader', cost_usd: 0, duration_s: 0 });
     const r = await runEvalTask({ task: { id: 'one', class: 'fixture', repo: src, repoPath: src, task: 'Make src.js return 429 and update the test', taskText: 'Make src.js return 429 and update the test', criteria: [{ text: 'src.js returns 429', check: { kind: 'file_contains', path: 'src.js', pattern: '429' } }], test_command: 'node test.js', setup: [], tags: ['constructed'], selected_because: 'test', contamination: 'unlikely', added: '2026-09-27' }, agent, grader, root: path.join(work, 'tmp'), resultsRoot: work, out: () => {} });
-    expect(r.schema).toBe('tally.eval.v1');
+    expect(r.schema).toBe('sigil.eval.v1');
     expect(r.agent.product).toBe('claude-code');
     expect(r.agent.cost_usd).toBeNull();
     expect(r.grader.blind).toBe(true);
@@ -184,7 +184,7 @@ describe('eval run', () => {
 
 describe('resume', () => {
   it('continues from an existing worktree and session without running the agent again', async () => {
-    const work = tmpDir('tally-eval-resume-');
+    const work = tmpDir('sigil-eval-resume-');
     const srcRepo = path.join(work, 'src');
     fs.mkdirSync(srcRepo);
     spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: srcRepo });
@@ -193,7 +193,7 @@ describe('resume', () => {
     spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'add', '-A'], { cwd: srcRepo });
     spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'base'], { cwd: srcRepo });
     const task = { id: 'resume-task', class: 'fixture' as const, repo: srcRepo, task: 'Add a greeting to the README', criteria: [{ text: 'README mentions hello', check: { kind: 'file_contains', path: 'README.md', pattern: 'hello' } }], setup: [], tags: [], selected_because: 't', contamination: 'unlikely' as const, added: '2026-09-27', file: 'x', repoPath: srcRepo, taskText: 'Add a greeting to the README' };
-    const root = tmpDir('tally-eval-resume-root-');
+    const root = tmpDir('sigil-eval-resume-root-');
     const dir = path.join(root, task.id);
     const { base } = prepareRepo(task, dir, () => {});
     /* the "agent" already worked and its session exists: a README edit committed, and a receipt for that session */

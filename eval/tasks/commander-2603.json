@@ -1,10 +1,10 @@
 {
   "id": "commander-2603",
   "class": "real",
-  "repo": "C:/Users/Mehta/dev/tally-eval-gh/commander-2603",
+  "repo": "C:/Users/Mehta/dev/sigil-eval-gh/commander-2603",
   "base": "868b87c7efcfc7dd4ce0174cdc3aafa353b3cde5",
   "issue": "https://github.com/tj/commander.js/issues/2603",
-  "task": "C:/Users/Mehta/dev/tally-eval-gh/commander-2603/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval-gh/commander-2603/task.md",
   "setup": [],
   "tags": [
     "javascript",

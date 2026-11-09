@@ -46,7 +46,7 @@ export async function run(args: Args): Promise<number | void> {
     process.stdout.write(`${'session'.padEnd(10)} ${'date'.padEnd(11)} ${'repo'.padEnd(26)} ${'cost'.padStart(8)}  ${'why'.padEnd(52)} state\n`);
     for (const s of top) process.stdout.write(`${s.c.session.slice(0, 8).padEnd(10)} ${(s.c.started ?? '').slice(0, 10).padEnd(11)} ${shortRepo(s.c.repo).slice(0, 26).padEnd(26)} ${fmtUsd(s.c.cost).padStart(8)}  ${s.why.join(', ').slice(0, 52).padEnd(52)} ${s.state}\n${''.padEnd(10)} ${''.padEnd(11)} ${s.c.first_prompt.replace(/\s+/g, ' ').slice(0, 90)}\n`);
     const proj = projectCost(top.filter((s) => !s.state).map((s) => s.c), cfg);
-    process.stdout.write(`\nProjected Tally spend to backfill the ${top.filter((s) => !s.state).length} not yet done: ${fmtUsd(proj.total_usd)}.\nNext: tally backfill add <session> [--max-spend 3]\n`);
+    process.stdout.write(`\nProjected Sigil spend to backfill the ${top.filter((s) => !s.state).length} not yet done: ${fmtUsd(proj.total_usd)}.\nNext: sigil backfill add <session> [--max-spend 3]\n`);
     return;
   }
 
@@ -69,20 +69,20 @@ export async function run(args: Args): Promise<number | void> {
     }
     const proj = projectCost(cands, cfg);
     process.stdout.write(`\n${linked}/${cands.length} with a detected task link. Projected cost to backfill all: ${fmtUsd(proj.total_usd)} (intake ${fmtUsd(proj.intake_usd)}, tier 1 ${fmtUsd(proj.tier1_usd)}, tier 2 ${fmtUsd(proj.tier2_usd)} on ${proj.tier2_sessions} session(s) ≥ $${cfg.judge.deepThreshold}).\n`);
-    process.stdout.write(`Next: tally backfill add <session> [--task <url|text>]   or   tally backfill add all --max-spend 3\n`);
+    process.stdout.write(`Next: sigil backfill add <session> [--task <url|text>]   or   sigil backfill add all --max-spend 3\n`);
     return;
   }
 
   if (sub === 'add') {
     const target = args._[1];
     if (!target) {
-      process.stderr.write('Usage: tally backfill add <session-prefix|all> [--task <url|text>] [--since 60d] [--repo path] [--max-spend 3] [--force]\n');
+      process.stderr.write('Usage: sigil backfill add <session-prefix|all> [--task <url|text>] [--since 60d] [--repo path] [--max-spend 3] [--force]\n');
       return 1;
     }
     const cands = scanSessions({ since, repo });
     const chosen: SessionCandidate[] = target === 'all' ? cands.filter((c) => !isBackfilled(c.session) || has(args, 'force')) : cands.filter((c) => c.session.startsWith(target));
     if (!chosen.length) {
-      process.stderr.write(target === 'all' ? 'Nothing to backfill (all candidates already done; pass --force to redo).\n' : `No session starting with "${target}" in the last ${since}. Run tally backfill list.\n`);
+      process.stderr.write(target === 'all' ? 'Nothing to backfill (all candidates already done; pass --force to redo).\n' : `No session starting with "${target}" in the last ${since}. Run sigil backfill list.\n`);
       return 1;
     }
     if (chosen.length > 1 && target !== 'all') {
@@ -92,7 +92,7 @@ export async function run(args: Args): Promise<number | void> {
     const maxSpend = Number(flag(args, 'max-spend') ?? 3);
     const already = backfillSpendSince(24);
     const proj = projectCost(chosen, cfg);
-    process.stdout.write(`Backfilling ${chosen.length} session(s). Projected Tally spend ${fmtUsd(proj.total_usd)}; cap ${fmtUsd(maxSpend)} per 24 h across runs, ${fmtUsd(already)} already spent (intake hits the cache when the ticket text is unchanged).\n`);
+    process.stdout.write(`Backfilling ${chosen.length} session(s). Projected Sigil spend ${fmtUsd(proj.total_usd)}; cap ${fmtUsd(maxSpend)} per 24 h across runs, ${fmtUsd(already)} already spent (intake hits the cache when the ticket text is unchanged).\n`);
     if (already >= maxSpend) {
       process.stdout.write(`Stopped before starting: backfill spend in the last 24 h (${fmtUsd(already)}) is at the --max-spend cap. Raise --max-spend or wait.\n`);
       return 1;
@@ -100,13 +100,13 @@ export async function run(args: Args): Promise<number | void> {
     const cwds = [...new Set(chosen.map((c) => c.cwd).filter((x): x is string => !!x))];
     for (const c of cwds) {
       const consent = testRerunConsent(cfg, c);
-      if (consent === undefined) process.stdout.write(`  ${c}: no test re-run consent stored; historical tests will not run (tally config consent on, run from that repo, to allow).\n`);
+      if (consent === undefined) process.stdout.write(`  ${c}: no test re-run consent stored; historical tests will not run (sigil config consent on, run from that repo, to allow).\n`);
     }
     let spent = 0;
     let done = 0;
     for (const c of chosen) {
       if (already + spent >= maxSpend) {
-        process.stdout.write(`Stopped: Tally backfill spend ${fmtUsd(already + spent)} in the last 24 h reached the --max-spend cap ${fmtUsd(maxSpend)} after ${done} session(s) this run.\n`);
+        process.stdout.write(`Stopped: Sigil backfill spend ${fmtUsd(already + spent)} in the last 24 h reached the --max-spend cap ${fmtUsd(maxSpend)} after ${done} session(s) this run.\n`);
         break;
       }
       if (isBackfilled(c.session) && !has(args, 'force')) {
@@ -118,15 +118,15 @@ export async function run(args: Args): Promise<number | void> {
       try {
         const r = await backfillSession(c, { cfg, llm: makeLlm({ session: c.session }), taskRef: flag(args, 'task'), log: (s) => process.stdout.write(s + '\n') });
         if (r.skipped) process.stdout.write(`  skipped: ${r.skipped}\n`);
-        spent += r.tally_spend_usd;
+        spent += r.sigil_spend_usd;
         done += 1;
       } catch (err) {
         process.stdout.write(`  failed: ${err instanceof Error ? err.message : String(err)}\n`);
       }
     }
-    process.stdout.write(`\nDone: ${done} session(s), Tally spend ${fmtUsd(spent)}. Grade them blind: tally calibrate grade <session> [--grader you]\n`);
+    process.stdout.write(`\nDone: ${done} session(s), Sigil spend ${fmtUsd(spent)}. Grade them blind: sigil calibrate grade <session> [--grader you]\n`);
     return;
   }
-  process.stderr.write('Usage: tally backfill list|add\n');
+  process.stderr.write('Usage: sigil backfill list|add\n');
   return 1;
 }

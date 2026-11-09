@@ -10,7 +10,7 @@ export function buildHandoff(ctx: RuleContext): string {
   const lastPrompt = [...ctx.events].reverse().find((e) => e.type === 'prompt');
   const tests = postTools(ctx).filter((e) => toolName(e) === 'Bash' && /test|vitest|pytest|jest/.test(String(toolInput(e).command ?? ''))).slice(-1)[0];
   const L: string[] = [];
-  L.push(`# HANDOFF (written by Tally at ${ctx.now.toISOString()})`);
+  L.push(`# HANDOFF (written by Sigil at ${ctx.now.toISOString()})`);
   L.push('');
   L.push('## Goal');
   L.push(task ? `${task.title}${task.source.url ? ` (${task.source.url})` : ''}` : lastPrompt ? String(lastPrompt.data.prompt ?? '').slice(0, 400) : '(no linked task)');
@@ -53,7 +53,7 @@ export const contextPressure: Rule = {
       message: `Context is ${ctx.contextTokensNow.toLocaleString('en-US')} of ${ctx.contextWindow.toLocaleString('en-US')} tokens (${pct.toFixed(0)}%). Auto-compact will lose working state. Write HANDOFF.md now, then run /compact on your terms. Re-caching after compaction costs about $${recacheUsd.toFixed(2)}.`,
       usd_saved: recacheUsd + ctx.avgTurnCostUsd * 2,
       action: { kind: 'write_md', label: 'Write HANDOFF.md, then suggest /compact', file: path.join(ctx.cwd, 'HANDOFF.md'), content: buildHandoff(ctx), mode: 'replace' },
-      inject_note: `Tally observed the context at ${pct.toFixed(0)}% of the window; HANDOFF.md in the repo root now holds the goal, current state, and next steps as of ${ctx.now.toISOString().slice(11, 16)} UTC.`,
+      inject_note: `Sigil observed the context at ${pct.toFixed(0)}% of the window; HANDOFF.md in the repo root now holds the goal, current state, and next steps as of ${ctx.now.toISOString().slice(11, 16)} UTC.`,
     };
     return [s];
   },

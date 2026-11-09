@@ -1,7 +1,7 @@
-/* `tally fix <id>`: apply one fix from a cost check. Settings, subagents, skills and CLAUDE.md notes are written into
-   the repo (commit them and the team has them; --global writes ~/.claude instead) and reverted by `tally undo`.
+/* `sigil fix <id>`: apply one fix from a cost check. Settings, subagents, skills and CLAUDE.md notes are written into
+   the repo (commit them and the team has them; --global writes ~/.claude instead) and reverted by `sigil undo`.
    An official plugin from Anthropic's marketplace is installed with `claude plugin install`, because you asked for
-   it by running this; community tools and server removals are only printed. `tally fix all` applies every fix Tally
+   it by running this; community tools and server removals are only printed. `sigil fix all` applies every fix Sigil
    writes itself. A command copied from the dashboard finds its cost check from the current folder. */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -70,27 +70,27 @@ export async function run(args: Args): Promise<number | void> {
   if (id && id !== '--list' && (!check || (id !== 'all' && !findFix(check, id)))) check = checkWithFix(id, process.cwd()) ?? check;
   if (!check && session) check = computeCheck(session, { baselineTokens: loadConfig().baseline_context_tokens });
   if (!check) {
-    process.stderr.write('No cost check found here. Run `tally cost` (or /tally:cost) first.\n');
+    process.stderr.write('No cost check found here. Run `sigil cost` (or /sigil:cost) first.\n');
     return 1;
   }
   session = check.session;
   const fixes = [...new Map(check.drivers.filter((d) => d.fix).map((d) => [d.fix!.id, d.fix!])).values()];
   if (!id || has(args, 'list')) {
-    if (!fixes.length) process.stdout.write('No fixes suggested for this session. Run `tally cost` for the breakdown.\n');
+    if (!fixes.length) process.stdout.write('No fixes suggested for this session. Run `sigil cost` for the breakdown.\n');
     for (const f of fixes) process.stdout.write(`${f.id.padEnd(18)} ${f.title}: ${f.what}\n`);
     return id ? 0 : fixes.length ? 0 : 1;
   }
   const cwd = sessionCwd(session) ?? check.cwd ?? process.cwd();
   if (id === 'all') {
-    /* everything Tally writes itself; plugin installs stay one at a time, since each adds tools to every session */
+    /* everything Sigil writes itself; plugin installs stay one at a time, since each adds tools to every session */
     const own = fixes.filter((f) => f.apply.kind === 'settings' || f.apply.kind === 'file' || f.apply.kind === 'claude_md');
     if (!own.length) {
-      process.stdout.write('Nothing for Tally to apply here; the remaining suggestions are installs or habits (`tally cost`).\n');
+      process.stdout.write('Nothing for Sigil to apply here; the remaining suggestions are installs or habits (`sigil cost`).\n');
       return 0;
     }
     let ok = 0;
     for (const f of own) if (applyOne(f, session, cwd, has(args, 'global'))) ok += 1;
-    process.stdout.write(`\n${ok}/${own.length} applied. They take effect in the next session; \`tally undo ${ok}\` reverts them.\n`);
+    process.stdout.write(`\n${ok}/${own.length} applied. They take effect in the next session; \`sigil undo ${ok}\` reverts them.\n`);
     return ok === own.length ? 0 : 1;
   }
   const fix = findFix(check, id);
@@ -99,7 +99,7 @@ export async function run(args: Args): Promise<number | void> {
     return 1;
   }
   const ok = applyOne(fix, session, cwd, has(args, 'global'));
-  if (ok && !isOfficialInstall(fix) && fix.apply.kind !== 'command' && fix.apply.kind !== 'advice') process.stdout.write('Takes effect in the next session. Revert with: tally undo\n');
+  if (ok && !isOfficialInstall(fix) && fix.apply.kind !== 'command' && fix.apply.kind !== 'advice') process.stdout.write('Takes effect in the next session. Revert with: sigil undo\n');
   void checkFile;
   return ok ? 0 : 1;
 }

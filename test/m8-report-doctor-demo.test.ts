@@ -59,7 +59,7 @@ describe('doctor', () => {
 
 describe('demo (definition of done)', () => {
   it('replays the fixture end to end with a stubbed LLM without touching the real ~/.claude', async () => {
-    const home = tmpDir('tally-demo-test-');
+    const home = tmpDir('sigil-demo-test-');
     const realClaude = process.env.CLAUDE_CONFIG_DIR;
     let text = '';
     const r = await runDemo({ out: (s) => (text += s + '\n'), color: false, home, fast: true });
@@ -72,10 +72,10 @@ describe('demo (definition of done)', () => {
     expect(r.injected.length).toBe(1);
     expect(text).toContain('[a] applied');
     expect(text).toContain('[i] injected');
-    expect(text).toContain('hook delivered to Claude: Tally:');
+    expect(text).toContain('hook delivered to Claude: Sigil:');
     expect(r.shipDetected).toBe(true);
     expect(text).toContain('ship detected (git push)');
-    expect(text).toContain('Tally receipt');
+    expect(text).toContain('Sigil receipt');
     expect(text).toContain('Cost (API-equivalent)');
     expect(text).toContain('waste');
     expect(text).toContain('ROI');
@@ -87,9 +87,9 @@ describe('demo (definition of done)', () => {
     const report = fs.readFileSync(r.reportPath, 'utf8');
     expect(report).toContain('after follow-up: **NOT WORTH IT**');
     expect(report).toContain('## Waste');
-    expect(fs.existsSync(path.join(home, 'tally', 'sessions'))).toBe(true);
+    expect(fs.existsSync(path.join(home, 'sigil', 'sessions'))).toBe(true);
     expect(fs.existsSync(path.join(home, 'acme-app', 'CLAUDE.md'))).toBe(true);
-    const state = JSON.parse(fs.readFileSync(path.join(home, 'tally', 'sessions', r.session, 'coach-state.json'), 'utf8')) as { shown: number };
+    const state = JSON.parse(fs.readFileSync(path.join(home, 'sigil', 'sessions', r.session, 'coach-state.json'), 'utf8')) as { shown: number };
     expect(state.shown).toBeLessThanOrEqual(8);
     fs.rmSync(home, { recursive: true, force: true });
   }, 120000);
@@ -105,29 +105,29 @@ describe('doctor: self-service', () => {
   it('reports install, update, agents and history, and every non-ok check carries a fix', () => {
     const checks = runChecks({ offline: true });
     const names = checks.map((c) => c.name);
-    for (const n of ['tally', 'update', 'agents', 'hooks: claude-code', 'history: claude-code']) expect(names).toContain(n);
+    for (const n of ['sigil', 'update', 'agents', 'hooks: claude-code', 'history: claude-code']) expect(names).toContain(n);
     expect(checks.find((c) => c.name === 'update')!.detail).toMatch(/skipped \(--offline\)/);
-    expect(checks.find((c) => c.name === 'tally')!.detail).toMatch(/\d+\.\d+\.\d+ at /);
+    expect(checks.find((c) => c.name === 'sigil')!.detail).toMatch(/\d+\.\d+\.\d+ at /);
     /* the isolated home has no hooks: that check fails and must say how to fix it */
     const hooks = checks.find((c) => c.name === 'hooks')!;
     expect(hooks.ok).toBe(false);
-    expect(hooks.fix).toMatch(/tally install/);
+    expect(hooks.fix).toMatch(/sigil install/);
     for (const c of checks.filter((c) => c.ok === false)) expect(c.fix, `${c.name} has no fix`).toBeTruthy();
   });
 
   it('--json is machine-readable and the exit code follows the required checks', () => {
-    const env = { ...process.env, TALLY_OFFLINE: '1' };
+    const env = { ...process.env, SIGIL_OFFLINE: '1' };
     const r = spawnSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'doctor', '--json'], { encoding: 'utf8', env });
     const j = JSON.parse(r.stdout) as { schema: string; version: string; ok: boolean; problems: number; checks: Array<{ name: string; status: string; fix?: string }> };
-    expect(j.schema).toBe('tally.doctor.v1');
+    expect(j.schema).toBe('sigil.doctor.v1');
     expect(j.version).toMatch(/^\d+\.\d+\.\d+/);
-    expect(j.checks.some((c) => c.name === 'hooks' && c.status === 'fail' && /tally install/.test(c.fix ?? ''))).toBe(true);
+    expect(j.checks.some((c) => c.name === 'hooks' && c.status === 'fail' && /sigil install/.test(c.fix ?? ''))).toBe(true);
     expect(j.ok).toBe(false);
     expect(r.status).toBe(1);
     const plain = spawnSync(process.execPath, [path.join(root, 'dist', 'cli.js'), 'doctor', '--plain'], { encoding: 'utf8', env });
     expect(plain.stdout).toMatch(/FAIL hooks/);
-    expect(plain.stdout).toMatch(/fix: `tally install`/);
-    expect(plain.stdout).toMatch(/tally doctor --json/);
+    expect(plain.stdout).toMatch(/fix: `sigil install`/);
+    expect(plain.stdout).toMatch(/sigil doctor --json/);
   });
 });
 

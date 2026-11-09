@@ -1,4 +1,4 @@
-/* The Claude Code status line: `tally statusline` reads the JSON Claude Code passes on stdin and prints one line with
+/* The Claude Code status line: `sigil statusline` reads the JSON Claude Code passes on stdin and prints one line with
    the linked task, spend against budget, context use and open Coach flags. It touches no transcript, so it runs in a
    few milliseconds on every 300 ms refresh. `--install` points settings.json at it. */
 import fs from 'node:fs';
@@ -32,7 +32,7 @@ export interface CoachFlags {
   updated?: string;
 }
 
-/* one ordering for the Stop notice, the status line and /tally:coach: most money first, so "apply 2" means one thing */
+/* one ordering for the Stop notice, the status line and /sigil:coach: most money first, so "apply 2" means one thing */
 export function orderedFlags<T extends { usd_saved?: number }>(pending: T[]): T[] {
   return [...pending].sort((a, b) => (b.usd_saved ?? 0) - (a.usd_saved ?? 0));
 }
@@ -60,7 +60,7 @@ export function renderStatusLine(input: StatusInput, color = true): string {
   const judge = session ? loadJudge(session) : null;
   const flags = session ? readFlags(session).pending.length : 0;
   const spend = input.cost?.total_cost_usd ?? 0;
-  const parts: string[] = [paint(C.dim, 'Tally')];
+  const parts: string[] = [paint(C.dim, 'Sigil')];
   if (task) {
     const title = task.title.length > 34 ? task.title.slice(0, 33) + '…' : task.title;
     parts.push(`${title}${task.inferred && !task.confirmed ? paint(C.dim, ' (unconfirmed)') : ''}`);
@@ -115,9 +115,9 @@ export function renderStatusLine(input: StatusInput, color = true): string {
     /* the top flag by money, not just a count: the person sees what is waiting without leaving the session */
     const top = orderedFlags(readFlags(session).pending)[0]!;
     const title = top.title.length > 44 ? top.title.slice(0, 43) + '…' : top.title;
-    parts.push(paint(C.cyan, `⚑ ${flags} · ${title}${top.usd_saved ? ` (~$${top.usd_saved.toFixed(2)})` : ''} · ${enabledPluginIds().length ? '/tally:coach' : 'tally coach'}`));
+    parts.push(paint(C.cyan, `⚑ ${flags} · ${title}${top.usd_saved ? ` (~$${top.usd_saved.toFixed(2)})` : ''} · ${enabledPluginIds().length ? '/sigil:coach' : 'sigil coach'}`));
   }
-  if (session && fs.existsSync(path.join(sessionDir(session), 'hard-stop.json'))) parts.push(paint(C.red, 'HARD STOP: over the repo budget · tally budget approve'));
+  if (session && fs.existsSync(path.join(sessionDir(session), 'hard-stop.json'))) parts.push(paint(C.red, 'HARD STOP: over the repo budget · sigil budget approve'));
   if (judge) parts.push(paint(judge.verdict.verdict === 'worth it' ? C.green : judge.verdict.verdict === 'not worth it' ? C.red : C.yellow, `receipt: ${judge.completion_pct}% · ${judge.verdict.verdict}`));
   return parts.join(paint(C.dim, ' · '));
 }
@@ -130,7 +130,7 @@ export async function run(args: Args): Promise<number | void> {
   }
   if (has(args, 'uninstall')) {
     const r = uninstallStatusLine();
-    process.stdout.write(r.removed ? `Status line removed from ${settingsPath('user')}\n` : 'No Tally status line configured.\n');
+    process.stdout.write(r.removed ? `Status line removed from ${settingsPath('user')}\n` : 'No Sigil status line configured.\n');
     return;
   }
   let raw = '';
@@ -140,7 +140,7 @@ export async function run(args: Args): Promise<number | void> {
     raw = '';
   }
   if (!raw.trim()) {
-    process.stdout.write(`tally statusline reads Claude Code's status-line JSON on stdin. Install it with: tally statusline --install\n(settings.json → "statusLine": { "type": "command", "command": "node \\"${builtCliPath().replace(/\\/g, '/')}\\" statusline" })\n`);
+    process.stdout.write(`sigil statusline reads Claude Code's status-line JSON on stdin. Install it with: sigil statusline --install\n(settings.json → "statusLine": { "type": "command", "command": "node \\"${builtCliPath().replace(/\\/g, '/')}\\" statusline" })\n`);
     return;
   }
   let input: StatusInput = {};

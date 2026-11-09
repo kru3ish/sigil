@@ -4,30 +4,30 @@ Placeholders in `{{…}}` are filled by `npx tsx scripts/fill-calibration.ts` af
 
 ---
 
-## Tally: a receipt for every Claude Code task
+## Sigil: a receipt for every Claude Code task
 
 Claude Code tells you what you spent. It does not tell you what you got.
 
 `/cost` and ccusage give totals by session and model. `/insights` tells you which habits recur. Neither ties a dollar to a ticket. So after a $6 session I could not answer the only question that matters: did the task get done, at what cost, and would I do it again?
 
-Tally is a small local tool that answers that per task. It runs as a Claude Code plugin (or as hooks installed by an npm CLI) and does three things.
+Sigil is a small local tool that answers that per task. It runs as a Claude Code plugin (or as hooks installed by an npm CLI) and does three things.
 
-**It freezes the task.** Paste a GitHub, Jira or Linear link in your first prompt and Tally pulls the ticket and writes down the acceptance criteria before any code exists. No ticket? It infers the task from your prompts, branch and commits, labels it unconfirmed, and asks you to confirm, edit or link with one key. The goalposts cannot move after that.
+**It freezes the task.** Paste a GitHub, Jira or Linear link in your first prompt and Sigil pulls the ticket and writes down the acceptance criteria before any code exists. No ticket? It infers the task from your prompts, branch and commits, labels it unconfirmed, and asks you to confirm, edit or link with one key. The goalposts cannot move after that.
 
-**It judges the result.** When you push, Tally collects the diff, every test command the session ran, and the final message; then it re-runs your tests itself, because "all tests pass" in a transcript is a claim, not evidence. Each criterion gets met / partial / unmet / unverifiable with a cited line. Completion, cost by phase, waste in dollars, ROI and a verdict are computed, not asked for. Seven days later it checks whether the PR was merged, reverted or reopened, and adjusts the verdict.
+**It judges the result.** When you push, Sigil collects the diff, every test command the session ran, and the final message; then it re-runs your tests itself, because "all tests pass" in a transcript is a claim, not evidence. Each criterion gets met / partial / unmet / unverifiable with a cited line. Completion, cost by phase, waste in dollars, ROI and a verdict are computed, not asked for. Seven days later it checks whether the PR was merged, reverted or reopened, and adjusts the verdict.
 
-**It coaches on its own.** No pane to open: after every turn the hooks run fifteen deterministic rules: the same command failing three times, the same file read three times, context at 85%, an MCP server loaded but unused for ten sessions, spend at 80% of the budget. What Tally observes reaches Claude on the next prompt as an observation, not an instruction; decisions only you can make show as flags in a Claude Code status line that also tracks spend against the task's budget.
+**It coaches on its own.** No pane to open: after every turn the hooks run fifteen deterministic rules: the same command failing three times, the same file read three times, context at 85%, an MCP server loaded but unused for ten sessions, spend at 80% of the budget. What Sigil observes reaches Claude on the next prompt as an observation, not an instruction; decisions only you can make show as flags in a Claude Code status line that also tracks spend against the task's budget.
 
-The Judge is tiered so it stays cheap: mechanical checks first, a small model on the rest, a stronger model only where a criterion could flip the verdict. On the calibration fixtures Tally's own spend is about 6% of the session's.
+The Judge is tiered so it stays cheap: mechanical checks first, a small model on the rest, a stronger model only where a criterion could flip the verdict. On the calibration fixtures Sigil's own spend is about 6% of the session's.
 
-How accurate is it? Honestly: early. On five authored sessions with known answers, 19/19 criteria and 5/5 verdicts. On 11 of my own real sessions, blind-graded before seeing Tally's answer, criterion agreement is 51% and the verdict matches exactly on 1 of 11 and is within one step on 9 of 11. That is a second opinion, not an oracle, and the README says so.
+How accurate is it? Honestly: early. On five authored sessions with known answers, 19/19 criteria and 5/5 verdicts. On 11 of my own real sessions, blind-graded before seeing Sigil's answer, criterion agreement is 51% and the verdict matches exactly on 1 of 11 and is within one step on 9 of 11. That is a second opinion, not an oracle, and the README says so.
 
 The hooks make no network calls and finish in under 150 ms. Model calls go through your existing `claude` login and carry the criteria, a trimmed diff and test output; nothing else leaves the machine, and anonymous metrics are off unless you turn them on.
 
 ```
-/plugin marketplace add kru3ish/tally
-/plugin install tally@tally
-npm i -g @kru3ish/tally && tally doctor
+/plugin marketplace add kru3ish/sigil
+/plugin install sigil@sigil
+npm i -g sigil && sigil doctor
 ```
 
-Code, calibration numbers and the decision log: https://github.com/kru3ish/tally. Grade a few of your own sessions with `tally calibrate grade` and send me the report; that is the data this needs next.
+Code, calibration numbers and the decision log: https://github.com/kru3ish/sigil. Grade a few of your own sessions with `sigil calibrate grade` and send me the report; that is the data this needs next.

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { tallyHome, appendLine, ensureDir } from '../paths.js';
+import { sigilHome, appendLine, ensureDir } from '../paths.js';
 import { loadJudge } from '../judge/judge.js';
 import type { Judge } from '../judge/schema.js';
 import { statusFromJudge } from '../assurance/index.js';
@@ -28,7 +28,7 @@ export interface CalibrationEntry {
 }
 
 export function calibrationFile(): string {
-  return path.join(tallyHome(), 'calibration.jsonl');
+  return path.join(sigilHome(), 'calibration.jsonl');
 }
 
 export function parseStatuses(s: string): Status[] {
@@ -98,9 +98,9 @@ export function rescoreCalibration(opts: { grader?: string; source?: Calibration
 
 export function addCalibration(session: string, human: Status[], humanVerdict?: VerdictText): CalibrationEntry {
   const judge = loadJudge(session);
-  if (!judge) throw new Error(`no receipt for session ${session}; run tally judge first`);
+  if (!judge) throw new Error(`no receipt for session ${session}; run sigil judge first`);
   const entry = entryFromJudge(judge, human, humanVerdict);
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   appendLine(calibrationFile(), JSON.stringify(entry));
   return entry;
 }
@@ -262,12 +262,12 @@ export function renderCalibrationReport(r: CalibrationReport, title = 'Judge cal
   const L: string[] = [];
   L.push(`${title}: ${r.entries} graded session(s), ${r.criteria} criteria`);
   if (!r.criteria) {
-    L.push('No grades yet. Grade a receipt: tally calibrate add <session> --human met,partial,unmet,... --verdict "worth it"');
+    L.push('No grades yet. Grade a receipt: sigil calibrate add <session> --human met,partial,unmet,... --verdict "worth it"');
     return L.join('\n');
   }
   L.push(`criterion agreement   ${pct(r.criterion_agreement)} exact · ${pct(r.lenient_agreement)} within one step (partial/unverifiable neighbours) · n=${r.criteria}`);
   L.push(`verdict agreement     ${r.verdict_total ? `${pct(r.verdict_agreement)} exact · ${pct(r.verdict_lenient_agreement)} within one step (borderline next to either extreme)` : 'n/a (no human verdicts)'} · n=${r.verdict_total}${r.verdict_abstained ? ` · ${r.verdict_abstained} abstained (insufficient evidence)` : ''}`);
-  L.push(`lean                  Tally more lenient than the human on ${r.lean.lenient}, stricter on ${r.lean.stricter}, same on ${r.lean.same}`);
+  L.push(`lean                  Sigil more lenient than the human on ${r.lean.lenient}, stricter on ${r.lean.stricter}, same on ${r.lean.same}`);
   if (r.assurance.graded_with_assurance) L.push(`assurance             false VERIFIED ${r.assurance.false_verified} · false UNMET ${r.assurance.false_unmet} · correct VERIFIED ${r.assurance.correct_verified} · correct UNMET ${r.assurance.correct_unmet} · SUPPORTED where human said met ${r.assurance.verified_vs_supported} · UNVERIFIED ${r.assurance.unverified} · n=${r.assurance.graded_with_assurance} (false VERIFIED is a bug, not a calibration target)`);
   if (r.inter_grader) L.push(`inter-grader          ${pct(r.inter_grader.agreement)} of ${r.inter_grader.criteria} criteria across ${r.inter_grader.sessions} session(s) graded by ${r.inter_grader.graders.join(' and ')}`);
   else L.push('inter-grader          n/a (no session graded by two people; use --grader <name>)');

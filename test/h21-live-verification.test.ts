@@ -10,7 +10,7 @@ import { loadConfig } from '../src/config.js';
 import { StubLlm } from '../src/llm/client.js';
 import { intake, loadTask, confirmTask, listedCriteria, listedSection } from '../src/task/intake.js';
 import { judgeSession, existingReceiptFor, loadJudge, workingTreeHash, renderSummary } from '../src/judge/judge.js';
-import { readEventsFile, appendEvent, type TallyEvent } from '../src/store/events.js';
+import { readEventsFile, appendEvent, type SigilEvent } from '../src/store/events.js';
 import { resolveSessionId, resolveSession, uniquePrefixLength, sessionCwd, SessionNotFound } from '../src/session.js';
 import { shellWrittenFiles, collectEvidence } from '../src/judge/evidence.js';
 import { contractFromTask, renderContract } from '../src/core/contract.js';
@@ -35,7 +35,7 @@ function git(cwd: string, args: string[]): string {
 
 /* a repository with a base commit, then README and CHANGELOG edited through the shell, exactly like the live session */
 function repoEditedByShell(): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-live-');
+  const cwd = tmpDir('sigil-live-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'app', scripts: { test: 'node -e "console.log(\'1 passing\')"' } }));
   fs.writeFileSync(path.join(cwd, 'README.md'), '# app\n\n## Install\n\nnpm i -g app\n');
@@ -43,7 +43,7 @@ function repoEditedByShell(): { cwd: string; base: string } {
   git(cwd, ['add', '-A']);
   git(cwd, ['commit', '-q', '-m', 'base']);
   const base = git(cwd, ['rev-parse', 'HEAD']);
-  fs.appendFileSync(path.join(cwd, 'README.md'), '\n**Windows:** run `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` or call `tally.cmd`.\n');
+  fs.appendFileSync(path.join(cwd, 'README.md'), '\n**Windows:** run `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` or call `sigil.cmd`.\n');
   fs.appendFileSync(path.join(cwd, 'CHANGELOG.md'), '- README: Windows execution policy note\n');
   return { cwd, base };
 }
@@ -52,7 +52,7 @@ function repoEditedByShell(): { cwd: string; base: string } {
 function seedSession(session: string, cwd: string, base: string, opts: { toolTs?: string; transcript?: boolean } = {}): void {
   ensureDir(sessionDir(session));
   const t = opts.toolTs ?? '2026-09-28T18:24:00.000Z';
-  const events: TallyEvent[] = [
+  const events: SigilEvent[] = [
     { ts: '2026-09-28T18:22:57.000Z', type: 'session_start', session, cwd, data: { source: 'startup', agent: 'claude-code', git_head: base, transcript_path: path.join(sessionDir(session), 'transcript.jsonl') } },
     { ts: '2026-09-28T18:23:00.000Z', type: 'prompt', session, cwd, data: { prompt: 'Read tasks/readme-windows.md and do it' } },
     { ts: t, type: 'pre_tool', session, cwd, data: { tool_name: 'Bash', tool_input: { command: "python -c \"p='README.md'; s=open(p).read(); open(p,'w').write(s)\"" }, tool_use_id: 't1' } },
@@ -68,7 +68,7 @@ const stub = (constraints: string[] = []) => ({
     criteria: [
       { text: 'README.md install section includes a Windows note describing the execution policy issue', source: 'explicit' },
       { text: 'The Windows note includes the Set-ExecutionPolicy command with the RemoteSigned scope parameter', source: 'explicit' },
-      { text: 'The note documents tally.cmd and npm.cmd as an alternative', source: 'explicit' },
+      { text: 'The note documents sigil.cmd and npm.cmd as an alternative', source: 'explicit' },
       { text: 'CHANGELOG.md has an entry under unreleased', source: 'explicit', check: { kind: 'file_changed', path: 'CHANGELOG.md' } },
     ],
     spec_quality: { score: 8, missing: [], questions: [] },
@@ -76,7 +76,7 @@ const stub = (constraints: string[] = []) => ({
     rationale: 'x',
     constraints,
   }),
-  judge: () => ({ criteria: [{ id: 'c1', status: 'met', evidence: 'README.md gained a Windows note', files: ['README.md'], confidence: 0.9 }, { id: 'c2', status: 'met', evidence: 'the command is there', files: ['README.md'], confidence: 0.9 }, { id: 'c3', status: 'met', evidence: 'tally.cmd is mentioned', files: ['README.md'], confidence: 0.9 }], quality_score: 7, quality_reason: 'r', verdict_reason: 'v', recommendations: ['a', 'b', 'c'] }),
+  judge: () => ({ criteria: [{ id: 'c1', status: 'met', evidence: 'README.md gained a Windows note', files: ['README.md'], confidence: 0.9 }, { id: 'c2', status: 'met', evidence: 'the command is there', files: ['README.md'], confidence: 0.9 }, { id: 'c3', status: 'met', evidence: 'sigil.cmd is mentioned', files: ['README.md'], confidence: 0.9 }], quality_score: 7, quality_reason: 'r', verdict_reason: 'v', recommendations: ['a', 'b', 'c'] }),
   review: () => ({ layer: 'at_root_cause', layer_note: '', blast_radius: 'contained', blast_note: '', untested_surface: [], merge: 'merge', note: '' }),
 });
 
@@ -87,7 +87,7 @@ Windows PowerShell blocks npm's launcher scripts by default.
 ## Acceptance criteria
 1. The README install section has a short "Windows" note describing this error.
 2. The note shows the fix: \`Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned\`.
-3. The note shows the no-settings alternative: run \`tally.cmd\` (and \`npm.cmd\`) instead.
+3. The note shows the no-settings alternative: run \`sigil.cmd\` (and \`npm.cmd\`) instead.
 4. CHANGELOG.md has an entry for this under the unreleased section.
 
 ## Constraints
@@ -109,7 +109,7 @@ describe('one session-id rule for every command', () => {
   });
 
   it('status on a session that does not exist is an error, and judge with a prefix finds the transcript', () => {
-    const env = { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_LLM: 'stub' };
+    const env = { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_LLM: 'stub' };
     const missing = spawnSync(process.execPath, [CLI, 'status', '--session', 'cfe9bd83'], { encoding: 'utf8', env });
     expect(missing.status).toBe(1);
     expect(missing.stderr).toMatch(/no session starting with "cfe9bd83"/);
@@ -137,8 +137,8 @@ describe('verify judges the repository the session ran in', () => {
     const cfg = loadConfig();
     const llm = new StubLlm(stub(), session);
     await intake({ session, cwd, text: TASK_MD, cfg, llm, deps });
-    const elsewhere = tmpDir('tally-elsewhere-');
-    const env = { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_LLM: 'stub' };
+    const elsewhere = tmpDir('sigil-elsewhere-');
+    const env = { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_LLM: 'stub' };
     const r = spawnSync(process.execPath, [CLI, 'verify', session, '--plain'], { cwd: elsewhere, encoding: 'utf8', env });
     expect(r.stderr).toMatch(/ran in .*using that repository/);
     const j = loadJudge(session)!;
@@ -150,7 +150,7 @@ describe('verify judges the repository the session ran in', () => {
   });
 
   it('files an agent writes through the shell are edited files even without git', () => {
-    const cwd = tmpDir('tally-shell-');
+    const cwd = tmpDir('sigil-shell-');
     fs.writeFileSync(path.join(cwd, 'README.md'), '# r\n');
     fs.writeFileSync(path.join(cwd, 'CHANGELOG.md'), '# c\n');
     expect(shellWrittenFiles("sed -i 's/a/b/' README.md", cwd)).toEqual(['README.md']);
@@ -184,7 +184,7 @@ describe('a stored receipt is reused only while nothing it depends on has moved'
     fs.appendFileSync(path.join(cwd, 'README.md'), 'more\n');
     expect(existingReceiptFor(session, cwd)).toBeNull();
     git(cwd, ['commit', '-q', '-am', 'more']);
-    /* a re-frozen contract (tally task --force): the receipt answers an older question */
+    /* a re-frozen contract (sigil task --force): the receipt answers an older question */
     await new Promise((r) => setTimeout(r, 5));
     await intake({ session, cwd, text: TASK_MD + '\n5. A fifth thing.\n', cfg, llm, deps, force: true });
     const j2 = await judgeSession({ session, cwd, transcriptPath: path.join(sessionDir(session), 'transcript.jsonl'), cfg, llm, reason: 'manual', events, consent: true });
@@ -208,7 +208,7 @@ describe('the contract says what it is', () => {
     fs.writeFileSync(path.join(cwd, 'tasks', 'readme-windows.md'), TASK_MD);
     const { task } = await intake({ session, cwd, ref: path.join(cwd, 'tasks', 'readme-windows.md'), cfg, llm });
     expect(task.source.kind).toBe('file');
-    expect(task.criteria.map((c) => c.text)).toEqual(['The README install section has a short "Windows" note describing this error.', 'The note shows the fix: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.', 'The note shows the no-settings alternative: run `tally.cmd` (and `npm.cmd`) instead.', 'CHANGELOG.md has an entry for this under the unreleased section.']);
+    expect(task.criteria.map((c) => c.text)).toEqual(['The README install section has a short "Windows" note describing this error.', 'The note shows the fix: `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`.', 'The note shows the no-settings alternative: run `sigil.cmd` (and `npm.cmd`) instead.', 'CHANGELOG.md has an entry for this under the unreleased section.']);
     expect(task.criteria[1]!.text).toContain('-Scope CurrentUser');
     expect(task.criteria.every((c) => c.source === 'explicit')).toBe(true);
     expect(task.criteria[3]!.check?.kind).toBe('file_changed');
@@ -245,8 +245,8 @@ describe('the contract says what it is', () => {
 });
 
 describe('command-line hygiene', () => {
-  it('tally task with a path that does not exist is an error, not an inferred task', () => {
-    const env = { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_LLM: 'stub' };
+  it('sigil task with a path that does not exist is an error, not an inferred task', () => {
+    const env = { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_LLM: 'stub' };
     const { cwd, base } = repoEditedByShell();
     seedSession('live-task-1', cwd, base);
     const r = spawnSync(process.execPath, [CLI, 'task', 'tasks\\readme-windows.md', '--session', 'live-task-1'], { cwd: iso.home, encoding: 'utf8', env });
@@ -255,10 +255,10 @@ describe('command-line hygiene', () => {
     expect(fs.existsSync(path.join(sessionDir('live-task-1'), 'task.json'))).toBe(false);
   });
 
-  it('tally verify --help prints only verify', () => {
-    const r = spawnSync(process.execPath, [CLI, 'verify', '--help'], { encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home } });
+  it('sigil verify --help prints only verify', () => {
+    const r = spawnSync(process.execPath, [CLI, 'verify', '--help'], { encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home } });
     expect(r.stdout).toMatch(/^Usage:\n  verify /);
-    expect(r.stdout).not.toContain('tally task');
+    expect(r.stdout).not.toContain('sigil task');
     expect(r.stdout.split('\n').filter(Boolean).length).toBeLessThan(6);
   });
 

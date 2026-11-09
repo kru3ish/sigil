@@ -1,4 +1,4 @@
-/* End-to-end replay of the fixture session with a stubbed LLM, isolated from the real ~/.claude and ~/.tally. */
+/* End-to-end replay of the fixture session with a stubbed LLM, isolated from the real ~/.claude and ~/.sigil. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig, setTestRerunConsent } from '../config.js';
 import { StubLlm } from '../llm/client.js';
 import { intake, renderTask } from '../task/intake.js';
-import { readEventsFile, readEvents, type TallyEvent } from '../store/events.js';
+import { readEventsFile, readEvents, type SigilEvent } from '../store/events.js';
 import { buildContext } from '../coach/context.js';
 import { CoachEngine, loadState, saveState } from '../coach/engine.js';
 import { renderHeader, renderSuggestion, paint } from '../coach/ui.js';
@@ -93,8 +93,8 @@ function makeRepo(root: string): { cwd: string; base: string } {
   const cwd = path.join(root, 'acme-app');
   fs.mkdirSync(path.join(cwd, 'src'), { recursive: true });
   git(cwd, 'init', '-q', '-b', 'main');
-  git(cwd, 'config', 'user.email', 'demo@tally.local');
-  git(cwd, 'config', 'user.name', 'tally demo');
+  git(cwd, 'config', 'user.email', 'demo@sigil.local');
+  git(cwd, 'config', 'user.name', 'sigil demo');
   fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'acme-app', version: '1.0.0', scripts: { test: 'node test.js' } }, null, 2));
   fs.writeFileSync(path.join(cwd, 'test.js'), `const login = require('./src/login');\nif (login(6) !== 429) { console.error('expected 429 after 5 attempts'); process.exit(1); }\nconsole.log('ok: 429 after 5 attempts');\n`);
   fs.writeFileSync(path.join(cwd, 'src', 'login.js'), `module.exports = function login(attempts) { return 200; };\n`);
@@ -112,7 +112,7 @@ function applyWork(cwd: string): void {
   git(cwd, 'commit', '-q', '-m', 'add rate limiting to login (#57)');
 }
 
-function hookPayload(e: TallyEvent, session: string, cwd: string, transcriptPath: string): { event: string; input: Record<string, unknown> } | null {
+function hookPayload(e: SigilEvent, session: string, cwd: string, transcriptPath: string): { event: string; input: Record<string, unknown> } | null {
   const base = { session_id: session, cwd, transcript_path: transcriptPath };
   switch (e.type) {
     case 'session_start':
@@ -152,13 +152,13 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
   const step = (n: number, s: string) => out(`\n${bold(cyan(`[${n}] ${s}`))}`);
 
   const ownHome = !opts.home;
-  const home = opts.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'tally-demo-'));
-  const prev = { TALLY_HOME: process.env.TALLY_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, TALLY_NO_SPAWN: process.env.TALLY_NO_SPAWN, TALLY_LLM: process.env.TALLY_LLM };
-  process.env.TALLY_HOME = path.join(home, 'tally');
+  const home = opts.home ?? fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-demo-'));
+  const prev = { SIGIL_HOME: process.env.SIGIL_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, SIGIL_NO_SPAWN: process.env.SIGIL_NO_SPAWN, SIGIL_LLM: process.env.SIGIL_LLM };
+  process.env.SIGIL_HOME = path.join(home, 'sigil');
   process.env.CLAUDE_CONFIG_DIR = path.join(home, 'claude');
-  process.env.TALLY_NO_SPAWN = '1';
-  process.env.TALLY_LLM = 'stub';
-  fs.mkdirSync(process.env.TALLY_HOME, { recursive: true });
+  process.env.SIGIL_NO_SPAWN = '1';
+  process.env.SIGIL_LLM = 'stub';
+  fs.mkdirSync(process.env.SIGIL_HOME, { recursive: true });
   fs.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
 
   try {
@@ -172,8 +172,8 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
     const transcriptPath = path.join(sessionDir(session), 'transcript.jsonl');
     fs.copyFileSync(path.join(fx, 'transcript.jsonl'), transcriptPath);
 
-    out(bold('Tally demo') + dim(`  isolated data dir: ${process.env.TALLY_HOME}`));
-    out(dim(`  fake repo: ${cwd}  ·  real ~/.claude and ~/.tally are not touched  ·  LLM calls are stubbed`));
+    out(bold('Sigil demo') + dim(`  isolated data dir: ${process.env.SIGIL_HOME}`));
+    out(dim(`  fake repo: ${cwd}  ·  real ~/.claude and ~/.sigil are not touched  ·  LLM calls are stubbed`));
 
     const repo = repoKey(cwd);
     const priorHistory: HistoryEntry[] = [
@@ -229,7 +229,7 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
     let llmCalls = 0;
     let transcriptCut = 0;
     const transcriptLines = fs.readFileSync(path.join(fx, 'transcript.jsonl'), 'utf8').split('\n').filter(Boolean);
-    const permissionEvents: TallyEvent[] = [];
+    const permissionEvents: SigilEvent[] = [];
 
     const handle = (s: Suggestion, now: Date) => {
       shown += 1;
@@ -262,11 +262,11 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
       if (r.status !== 0) out(yellow(`  hook ${payload.event} exited ${r.status}`));
       if (e.type === 'prompt') {
         out(`  ${dim(now.toISOString().slice(11, 19))} ${bold('user>')} ${String(e.data.prompt).slice(0, 90)}`);
-        if (r.stdout.includes('Tally:')) {
+        if (r.stdout.includes('Sigil:')) {
           lastPromptDelivery = (JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext;
           out(green(`  ↳ hook delivered to Claude: ${lastPromptDelivery.split('\n')[0]!.slice(0, 110)}`));
         }
-      } else if (e.type === 'session_start' && r.stdout.includes('Tally:')) {
+      } else if (e.type === 'session_start' && r.stdout.includes('Sigil:')) {
         out(green(`  ↳ SessionStart hook injected history lessons: ${(JSON.parse(r.stdout) as { hookSpecificOutput: { additionalContext: string } }).hookSpecificOutput.additionalContext.split('\n')[1]?.slice(0, 100)}`));
       } else if (e.type === 'post_tool') {
         const inp = e.data.tool_input as Record<string, unknown>;
@@ -277,7 +277,7 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
           if (shipDetected) out(green('  ↳ ship detected (git push): judge scheduled in the background'));
         }
         if (/npm test/.test(String(inp.command)) && e.data.is_error && permissionEvents.length < 2) {
-          const pe: TallyEvent = { ts: e.ts, type: 'permission', session, cwd, data: { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash(npm test)' } };
+          const pe: SigilEvent = { ts: e.ts, type: 'permission', session, cwd, data: { notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash(npm test)' } };
           spawnSync(process.execPath, [hook, 'Notification'], { input: JSON.stringify({ session_id: session, cwd, hook_event_name: 'Notification', notification_type: 'permission_prompt', message: pe.data.message }), encoding: 'utf8', env: { ...process.env }, windowsHide: true });
           permissionEvents.push(pe);
         }
@@ -316,7 +316,7 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
     out(dim(`  models in session: ${t.models.join(', ')} · subagent spend: ${Object.entries(judge.cost.by_subagent).filter(([k]) => k !== 'main').map(([k, v]) => `${k} $${v.usd.toFixed(3)}`).join(', ') || 'none'}`));
     out(dim(`  full receipt: ${path.join(sessionDir(session), 'report.md')}`));
 
-    step(4, 'tally verify: what Tally can prove, criterion by criterion');
+    step(4, 'sigil verify: what Sigil can prove, criterion by criterion');
     out(dim("  deterministic evidence first; the model's reading is one item, labelled [model], and lifts nothing above SUPPORTED on its own"));
     if (judge.assurance) out(renderVerify(judge.assurance, { color }));
 
@@ -372,13 +372,13 @@ export async function runDemo(opts: DemoOptions = {}): Promise<DemoResult> {
     if (advCase) {
       const adv = await runFixture(advCase, { cfg });
       if (adv.judge.assurance) out(renderVerify(adv.judge.assurance, { color }));
-      out(dim(`  author's grading: ${Object.entries(advCase.expected.criteria).map(([id, s]) => `${id} ${s}`).join(', ')}; the receipt above is what Tally said. Deterministic evidence cannot lift c1 above SUPPORTED here (assurance ceiling).`));
+      out(dim(`  author's grading: ${Object.entries(advCase.expected.criteria).map(([id, s]) => `${id} ${s}`).join(', ')}; the receipt above is what Sigil said. Deterministic evidence cannot lift c1 above SUPPORTED here (assurance ceiling).`));
     } else out(yellow('  (fixture not bundled in this build)'));
 
     out('');
     out(bold('Done.') + ` ${shown} coach suggestions, ${applied.length} applied (${applied.join(', ')}), ${injected.length} injected (${injected.join(', ')}), ship detected: ${shipDetected ? 'yes' : 'no'}, verdict ${judge.verdict.verdict} → ${after.followup!.final_verdict}.`);
     const reportPath = path.join(sessionDir(session), 'report.md');
-    if (ownHome && !opts.keep) out(dim(`Temp files removed. \`tally demo --keep\` keeps the receipt and the fake repo for a look.`));
+    if (ownHome && !opts.keep) out(dim(`Temp files removed. \`sigil demo --keep\` keeps the receipt and the fake repo for a look.`));
     else out(dim(`Demo data: ${home}${opts.keep ? ' (kept)' : ''}  ·  receipt: ${reportPath}`));
 
     return { home, repo: cwd, session, suggestionsShown: shown, applied, injected, shipDetected, verdict: judge.verdict.verdict, finalVerdict: after.followup!.final_verdict, reportPath, removed: ownHome && !opts.keep };

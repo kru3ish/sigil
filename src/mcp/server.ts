@@ -1,6 +1,6 @@
-/* Tally as an MCP server (stdio, JSON-RPC 2.0) so the agent can ask what is still unmet before it claims it is done.
-   No SDK: the protocol surface Tally needs is initialize, tools/list, tools/call and ping. Started by the plugin
-   (`mcpServers` in plugin.json) or registered for CLI installs with `tally mcp --install`. The session is the newest
+/* Sigil as an MCP server (stdio, JSON-RPC 2.0) so the agent can ask what is still unmet before it claims it is done.
+   No SDK: the protocol surface Sigil needs is initialize, tools/list, tools/call and ping. Started by the plugin
+   (`mcpServers` in plugin.json) or registered for CLI installs with `sigil mcp --install`. The session is the newest
    active one for the working directory, the same rule the slash commands use. */
 import { resolveSession } from '../session.js';
 import { loadTask } from '../task/intake.js';
@@ -17,27 +17,27 @@ type Json = Record<string, unknown>;
 
 const TOOLS = [
   {
-    name: 'tally_task',
-    description: "The frozen acceptance criteria for the current Claude Code session's task, with each criterion's current status from Tally's quick mechanical checks against the working tree. Call it before saying a task is done.",
+    name: 'sigil_task',
+    description: "The frozen acceptance criteria for the current Claude Code session's task, with each criterion's current status from Sigil's quick mechanical checks against the working tree. Call it before saying a task is done.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
-    name: 'tally_unmet',
+    name: 'sigil_unmet',
     description: 'Only the criteria that are not yet met: mechanical checks that currently fail (with what is missing) and judgment criteria the Judge will read. Empty means every mechanical check passes.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
-    name: 'tally_receipt',
+    name: 'sigil_receipt',
     description: "The latest receipt for this session if one exists: verdict, completion, cost, and each criterion's status with evidence.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
-    name: 'tally_flags',
+    name: 'sigil_flags',
     description: 'Coach flags waiting for a decision from the user (consent, confirmation, a file to write), with the command that resolves each.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
-    name: 'tally_budget',
+    name: 'sigil_budget',
     description: "Set the dollar cap for the current task when the user names one (\"cap this at $40\"). Without usd it reports the current budget and where it came from. The cap drives the status line, the Stop notices and any repo-policy hard stop; a repo policy's fixed budget is a ceiling it cannot raise.",
     inputSchema: { type: 'object', properties: { usd: { type: 'number', description: 'the cap in API-equivalent dollars' }, note: { type: 'string', description: 'why, in the user’s words' } }, additionalProperties: false },
   },
@@ -49,37 +49,37 @@ function text(s: string): Json {
 
 export function callTool(name: string, cwd: string, args: Json = {}): Json {
   const session = resolveSession(undefined, cwd);
-  if (!session) return text('Tally: no active session for this directory (hooks not installed, or no prompt yet).');
-  if (name === 'tally_budget') {
+  if (!session) return text('Sigil: no active session for this directory (hooks not installed, or no prompt yet).');
+  if (name === 'sigil_budget') {
     const usd = typeof args.usd === 'number' ? args.usd : Number(args.usd);
     if (usd > 0) {
       const r = setCap(session, usd, 'user via Claude', typeof args.note === 'string' ? args.note : undefined, cwd);
-      return text(`Budget set to ${fmtUsd(r.usd)}${r.clamped ? ' (clamped to the repo policy budget)' : ''}${r.applied ? '' : '; it applies once the task is linked'}. Tally now measures this task against it.`);
+      return text(`Budget set to ${fmtUsd(r.usd)}${r.clamped ? ' (clamped to the repo policy budget)' : ''}${r.applied ? '' : '; it applies once the task is linked'}. Sigil now measures this task against it.`);
     }
     const task = loadTask(session);
-    return text(task ? `Budget: ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}.${task.budget_usd > 0 ? '' : ' Ask the user for a cap and call tally_budget with usd.'}` : 'Tally: no task linked yet; the budget is decided at intake.');
+    return text(task ? `Budget: ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}.${task.budget_usd > 0 ? '' : ' Ask the user for a cap and call sigil_budget with usd.'}` : 'Sigil: no task linked yet; the budget is decided at intake.');
   }
-  if (name === 'tally_task' || name === 'tally_unmet') {
+  if (name === 'sigil_task' || name === 'sigil_unmet') {
     const task = loadTask(session);
-    if (!task) return text('Tally: no task linked yet. Link one with /tally:task <url|text> (or it will be inferred from the first prompt).');
+    if (!task) return text('Sigil: no task linked yet. Link one with /sigil:task <url|text> (or it will be inferred from the first prompt).');
     const p = quickChecks(session, cwd);
-    const rows = p.items.filter((i) => name === 'tally_task' || i.status !== 'met');
+    const rows = p.items.filter((i) => name === 'sigil_task' || i.status !== 'met');
     const L = [`Task: ${task.title}${task.inferred && !task.confirmed ? ' (inferred, unconfirmed)' : ''} · budget ${fmtUsd(task.budget_usd)}`, `Mechanical checks: ${p.met}/${p.checked} met (${p.total - p.checked} need the Judge)`, ''];
     for (const i of rows) L.push(`${i.status === 'met' ? '✔' : i.status === 'unmet' ? '✘' : '?'} ${i.id} ${i.text} — ${i.why}`);
-    if (name === 'tally_unmet' && !rows.some((i) => i.status === 'unmet')) L.push('Every mechanical check passes. Judgment criteria are decided at judge time from the evidence.');
+    if (name === 'sigil_unmet' && !rows.some((i) => i.status === 'unmet')) L.push('Every mechanical check passes. Judgment criteria are decided at judge time from the evidence.');
     return text(L.join('\n'));
   }
-  if (name === 'tally_receipt') {
+  if (name === 'sigil_receipt') {
     const j = loadJudge(session);
-    if (!j) return text('Tally: no receipt yet for this session; it is produced on push, at session end, or with /tally:judge.');
+    if (!j) return text('Sigil: no receipt yet for this session; it is produced on push, at session end, or with /sigil:judge.');
     const L = [`${j.verdict.verdict.toUpperCase()} · ${j.completion_pct}% complete${j.completion_basis && j.completion_basis.verifiable < j.completion_basis.total ? ` (${j.counts.unverifiable} unverifiable)` : ''} · quality ${j.quality.score}/10 · ${fmtUsd(j.cost.total_usd)}`];
     for (const c of j.criteria) L.push(`${c.override?.status ?? c.status} ${c.id} ${c.text} — ${c.evidence.slice(0, 160)}`);
     return text(L.join('\n'));
   }
-  if (name === 'tally_flags') {
+  if (name === 'sigil_flags') {
     const flags = readFlags(session).pending;
     if (!flags.length) return text('No Coach flags waiting.');
-    return text(flags.map((f) => `${f.title}${f.label ? ` [${f.label}]` : ''} → tally coach --apply ${f.rule}`).join('\n'));
+    return text(flags.map((f) => `${f.title}${f.label ? ` [${f.label}]` : ''} → sigil coach --apply ${f.rule}`).join('\n'));
   }
   return text(`Unknown tool ${name}`);
 }
@@ -88,7 +88,7 @@ function handle(msg: { id?: number | string; method?: string; params?: Json }, c
   const reply = (result: Json) => ({ jsonrpc: '2.0', id: msg.id, result });
   switch (msg.method) {
     case 'initialize':
-      return reply({ protocolVersion: (msg.params?.protocolVersion as string) || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'tally', version: packageVersion() } });
+      return reply({ protocolVersion: (msg.params?.protocolVersion as string) || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'sigil', version: packageVersion() } });
     case 'ping':
       return reply({});
     case 'tools/list':
@@ -98,7 +98,7 @@ function handle(msg: { id?: number | string; method?: string; params?: Json }, c
       try {
         return reply(callTool(name, cwd, (msg.params?.arguments as Json | undefined) ?? {}));
       } catch (err) {
-        return reply({ ...text(`Tally error: ${err instanceof Error ? err.message : String(err)}`), isError: true });
+        return reply({ ...text(`Sigil error: ${err instanceof Error ? err.message : String(err)}`), isError: true });
       }
     }
     default:

@@ -88,7 +88,7 @@ export async function run(args: Args): Promise<number | void> {
     if (fresh.length) {
       const cli = builtCliPath().replace(/\\/g, '/');
       const lines = fresh.map((f, i) => `(${i + 1}) ${f.title}${f.label ? ` [${f.label}]` : ''} → node "${cli}" coach --apply ${f.rule} --session ${session}`);
-      enqueueInject(session, `Tally observed ${fresh.length} Coach flag${fresh.length === 1 ? '' : 's'} waiting for a decision from the user: ${lines.join('; ')}. Each is the user's call; Tally records the answer when the command runs.`, 'autopilot:flags', cwd);
+      enqueueInject(session, `Sigil observed ${fresh.length} Coach flag${fresh.length === 1 ? '' : 's'} waiting for a decision from the user: ${lines.join('; ')}. Each is the user's call; Sigil records the answer when the command runs.`, 'autopilot:flags', cwd);
       for (const f of fresh) announced.add(f.key);
     }
     /* `notified` is the Stop hook's record of what the person has already seen; dropping it would re-show the card every turn */
@@ -112,7 +112,7 @@ export async function run(args: Args): Promise<number | void> {
     const byFlag = /^\d+$/.test(target) ? waiting[Number(target) - 1] : undefined;
     const s = byFlag ? all.find((x) => x.key === byFlag.key) ?? all.find((x) => x.rule === byFlag.rule) : /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((x) => x.rule === target || x.key === target);
     if (!s) {
-      process.stderr.write(`No suggestion ${/^\d+$/.test(target) ? '#' + target : `for ${target}`}. Run \`tally coach --once\` to list them.\n`);
+      process.stderr.write(`No suggestion ${/^\d+$/.test(target) ? '#' + target : `for ${target}`}. Run \`sigil coach --once\` to list them.\n`);
       return 1;
     }
     const r = applyIdx !== undefined ? applySuggestion(s, { session, cwd, cfg, mode: 'ask' }) : injectSuggestion(s, { session, cwd });
@@ -138,7 +138,7 @@ export async function run(args: Args): Promise<number | void> {
       const s = all.find((x) => x.key === f.key);
       process.stdout.write(`  ${i + 1}  ${f.title.padEnd(width)}  ${f.usd_saved ? `saves ~$${f.usd_saved.toFixed(2)}` : f.label ?? ''}${s?.message ? `\n     ${s.message.split('\n')[0]!.slice(0, 110)}` : ''}${s?.action.label ? `\n     if you say yes: ${s.action.label}` : ''}\n`);
     });
-    process.stdout.write(`\n  Act: tally coach --apply <n>   (plugin: /tally:coach apply <n>; or just tell Claude "tally apply <n>")\n\n`);
+    process.stdout.write(`\n  Act: sigil coach --apply <n>   (plugin: /sigil:coach apply <n>; or just tell Claude "sigil apply <n>")\n\n`);
   }
   const result = engine.tick(ctx, all);
   const list = (has(args, 'all') ? all : [...result.show, ...result.held]).filter((s) => !waiting.some((f) => f.key === s.key));
@@ -147,7 +147,7 @@ export async function run(args: Args): Promise<number | void> {
     list.forEach((s, i) => process.stdout.write(renderSuggestion(s, color, waiting.length + i + 1) + '\n\n'));
   }
   if (!has(args, 'all')) saveState(session, engine.state);
-  process.stdout.write(`Live pane: tally watch   ·   quiet a rule for this repo: tally config mutes\n`);
+  process.stdout.write(`Live pane: sigil watch   ·   quiet a rule for this repo: sigil config mutes\n`);
 }
 
 /* "apply 2", "inject claude-md", "2" (apply by default) */

@@ -1,11 +1,11 @@
 {
-  "name": "@kru3ish/tally",
-  "version": "0.13.0",
+  "name": "sigil",
+  "version": "0.14.0",
   "description": "Know what a story will cost before the coding agent starts; when it is done, see what it cost, why, and the one-line config change that makes the next one cheaper. Claude Code, Codex, Gemini CLI, Cursor.",
   "type": "module",
   "bin": {
-    "tally": "dist/cli.js",
-    "cc-tally": "dist/cli.js"
+    "sigil": "dist/cli.js",
+    "tally": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -31,11 +31,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kru3ish/tally.git"
+    "url": "git+https://github.com/kru3ish/sigil.git"
   },
-  "homepage": "https://kru3ish.github.io/tally",
+  "homepage": "https://kru3ish.github.io/sigil",
   "bugs": {
-    "url": "https://github.com/kru3ish/tally/issues"
+    "url": "https://github.com/kru3ish/sigil/issues"
   },
   "keywords": [
     "claude-code",

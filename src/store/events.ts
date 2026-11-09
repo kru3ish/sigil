@@ -21,7 +21,7 @@ export type EventType =
   | 'permission'
   | 'note' | 'budget_approved' | 'budget_set' | 'hard_stop_denied' | 'dispute' | 'recall';
 
-export interface TallyEvent {
+export interface SigilEvent {
   ts: string;
   type: EventType;
   session: string;
@@ -33,21 +33,21 @@ export function eventsFile(sessionId: string): string {
   return path.join(sessionDir(sessionId), 'events.jsonl');
 }
 
-export function appendEvent(ev: TallyEvent): void {
+export function appendEvent(ev: SigilEvent): void {
   appendLine(eventsFile(ev.session), JSON.stringify(ev));
 }
 
-export function readEvents(sessionId: string): TallyEvent[] {
+export function readEvents(sessionId: string): SigilEvent[] {
   return readEventsFile(eventsFile(sessionId));
 }
 
-export function readEventsFile(file: string): TallyEvent[] {
+export function readEventsFile(file: string): SigilEvent[] {
   if (!fs.existsSync(file)) return [];
-  const out: TallyEvent[] = [];
+  const out: SigilEvent[] = [];
   for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
     if (!line.trim()) continue;
     try {
-      out.push(JSON.parse(line) as TallyEvent);
+      out.push(JSON.parse(line) as SigilEvent);
     } catch {
       /* skip torn line */
     }
@@ -59,7 +59,7 @@ export class EventTail {
   private offset = 0;
   constructor(private readonly file: string) {}
 
-  poll(): TallyEvent[] {
+  poll(): SigilEvent[] {
     if (!fs.existsSync(this.file)) return [];
     const size = fs.statSync(this.file).size;
     if (size <= this.offset) return [];
@@ -71,11 +71,11 @@ export class EventTail {
       const lastNl = text.lastIndexOf('\n');
       if (lastNl < 0) return [];
       this.offset += Buffer.byteLength(text.slice(0, lastNl + 1));
-      const out: TallyEvent[] = [];
+      const out: SigilEvent[] = [];
       for (const line of text.slice(0, lastNl).split('\n')) {
         if (!line.trim()) continue;
         try {
-          out.push(JSON.parse(line) as TallyEvent);
+          out.push(JSON.parse(line) as SigilEvent);
         } catch {
           /* skip */
         }

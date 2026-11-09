@@ -30,11 +30,11 @@ const entry = (session: string, usd: number, agent = 'claude-code', model = 'cla
 
 describe('the receipt summary on the team ledger', () => {
   it('merges onto the story line when one exists, writes a minimal line when none does, and survives a re-record', () => {
-    const parent = tmpDir('tally-org-');
+    const parent = tmpDir('sigil-org-');
     const cwd = repo('api', parent);
     recordStory(cwd, entry('s1', 4.2));
     const v = { verified: 2, supported: 1, unverified: 0, unmet: 0, total: 3, discriminating: true, contract: 'linked' as const, verdict: 'worth it' };
-    expect(recordVerification(cwd, 's1', v, { story: 'Story s1', agent: 'claude-code', model: 'claude-sonnet-5' })).toBe(path.join(cwd, '.tally', 'ledger.jsonl'));
+    expect(recordVerification(cwd, 's1', v, { story: 'Story s1', agent: 'claude-code', model: 'claude-sonnet-5' })).toBe(path.join(cwd, '.sigil', 'ledger.jsonl'));
     let l = readLedger(cwd);
     expect(l.length).toBe(1);
     expect(l[0]!.actual_usd).toBe(4.2);
@@ -60,7 +60,7 @@ describe('the receipt summary on the team ledger', () => {
 
 describe('the organisation view', () => {
   it('reads every ledger under a root and reports verified completion and cost per verified story by repo, agent and model', () => {
-    const parent = tmpDir('tally-org-');
+    const parent = tmpDir('sigil-org-');
     const api = repo('api', parent);
     const web = repo('web', path.join(parent, 'frontend'));
     repo('empty', parent);
@@ -73,7 +73,7 @@ describe('the organisation view', () => {
     recordVerification(web, 'w1', { verified: 2, supported: 2, unverified: 0, unmet: 0, total: 4, contract: 'confirmed' }, { story: 'w1', agent: 'codex', model: 'gpt-5.3-codex' });
     const repos = scanLedgers(parent);
     expect(repos.map((r) => r.name)).toEqual(['api', 'web']);
-    expect(readLedgerFile(path.join(api, '.tally', 'ledger.jsonl')).length).toBe(3);
+    expect(readLedgerFile(path.join(api, '.sigil', 'ledger.jsonl')).length).toBe(3);
     const r = aggregateOrg(parent, repos, new Date('2026-11-05T12:00:00Z'));
     expect(r.total.stories).toBe(4);
     expect(r.total.spend_usd).toBe(65);
@@ -102,18 +102,18 @@ describe('the organisation view', () => {
     expect(html).toContain('<b>codex</b>');
     expect(html).not.toContain('<script');
     /* the CLI form, without opening a browser */
-    const cli = spawnSync(process.execPath, [CLI, 'dashboard', '--org', parent, '--json'], { encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_TELEMETRY: '0' }, cwd: parent });
+    const cli = spawnSync(process.execPath, [CLI, 'dashboard', '--org', parent, '--json'], { encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_TELEMETRY: '0' }, cwd: parent });
     expect(cli.status).toBe(0);
     const j = JSON.parse(cli.stdout) as { schema: string; total: { verified: number } };
-    expect(j.schema).toBe('tally.org.v1');
+    expect(j.schema).toBe('sigil.org.v1');
     expect(j.total.verified).toBe(2);
-    expect(spawnSync(process.execPath, [CLI, 'dashboard', '--org', path.join(parent, 'empty')], { encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, cwd: parent }).status).toBe(1);
+    expect(spawnSync(process.execPath, [CLI, 'dashboard', '--org', path.join(parent, 'empty')], { encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude }, cwd: parent }).status).toBe(1);
   });
 });
 
 describe('the audit trail', () => {
   it('lists receipts, checks, disputes, approvals, hard stops and gate blocks from the sessions on this machine', () => {
-    const cwd = tmpDir('tally-audit-');
+    const cwd = tmpDir('sigil-audit-');
     const t = (h: number) => new Date(Date.now() - h * 3600000).toISOString();
     ensureDir(sessionDir('aud-1'));
     appendEvent({ ts: t(5), type: 'session_start', session: 'aud-1', cwd, data: { agent: 'claude-code' } });
@@ -139,7 +139,7 @@ describe('the audit trail', () => {
     expect(text).toContain('6 entries');
     expect(text).toContain('[krish]');
     expect(renderAudit([], '7d')).toContain('No receipts');
-    const cli = spawnSync(process.execPath, [CLI, 'audit', '--json', '--since', '30d'], { encoding: 'utf8', env: { ...process.env, TALLY_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, TALLY_TELEMETRY: '0' }, cwd });
+    const cli = spawnSync(process.execPath, [CLI, 'audit', '--json', '--since', '30d'], { encoding: 'utf8', env: { ...process.env, SIGIL_HOME: iso.home, CLAUDE_CONFIG_DIR: iso.claude, SIGIL_TELEMETRY: '0' }, cwd });
     expect(cli.status).toBe(0);
     expect((JSON.parse(cli.stdout) as { schema: string; entries: unknown[] }).entries.length).toBe(6);
   });
@@ -147,8 +147,8 @@ describe('the audit trail', () => {
 
 describe('managed settings', () => {
   it('installs the hooks into the managed settings file and removes them again, byte-identical', () => {
-    const file = path.join(tmpDir('tally-managed-'), 'ClaudeCode', 'managed-settings.json');
-    process.env.TALLY_MANAGED_SETTINGS = file;
+    const file = path.join(tmpDir('sigil-managed-'), 'ClaudeCode', 'managed-settings.json');
+    process.env.SIGIL_MANAGED_SETTINGS = file;
     try {
       expect(managedSettingsPath()).toBe(file);
       expect(settingsPath('managed')).toBe(file);
@@ -167,7 +167,7 @@ describe('managed settings', () => {
       expect(fs.readFileSync(file, 'utf8')).toBe(before);
       expect(isInstalled('managed')).toBe(false);
     } finally {
-      delete process.env.TALLY_MANAGED_SETTINGS;
+      delete process.env.SIGIL_MANAGED_SETTINGS;
     }
     /* the default paths per platform */
     expect(managedSettingsPath('win32', { ProgramData: 'C:\\ProgramData' })).toBe(path.join('C:\\ProgramData', 'ClaudeCode', 'managed-settings.json'));

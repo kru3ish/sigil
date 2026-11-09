@@ -5,7 +5,7 @@ import { JudgeSchema } from '../judge/schema.js';
 import { loadJudge, judgeFile, persistJudge } from '../judge/judge.js';
 import { loadTask } from '../task/intake.js';
 import { listSessions } from '../store/events.js';
-import { tallyHome, readJson, writeJson, log } from '../paths.js';
+import { sigilHome, readJson, writeJson, log } from '../paths.js';
 import type { Exec } from '../judge/evidence.js';
 import { gitExec } from '../judge/evidence.js';
 import { ghStatus } from './gh.js';
@@ -148,7 +148,7 @@ export function followupSession(session: string, deps: FollowupDeps = realFollow
 }
 
 export function followupStateFile(): string {
-  return path.join(tallyHome(), 'followup-state.json');
+  return path.join(sigilHome(), 'followup-state.json');
 }
 
 export function dueSessions(days: number, now = new Date()): string[] {

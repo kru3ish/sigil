@@ -85,7 +85,7 @@ describe('estimate: a price tag from similar past stories', () => {
   });
 
   it('reads a story that lives in a referenced .md file', () => {
-    const cwd = tmpDir('tally-story-');
+    const cwd = tmpDir('sigil-story-');
     fs.writeFileSync(path.join(cwd, 'plan.md'), '# Build a snake game in canvas\n');
     expect(storyText(['plan.md is the task'], cwd)).toContain('snake game');
     expect(storyText(['../outside.md is the task'], cwd)).not.toContain('snake');
@@ -108,7 +108,7 @@ describe('estimate: a price tag from similar past stories', () => {
 describe('cost check: estimate vs actual, drivers and one-line fixes', () => {
   function checked(session: string, estimateUsd: number) {
     const t = parseTranscriptFile(path.join(basicFixture, 'transcript.jsonl'));
-    const cwd = tmpDir('tally-cost-');
+    const cwd = tmpDir('sigil-cost-');
     appendEvent({ ts: new Date().toISOString(), type: 'session_start', session, cwd, data: { loaded: { mcp: ['notion', 'linear'], skills: [], plugins: [] } } });
     const estimate = { usd: estimateUsd, low_usd: estimateUsd * 0.8, high_usd: estimateUsd * 1.2, basis: 'similar' as const, confidence: 'medium' as const, n: 4, corpus: 10, neighbours: [], computed_at: new Date().toISOString() };
     return { t, cwd, check: computeCheck(session, { transcript: t, estimate }) };
@@ -125,8 +125,8 @@ describe('cost check: estimate vs actual, drivers and one-line fixes', () => {
     expect(check.savable_usd).toBeLessThanOrEqual(check.actual_usd);
     const text = renderCheck(check);
     expect(text).toContain('OVER by');
-    expect(text).toContain('tally fix model-sonnet');
-    expect(headline(check)).toContain('/tally:cost');
+    expect(text).toContain('sigil fix model-sonnet');
+    expect(headline(check)).toContain('/sigil:cost');
     expect(fs.existsSync(path.join(sessionDir('cost-0001'), 'cost-check.json'))).toBe(true);
   });
 
@@ -162,7 +162,7 @@ describe('cost check: estimate vs actual, drivers and one-line fixes', () => {
   });
 
   it('a CLAUDE.md fix appends only lines that are not there yet', () => {
-    const cwd = tmpDir('tally-md-');
+    const cwd = tmpDir('sigil-md-');
     fs.writeFileSync(path.join(cwd, 'CLAUDE.md'), '# Repo\n- `npm test`\n');
     const fix = { id: 'claude-md', title: 't', what: 'w', apply: { kind: 'claude_md' as const, content: '## Commands\n- `npm test`\n- `npm run lint`\n\n## Files\n- src/a.js\n' } };
     expect(applyFix(fix, { session: 'cost-0006', cwd }).ok).toBe(true);
@@ -176,14 +176,14 @@ describe('cost check: estimate vs actual, drivers and one-line fixes', () => {
 
 describe('in the session: status line and the end-of-turn notice', () => {
   function stop(session: string) {
-    return spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd: '/r', last_assistant_message: 'Done.' }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    return spawnSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ session_id: session, cwd: '/r', last_assistant_message: 'Done.' }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
   }
   const est = (usd: number) => ({ usd, low_usd: usd * 0.8, high_usd: usd * 1.3, basis: 'similar', confidence: 'medium', n: 5, corpus: 20, neighbours: [], computed_at: '' });
 
   it('a first prompt that names a .md story followed by punctuation links that file (issue #3)', () => {
-    const cwd = tmpDir('tally-mdlink-');
+    const cwd = tmpDir('sigil-mdlink-');
     fs.writeFileSync(path.join(cwd, 'STORY.md'), '# Build a parser\n');
-    const r = spawnSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 'md-0001', cwd, prompt: 'Implement the story in STORY.md. Run the tests before you finish.' }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
+    const r = spawnSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 'md-0001', cwd, prompt: 'Implement the story in STORY.md. Run the tests before you finish.' }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
     expect(r.status).toBe(0);
     expect(fs.readFileSync(path.join(sessionDir('md-0001'), 'task.pending'), 'utf8')).toBe(path.join(cwd, 'STORY.md'));
   });
@@ -215,7 +215,7 @@ describe('in the session: status line and the end-of-turn notice', () => {
     expect(over.systemMessage).toContain('+$10.00');
     expect(over.systemMessage).toContain('Largest reason: main model claude-opus-5');
     expect(over.systemMessage).toContain('spans 3 days');
-    expect(over.systemMessage).toContain('tally fix model-sonnet');
+    expect(over.systemMessage).toContain('sigil fix model-sonnet');
     expect(stop(session).stdout.trim()).toBe('');
     fs.appendFileSync(path.join(dir, 'events.jsonl'), JSON.stringify({ ts: new Date().toISOString(), type: 'ship', session, data: {} }) + '\n');
     expect((JSON.parse(stop(session).stdout) as { systemMessage: string }).systemMessage).toContain('shipped for $75.00, $10.00 over the $65.00 budget');
@@ -232,7 +232,7 @@ describe('in the session: status line and the end-of-turn notice', () => {
     const ask = JSON.parse(stop(session).stdout) as { systemMessage: string };
     expect(ask.systemMessage).toContain('no comparable past task');
     expect(ask.systemMessage).toContain('87 past tasks on record');
-    expect(ask.systemMessage).toContain('tally budget set 40');
+    expect(ask.systemMessage).toContain('sigil budget set 40');
     expect(ask.systemMessage).not.toContain('$1.54');
     writeJson(path.join(dir, 'spend.json'), { usd: 30 });
     expect(stop(session).stdout.trim()).toBe('');
@@ -245,7 +245,7 @@ describe('in the session: status line and the end-of-turn notice', () => {
     expect(stop('live-0005').stdout.trim()).toBe('');
   });
 
-  it('`tally cost` and `tally fix --list` work on a session recorded by the hooks', () => {
+  it('`sigil cost` and `sigil fix --list` work on a session recorded by the hooks', () => {
     const session = 'live-0004';
     const dir = sessionDir(session);
     fs.mkdirSync(dir, { recursive: true });
@@ -253,7 +253,7 @@ describe('in the session: status line and the end-of-turn notice', () => {
     writeJson(path.join(dir, 'estimate.json'), est(0.05));
     const r = spawnSync(process.execPath, [CLI, 'cost', session], { encoding: 'utf8', env: process.env });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('Tally cost check');
+    expect(r.stdout).toContain('Sigil cost check');
     expect(r.stdout).toContain('OVER by');
     const l = spawnSync(process.execPath, [CLI, 'fix', '--list', '--session', session], { encoding: 'utf8', env: process.env });
     expect(l.stdout).toContain('model-sonnet');

@@ -20,10 +20,10 @@ export async function askConsent(io: { question?: (q: string) => Promise<string>
   const yes = answer === 'y' || answer === 'yes';
   if (yes) {
     const s = enableTelemetry();
-    out(`On. Installation id ${s.installation_id}. \`tally telemetry show\` prints exactly what is sent; \`tally telemetry off\` turns it off and deletes the id.\n\n`);
+    out(`On. Installation id ${s.installation_id}. \`sigil telemetry show\` prints exactly what is sent; \`sigil telemetry off\` turns it off and deletes the id.\n\n`);
   } else {
     markAsked();
-    out('Off. It will not ask again; `tally telemetry on` enables it later.\n\n');
+    out('Off. It will not ask again; `sigil telemetry on` enables it later.\n\n');
   }
   return yes;
 }

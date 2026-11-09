@@ -1,21 +1,21 @@
 # The pull-request check
 
-`tally check` judges a pull request with no session behind it. It runs in the clean checkout a CI job already has, finds the task the PR claims to do, and produces the same receipt a local session gets: acceptance criteria against evidence, an independent test run, the mutation check, and scope. It fails the check when the receipt does not meet the bar the repo sets.
+`sigil check` judges a pull request with no session behind it. It runs in the clean checkout a CI job already has, finds the task the PR claims to do, and produces the same receipt a local session gets: acceptance criteria against evidence, an independent test run, the mutation check, and scope. It fails the check when the receipt does not meet the bar the repo sets.
 
 It is the one place where verification cannot be switched off by the person, or the agent, doing the work.
 
 ## Add it to a repository
 
 ```yaml
-# .github/workflows/tally.yml
-name: Tally check
+# .github/workflows/sigil.yml
+name: Sigil check
 on:
   pull_request:
 permissions:
   contents: read
   pull-requests: write   # one receipt comment per PR, kept updated
 jobs:
-  tally:
+  sigil:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 20
       - run: npm ci          # the project's own dependencies, so its tests can run
-      - uses: kru3ish/tally@main
+      - uses: kru3ish/sigil@main
         with:
           require: no-unmet  # or sufficient | verified
 ```
@@ -36,9 +36,9 @@ Then make the check required in the branch protection or ruleset. From that poin
 
 1. **Finds the base.** The merge-base of HEAD with the PR's base branch (`--base` overrides it).
 2. **Finds the task.** `--task`, else from the PR body: a `.md` file it names (`tasks/rate-limit.md`), a linked issue (`#12`, `fixes #12`, or the issue URL), else the PR title and body as text. A task from a file or issue is a `linked` contract; one inferred from the PR text is labelled `needs_confirmation` on the receipt.
-3. **Freezes the contract.** The acceptance criteria listed in the ticket are kept verbatim. Standing criteria from `tally.json` are appended.
+3. **Freezes the contract.** The acceptance criteria listed in the ticket are kept verbatim. Standing criteria from `sigil.json` are appended.
 4. **Resolves mechanical checks.** `file_exists`, `file_changed`, `file_contains`, `diff_contains`, `tests_pass`, `command`, from the ticket (see below) or the policy.
-5. **Runs the tests** with the repo's command (`npm test`, `pytest`, `go test`, `cargo test`, ... or `test_command` in `tally.json`) in a scrubbed environment. A failure is attributed: if the base commit fails the same way, the receipt says so.
+5. **Runs the tests** with the repo's command (`npm test`, `pytest`, `go test`, `cargo test`, ... or `test_command` in `sigil.json`) in a scrubbed environment. A failure is attributed: if the base commit fails the same way, the receipt says so.
 6. **Runs the mutation check.** After a green run, the test files the PR added or changed are run once more at the base commit, with nothing else from the PR applied. If they pass there too, they do not test the change, and they cannot anchor a VERIFIED criterion.
 7. **Compares scope.** Areas the diff touches that no criterion names are flagged for explanation.
 8. **Reports.** The receipt in the job log, the CI step summary, one PR comment (created, then updated on every push), and step outputs (`passed`, `verified`, `unmet`, `total`).
@@ -46,7 +46,7 @@ Then make the check required in the branch protection or ruleset. From that poin
 
 ## The bar
 
-`verification.required` in the repo's `tally.json` (the Action's `require` input overrides it):
+`verification.required` in the repo's `sigil.json` (the Action's `require` input overrides it):
 
 | bar | passes when |
 |---|---|
@@ -83,11 +83,11 @@ Kinds: `tests_pass`, `file_exists <path>`, `file_changed <path>`, `file_contains
 **With a model**, those criteria are judged from the evidence the way a local session's are. Give the job an OpenAI-compatible endpoint:
 
 ```yaml
-      - uses: kru3ish/tally@main
+      - uses: kru3ish/sigil@main
         env:
-          TALLY_LLM_BASE_URL: https://api.anthropic.com/v1
-          TALLY_LLM_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          TALLY_LLM_MODEL: claude-sonnet-5-5
+          SIGIL_LLM_BASE_URL: https://api.anthropic.com/v1
+          SIGIL_LLM_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SIGIL_LLM_MODEL: claude-sonnet-5-5
 ```
 
 Any OpenAI-compatible endpoint works: Anthropic's, OpenAI's, a gateway, a self-hosted model. The judgment prompt carries the diff excerpt and the ticket; it is sent to the endpoint you name and nowhere else.
@@ -101,6 +101,6 @@ Without a model: nothing. The receipt comment holds the criteria texts, statuses
 The same command runs on a laptop, against any branch:
 
 ```
-tally check --task tasks/rate-limit.md --base main
-tally check --task https://github.com/o/r/issues/12 --require sufficient --json
+sigil check --task tasks/rate-limit.md --base main
+sigil check --task https://github.com/o/r/issues/12 --require sufficient --json
 ```

@@ -1,4 +1,4 @@
-/* `tally playbook [--all] [--write]`: the "Next time" lessons that keep recurring across receipts in this repo
+/* `sigil playbook [--all] [--write]`: the "Next time" lessons that keep recurring across receipts in this repo
    (or everywhere with --all), clustered by wording, with a CLAUDE.md snippet; --write appends the snippet. */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -49,7 +49,7 @@ export function clusterLessons(entries: HistoryEntry[], repo?: string): Lesson[]
 export function playbookSnippet(lessons: Lesson[], n: number): string {
   const top = lessons.filter((l) => l.count >= 2).slice(0, 5);
   const pick = top.length ? top : lessons.slice(0, 3);
-  return ['## Lessons from Tally receipts', `<!-- tally playbook: ${n} receipt(s); regenerate with \`tally playbook\` -->`, ...pick.map((l) => `- ${l.text}${l.count > 1 ? ` (seen ${l.count}×)` : ''}`), ''].join('\n');
+  return ['## Lessons from Sigil receipts', `<!-- sigil playbook: ${n} receipt(s); regenerate with \`sigil playbook\` -->`, ...pick.map((l) => `- ${l.text}${l.count > 1 ? ` (seen ${l.count}×)` : ''}`), ''].join('\n');
 }
 
 export async function run(args: Args): Promise<number | void> {
@@ -68,8 +68,8 @@ export async function run(args: Args): Promise<number | void> {
   if (has(args, 'write')) {
     const file = path.join(process.cwd(), 'CLAUDE.md');
     const existing = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-    const cleaned = existing.replace(/\n?## Lessons from Tally receipts[\s\S]*?(?=\n## |$)/, '').trimEnd();
+    const cleaned = existing.replace(/\n?## Lessons from Sigil receipts[\s\S]*?(?=\n## |$)/, '').trimEnd();
     fs.writeFileSync(file, (cleaned ? cleaned + '\n\n' : '') + snippet);
-    process.stdout.write(`Written to ${file}${existing ? ' (previous Tally section replaced, the rest untouched)' : ''}.\n`);
-  } else process.stdout.write('Add it with: tally playbook --write\n');
+    process.stdout.write(`Written to ${file}${existing ? ' (previous Sigil section replaced, the rest untouched)' : ''}.\n`);
+  } else process.stdout.write('Add it with: sigil playbook --write\n');
 }

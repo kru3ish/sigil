@@ -48,16 +48,16 @@ check('TEST', 'unit and integration tests', () => {
 });
 
 // INSTALL
-check('INSTALL', 'npm pack + clean install in a fresh HOME, tally --version and doctor run', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-release-'));
+check('INSTALL', 'npm pack + clean install in a fresh HOME, sigil --version and doctor run', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-release-'));
   const packed = JSON.parse(run('npm', ['pack', '--ignore-scripts', '--json', '--pack-destination', tmp]))[0].filename;
   const prefix = path.join(tmp, 'prefix');
   fs.mkdirSync(prefix);
   run('npm', ['install', '-g', '--prefix', prefix, path.join(tmp, packed), '--no-audit', '--no-fund', '--loglevel=error']);
-  const bin = process.platform === 'win32' ? path.join(prefix, 'node_modules', '@kru3ish', 'tally', 'dist', 'cli.js') : path.join(prefix, 'lib', 'node_modules', '@kru3ish', 'tally', 'dist', 'cli.js');
+  const bin = process.platform === 'win32' ? path.join(prefix, 'node_modules', 'sigil', 'dist', 'cli.js') : path.join(prefix, 'lib', 'node_modules', 'sigil', 'dist', 'cli.js');
   const home = path.join(tmp, 'home');
   fs.mkdirSync(home);
-  const env = { TALLY_HOME: path.join(home, '.tally'), CLAUDE_CONFIG_DIR: path.join(home, '.claude'), TALLY_LLM: 'stub' };
+  const env = { SIGIL_HOME: path.join(home, '.sigil'), CLAUDE_CONFIG_DIR: path.join(home, '.claude'), SIGIL_LLM: 'stub' };
   const v = run('node', [bin, '--version'], { env }).trim();
   /* a fresh HOME has no hooks, which doctor rightly reports as a problem; install first, then doctor must be clean */
   run('node', [bin, 'install'], { env });
@@ -70,12 +70,12 @@ check('INSTALL', 'plugin manifest validates (claude plugin validate --strict)', 
   if (!/Validation passed/.test(out)) throw new Error(out.slice(-300));
 });
 check('INSTALL', 'install / uninstall round trip leaves settings byte-identical', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-rt-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-rt-'));
   const claude = path.join(home, '.claude');
   fs.mkdirSync(claude);
   const original = JSON.stringify({ permissions: { allow: ['Bash(npm test:*)'] }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo mine' }] }] } }, null, 2) + '\n';
   fs.writeFileSync(path.join(claude, 'settings.json'), original);
-  const env = { TALLY_HOME: path.join(home, '.tally'), CLAUDE_CONFIG_DIR: claude, TALLY_LLM: 'stub' };
+  const env = { SIGIL_HOME: path.join(home, '.sigil'), CLAUDE_CONFIG_DIR: claude, SIGIL_LLM: 'stub' };
   run('node', ['dist/cli.js', 'install'], { env });
   const after = fs.readFileSync(path.join(claude, 'settings.json'), 'utf8');
   if (!/hook\.js/.test(after)) throw new Error('install did not add hooks');
@@ -86,19 +86,19 @@ check('INSTALL', 'install / uninstall round trip leaves settings byte-identical'
 });
 
 // DEMO
-check('DEMO', 'tally demo completes and shows the verify step', () => {
+check('DEMO', 'sigil demo completes and shows the verify step', () => {
   const out = run('node', ['dist/cli.js', 'demo', '--plain', '--fast']);
-  if (!/Tally Verify/.test(out) || !/UNMET/.test(out) || !/Done\./.test(out)) throw new Error('demo output missing expected sections');
+  if (!/Sigil Verify/.test(out) || !/UNMET/.test(out) || !/Done\./.test(out)) throw new Error('demo output missing expected sections');
   /* the demo leaves its data for a person to look at; the checklist is not a person */
   const data = /Demo data: (\S+)/.exec(out)?.[1];
-  if (data && data.includes('tally-demo-')) fs.rmSync(data, { recursive: true, force: true, maxRetries: 5 });
+  if (data && data.includes('sigil-demo-')) fs.rmSync(data, { recursive: true, force: true, maxRetries: 5 });
 });
 
 // ASSURANCE
 check('ASSURANCE', 'fixture replay meets the recorded baseline and the self-share gate', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'tally-ev-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-ev-'));
   try {
-    const out = run('node', ['dist/cli.js', 'calibrate', 'eval', '--max-share', '8'], { env: { TALLY_HOME: home } });
+    const out = run('node', ['dist/cli.js', 'calibrate', 'eval', '--max-share', '8'], { env: { SIGIL_HOME: home } });
     const m = /criterion agreement\s+(\d+)%/.exec(out);
     return m ? `criteria ${m[1]}%` : 'ok';
   } finally {
@@ -107,7 +107,7 @@ check('ASSURANCE', 'fixture replay meets the recorded baseline and the self-shar
 });
 if (!skipLive) {
   check('ASSURANCE', 'live fixture run (model calls; costs a few cents)', () => {
-    const out = run('node', ['dist/cli.js', 'calibrate', 'eval', '--live', '--verbose'], { env: { TALLY_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'tally-evl-')) }, timeout: 20 * 60 * 1000 });
+    const out = run('node', ['dist/cli.js', 'calibrate', 'eval', '--live', '--verbose'], { env: { SIGIL_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'sigil-evl-')) }, timeout: 20 * 60 * 1000 });
     const m = /criterion agreement\s+(\d+)%.*\n.*verdict agreement\s+(\d+)%/.exec(out);
     return m ? `criteria ${m[1]}%, verdicts ${m[2]}%` : 'ran';
   });
@@ -115,7 +115,7 @@ if (!skipLive) {
 
 // BACKWARDS COMPATIBILITY
 check('COMPAT', 'every stored receipt on this machine still loads and renders', () => {
-  const home = process.env.TALLY_HOME || path.join(os.homedir(), '.tally');
+  const home = process.env.SIGIL_HOME || [path.join(os.homedir(), '.sigil'), path.join(os.homedir(), '.tally')].find((p) => fs.existsSync(p)) || path.join(os.homedir(), '.sigil');
   const sessions = path.join(home, 'sessions');
   if (!fs.existsSync(sessions)) return 'no local receipts';
   const script = `
@@ -134,7 +134,7 @@ check('COMPAT', 'every stored receipt on this machine still loads and renders', 
     }
     console.log(JSON.stringify({ n, bad }));
   `;
-  const tmp = path.join(os.tmpdir(), `tally-compat-${Date.now()}.mts`);
+  const tmp = path.join(os.tmpdir(), `sigil-compat-${Date.now()}.mts`);
   fs.writeFileSync(tmp, script);
   const out = run('npx', ['tsx', tmp]);
   fs.rmSync(tmp, { force: true });
@@ -144,11 +144,11 @@ check('COMPAT', 'every stored receipt on this machine still loads and renders', 
 });
 
 // DOCS
-check('DOCS', 'every `tally <command>` named in README exists', () => {
+check('DOCS', 'every `sigil <command>` named in README exists', () => {
   const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
   const cli = fs.readFileSync(path.join(root, 'src', 'cli.ts'), 'utf8');
   const commands = new Set([...cli.matchAll(/^\s{2}([a-z][a-z-]*): \(\) => import/gm)].map((m) => m[1]));
-  const used = new Set([...readme.matchAll(/(?:^|[`\s])tally ([a-z][a-z-]*)/gm)].map((m) => m[1]).filter((w) => !['json'].includes(w)));
+  const used = new Set([...readme.matchAll(/(?:^|[`\s])sigil ([a-z][a-z-]*)/gm)].map((m) => m[1]).filter((w) => !['json'].includes(w)));
   const missing = [...used].filter((w) => !commands.has(w) && !['verify', 'eval'].includes(w) ? !commands.has(w) : false);
   if (missing.length) throw new Error(`README names commands that do not exist: ${missing.join(', ')}`);
   return `${used.size} commands referenced, all exist`;
@@ -180,9 +180,9 @@ check('SECURITY', 'no secrets in fixtures, eval specs or results', () => {
   return `${files.length} files scanned`;
 });
 check('SECURITY', 'no evaluation worktrees left in the temp directory', () => {
-  /* the eval runner's roots are tally-eval-<6 random chars>; test scratch uses longer prefixes and is not what this guards */
-  const left = fs.readdirSync(os.tmpdir()).filter((f) => /^tally-eval-[A-Za-z0-9_-]{6}$/.test(f) || /^tally-(release|rt|ev|evl|compat)-/.test(f));
-  if (left.length > 3) throw new Error(`${left.length} tally temp dirs left over (${left.slice(0, 4).join(', ')})`);
+  /* the eval runner's roots are sigil-eval-<6 random chars>; test scratch uses longer prefixes and is not what this guards */
+  const left = fs.readdirSync(os.tmpdir()).filter((f) => /^sigil-eval-[A-Za-z0-9_-]{6}$/.test(f) || /^sigil-(release|rt|ev|evl|compat)-/.test(f));
+  if (left.length > 3) throw new Error(`${left.length} sigil temp dirs left over (${left.slice(0, 4).join(', ')})`);
   return `${left.length} leftover temp dir(s)`;
 });
 

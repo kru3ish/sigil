@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: git config --global user.email ci@tally.local && git config --global user.name tally-ci
+      - run: git config --global user.email ci@sigil.local && git config --global user.name sigil-ci
         shell: bash
       - run: npm ci
       - run: npm test
@@ -31,7 +31,7 @@ jobs:
       - name: install / uninstall round trip is byte-identical
         shell: bash
         run: |
-          export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-home" TALLY_HOME="$RUNNER_TEMP/tally-home"
+          export CLAUDE_CONFIG_DIR="$RUNNER_TEMP/claude-home" SIGIL_HOME="$RUNNER_TEMP/sigil-home"
           mkdir -p "$CLAUDE_CONFIG_DIR"
           printf '{\n\t"model": "opus",\n\t"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}\n}' > "$CLAUDE_CONFIG_DIR/settings.json"
           before=$(node -e "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.env.CLAUDE_CONFIG_DIR+'/settings.json')).digest('hex'))")
@@ -62,7 +62,7 @@ jobs:
         run: node -e "const h=require('./hooks/hooks.json').hooks; for (const [e,gs] of Object.entries(h)) for (const g of gs) for (const k of g.hooks) { if (k.command!=='node' || k.args[0]!=='\${CLAUDE_PLUGIN_ROOT}/dist/hook.js' || k.args[1]!==e) { console.error('bad hook', e, k); process.exit(1) } }; console.log('ok')"
 
   plugin-only:
-    name: plugin-only path (real plugin manager, fake model calls, no global tally)
+    name: plugin-only path (real plugin manager, fake model calls, no global sigil)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +85,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: git config --global user.email ci@tally.local && git config --global user.name tally-ci
+      - run: git config --global user.email ci@sigil.local && git config --global user.name sigil-ci
         shell: bash
       - run: npm ci
       - run: npm pack
@@ -96,23 +96,23 @@ jobs:
           # mktemp gives a POSIX path that Git Bash on Windows converts for node; $RUNNER_TEMP would mix D:\ and /
           FRESH="$(mktemp -d)"
           mkdir -p "$FRESH/npm-global" "$FRESH/.claude"
-          export HOME="$FRESH" USERPROFILE="$FRESH" CLAUDE_CONFIG_DIR="$FRESH/.claude" TALLY_HOME="$FRESH/.tally"
+          export HOME="$FRESH" USERPROFILE="$FRESH" CLAUDE_CONFIG_DIR="$FRESH/.claude" SIGIL_HOME="$FRESH/.sigil"
           export npm_config_prefix="$FRESH/npm-global"
           export PATH="$FRESH/npm-global/bin:$FRESH/npm-global:$PATH"
-          npm i -g ./kru3ish-tally-*.tgz
+          npm i -g ./sigil-*.tgz
           npm i -g @anthropic-ai/claude-code
+          command -v sigil
           command -v tally
-          command -v cc-tally
-          tally --version
-          cc-tally --version | grep -q "$(node -p "require('./package.json').version")"
+          sigil --version
+          tally --version | grep -q "$(node -p "require('./package.json').version")"
           # the installed package must not carry node_modules (dist is self-contained)
-          test ! -d "$(npm root -g)/@kru3ish/tally/node_modules"
+          test ! -d "$(npm root -g)/sigil/node_modules"
           printf '{\n\t"model": "opus",\n\t"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}\n}' > "$CLAUDE_CONFIG_DIR/settings.json"
           before=$(node -e "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.env.CLAUDE_CONFIG_DIR+'/settings.json')).digest('hex'))")
-          tally install
-          tally doctor --plain
-          tally demo --plain --fast
-          tally uninstall
+          sigil install
+          sigil doctor --plain
+          sigil demo --plain --fast
+          sigil uninstall
           after=$(node -e "process.stdout.write(require('crypto').createHash('sha256').update(require('fs').readFileSync(process.env.CLAUDE_CONFIG_DIR+'/settings.json')).digest('hex'))")
           echo "before=$before after=$after"
           test "$before" = "$after"

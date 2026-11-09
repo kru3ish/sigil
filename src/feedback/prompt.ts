@@ -21,6 +21,6 @@ export async function askUsefulness(io: { question?: (q: string) => Promise<stri
   out('\nOne question, asked once: ');
   const answer = parseUsefulnessAnswer(await question(USEFULNESS_QUESTION));
   recordUsefulness(answer);
-  out(answer === 'yes' ? 'Good to know. `tally feedback` on the criterion that caught it helps the calibration.\n' : answer === 'no' ? 'Noted. If a verdict was wrong, `tally feedback wrong <c#> --report` is the fastest way to get it fixed.\n' : 'Skipped; it will not ask again.\n');
+  out(answer === 'yes' ? 'Good to know. `sigil feedback` on the criterion that caught it helps the calibration.\n' : answer === 'no' ? 'Noted. If a verdict was wrong, `sigil feedback wrong <c#> --report` is the fastest way to get it fixed.\n' : 'Skipped; it will not ask again.\n');
   return answer;
 }

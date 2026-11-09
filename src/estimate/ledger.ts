@@ -1,4 +1,4 @@
-/* The team ledger: one line per finished story in <repo>/.tally/ledger.jsonl. It travels with the repository, so
+/* The team ledger: one line per finished story in <repo>/.sigil/ledger.jsonl. It travels with the repository, so
    committing it gives everyone who clones the repo the team's history for estimates and the dashboard. A line holds
    numbers, the story's key and title, the model, the drivers and fixes by id, and the author's git name (already in
    the repo's own history). Never prompts, code, diffs or file paths. */
@@ -63,8 +63,11 @@ export function repoRoot(cwd: string): string | undefined {
   return undefined;
 }
 
+/* <repo>/.sigil/ledger.jsonl; a repository that only has the 0.13 .tally/ ledger keeps using it for one release */
 export function ledgerFile(root: string): string {
-  return path.join(root, '.tally', 'ledger.jsonl');
+  const file = path.join(root, '.sigil', 'ledger.jsonl');
+  const legacy = path.join(root, '.tally', 'ledger.jsonl');
+  return !fs.existsSync(file) && fs.existsSync(legacy) ? legacy : file;
 }
 
 export function readLedger(cwd: string): LedgerEntry[] {

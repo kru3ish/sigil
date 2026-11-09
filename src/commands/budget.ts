@@ -1,4 +1,4 @@
-/* `tally budget status|set <usd>|approve [--session id] [--note "..."]`: the task's budget, the cap a person sets when
+/* `sigil budget status|set <usd>|approve [--session id] [--note "..."]`: the task's budget, the cap a person sets when
    no comparable past task priced it, the hard stop a repo policy can impose when a session passes the budget, and the
    human approval that lifts it. The Coach tick writes the stop marker; the PreToolUse hook denies tool calls while it
    exists; approve records who lifted it and why. */
@@ -67,7 +67,7 @@ export async function run(args: Args): Promise<number | void> {
   if (sub === 'set') {
     const usd = Number(String(args._[1] ?? '').replace(/^\$/, ''));
     if (!(usd > 0)) {
-      process.stderr.write('Usage: tally budget set <usd> [--note "why"]\n');
+      process.stderr.write('Usage: sigil budget set <usd> [--note "why"]\n');
       return 2;
     }
     const r = setCap(session, usd, flag(args, 'by') ?? os.userInfo().username, flag(args, 'note'), process.cwd());
@@ -80,8 +80,8 @@ export async function run(args: Args): Promise<number | void> {
     return;
   }
   const task = loadTask(session);
-  if (task) process.stdout.write(`Budget · ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}${task.budget_usd > 0 ? '' : ' → tally budget set <usd>'}\n`);
+  if (task) process.stdout.write(`Budget · ${describeBudget(task.budget_basis, task.budget_usd, loadEstimate(session))}${task.budget_usd > 0 ? '' : ' → sigil budget set <usd>'}\n`);
   const stop = readHardStop(session);
-  if (stop) process.stdout.write(`HARD STOP · session ${session.slice(0, 8)} spent ${fmtUsd(stop.spend_usd)} against a ${fmtUsd(stop.budget_usd)} budget${stop.policy_file ? ` (${stop.policy_file})` : ''}. Tool calls are denied until: tally budget approve --note "<why>"\n`);
+  if (stop) process.stdout.write(`HARD STOP · session ${session.slice(0, 8)} spent ${fmtUsd(stop.spend_usd)} against a ${fmtUsd(stop.budget_usd)} budget${stop.policy_file ? ` (${stop.policy_file})` : ''}. Tool calls are denied until: sigil budget approve --note "<why>"\n`);
   else process.stdout.write(`No hard stop active for session ${session.slice(0, 8)}${isApproved(session) ? ' (budget overrun approved)' : ''}.\n`);
 }

@@ -5,7 +5,7 @@ import { log } from '../paths.js';
 import { enrichStars, isStale, loadCatalog, updateCatalog } from './catalog.js';
 import type { CostCheck } from '../estimate/variance.js';
 
-const offline = () => !loadConfig().cost.catalog_online || !!process.env.TALLY_OFFLINE || !!process.env.VITEST;
+const offline = () => !loadConfig().cost.catalog_online || !!process.env.SIGIL_OFFLINE || !!process.env.VITEST;
 
 export async function ensureCatalog(): Promise<void> {
   if (offline()) return;

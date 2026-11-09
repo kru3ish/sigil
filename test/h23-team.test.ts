@@ -8,7 +8,7 @@ import { readLedger, recordStory, entryFromCheck, ledgerFile, type LedgerEntry }
 import { buildCorpus, estimateFromCorpus, type CorpusDoc } from '../src/estimate/estimate.js';
 import { computeCheck } from '../src/estimate/variance.js';
 import { parseTranscriptFile } from '../src/transcript/parse.js';
-import { otlpTarget, storyMetrics, exportStory, claudeSettingsEnv, repoSetsTallyOtel } from '../src/telemetry/otlp.js';
+import { otlpTarget, storyMetrics, exportStory, claudeSettingsEnv, repoSetsSigilOtel } from '../src/telemetry/otlp.js';
 import { renderDashboard } from '../src/estimate/dashboard.js';
 import { recordFinishedStory } from '../src/estimate/story.js';
 import { canOpenBrowser } from '../src/estimate/open.js';
@@ -22,7 +22,7 @@ beforeEach(() => {
 afterEach(() => iso.restore());
 
 function repo(): string {
-  const cwd = tmpDir('tally-team-');
+  const cwd = tmpDir('sigil-team-');
   spawnSync('git', ['init', '-q'], { cwd });
   spawnSync('git', ['config', 'user.name', 'Ada'], { cwd });
   return cwd;
@@ -72,14 +72,14 @@ describe('OpenTelemetry story metrics', () => {
     expect(otlpTarget({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://col:4318/' })!.url).toBe('http://col:4318/v1/metrics');
     expect(otlpTarget({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: 'http://col:4318/custom' })!.url).toBe('http://col:4318/custom');
     expect(otlpTarget({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://col:4317', OTEL_EXPORTER_OTLP_PROTOCOL: 'grpc' })).toBeNull();
-    expect(otlpTarget({ TALLY_OTEL_ENDPOINT: 'http://x:4318', OTEL_EXPORTER_OTLP_PROTOCOL: 'grpc' })!.url).toBe('http://x:4318/v1/metrics');
-    expect(otlpTarget({ TALLY_OTEL_ENDPOINT: 'http://x:4318', TALLY_OTEL_HEADERS: 'k=v', TALLY_OTEL_RESOURCE_ATTRIBUTES: 'team=core' })).toMatchObject({ headers: { k: 'v' }, resource: 'team=core' });
+    expect(otlpTarget({ SIGIL_OTEL_ENDPOINT: 'http://x:4318', OTEL_EXPORTER_OTLP_PROTOCOL: 'grpc' })!.url).toBe('http://x:4318/v1/metrics');
+    expect(otlpTarget({ SIGIL_OTEL_ENDPOINT: 'http://x:4318', SIGIL_OTEL_HEADERS: 'k=v', SIGIL_OTEL_RESOURCE_ATTRIBUTES: 'team=core' })).toMatchObject({ headers: { k: 'v' }, resource: 'team=core' });
     expect(otlpTarget({}, undefined, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://org:4318', OTEL_RESOURCE_ATTRIBUTES: 'dept=eng' })).toMatchObject({ url: 'http://org:4318/v1/metrics', resource: 'dept=eng' });
     expect(otlpTarget({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c', OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer%20abc,x-team=core' })!.headers).toMatchObject({ Authorization: 'Bearer abc', 'x-team': 'core' });
   });
 
   it('reads OTEL_* from user and managed settings files, because Claude Code strips them from hook environments', () => {
-    const d = tmpDir('tally-otelset-');
+    const d = tmpDir('sigil-otelset-');
     const user = path.join(d, 'user.json');
     const managed = path.join(d, 'managed.json');
     fs.writeFileSync(user, JSON.stringify({ env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://mine:4318', OTHER: 'x' } }));
@@ -87,13 +87,13 @@ describe('OpenTelemetry story metrics', () => {
     expect(claudeSettingsEnv([user, managed, path.join(d, 'missing.json')])).toEqual({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://org:4318' });
   });
 
-  it('a repository cannot redirect the metrics: TALLY_OTEL_* from its own settings is ignored', () => {
+  it('a repository cannot redirect the metrics: SIGIL_OTEL_* from its own settings is ignored', () => {
     const cwd = repo();
     fs.mkdirSync(path.join(cwd, '.claude'));
-    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), JSON.stringify({ env: { TALLY_OTEL_ENDPOINT: 'http://evil:4318' } }));
-    expect(repoSetsTallyOtel(cwd)).toBe(true);
-    expect(otlpTarget({ TALLY_OTEL_ENDPOINT: 'http://evil:4318' }, undefined, {}, { repoSetsTally: true })).toBeNull();
-    expect(otlpTarget({ TALLY_OTEL_ENDPOINT: 'http://evil:4318' }, undefined, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://org:4318' }, { repoSetsTally: true })!.url).toBe('http://org:4318/v1/metrics');
+    fs.writeFileSync(path.join(cwd, '.claude', 'settings.json'), JSON.stringify({ env: { SIGIL_OTEL_ENDPOINT: 'http://evil:4318' } }));
+    expect(repoSetsSigilOtel(cwd)).toBe(true);
+    expect(otlpTarget({ SIGIL_OTEL_ENDPOINT: 'http://evil:4318' }, undefined, {}, { repoSetsSigil: true })).toBeNull();
+    expect(otlpTarget({ SIGIL_OTEL_ENDPOINT: 'http://evil:4318' }, undefined, { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://org:4318' }, { repoSetsSigil: true })!.url).toBe('http://org:4318/v1/metrics');
   });
 
   it('sends one gauge per figure with the story attributes and no title', async () => {
@@ -104,7 +104,7 @@ describe('OpenTelemetry story metrics', () => {
     const metrics = (body as { resourceMetrics: Array<{ resource: { attributes: Array<{ key: string }> }; scopeMetrics: Array<{ metrics: Array<{ name: string; gauge: { dataPoints: Array<{ asDouble: number }> } }> }> }> }).resourceMetrics[0]!;
     expect(metrics.resource.attributes.map((a) => a.key)).toEqual(['service.name', 'service.version', 'team']);
     const byName = Object.fromEntries(metrics.scopeMetrics[0]!.metrics.map((m) => [m.name, m.gauge.dataPoints[0]!.asDouble]));
-    expect(byName).toMatchObject({ 'tally.story.cost': 75, 'tally.story.estimate': 50, 'tally.story.overage': 25, 'tally.story.avoidable': 30, 'tally.story.driver.cost': 30 });
+    expect(byName).toMatchObject({ 'sigil.story.cost': 75, 'sigil.story.estimate': 50, 'sigil.story.overage': 25, 'sigil.story.avoidable': 30, 'sigil.story.driver.cost': 30 });
     expect(json).toContain('PROJ-12');
 
     let received = '';
@@ -139,11 +139,11 @@ describe('dashboard', () => {
     const current = computeCheck('dash-1', { transcript: t, estimate: { usd: 0.05, low_usd: 0.04, high_usd: 0.06, basis: 'similar', confidence: 'medium', n: 3, corpus: 9, neighbours: [], computed_at: '' } });
     const html = renderDashboard({ repo: 'app', entries, current, now: new Date('2026-10-18T12:00:00Z') });
     expect(html).toContain('This story');
-    expect(html).toContain('tally fix model-sonnet');
+    expect(html).toContain('sigil fix model-sonnet');
     expect(html).toContain('Add &lt;b&gt;slugify&lt;/b&gt;');
     expect(html).not.toContain('<b>slugify</b>');
     expect(html).toContain('Next time');
-    expect(html).toContain('data-copy="tally fix model-sonnet"');
+    expect(html).toContain('data-copy="sigil fix model-sonnet"');
     expect(html).toContain('Team');
     expect(html).toContain('Lin');
     /* the story title may name a URL; nothing is loaded from one, and the only script is the inline copy button */
@@ -191,7 +191,7 @@ describe('a finished story end to end', () => {
     }
   });
 
-  it('`tally dashboard --no-open` writes the page from the ledger', () => {
+  it('`sigil dashboard --no-open` writes the page from the ledger', () => {
     const cwd = repo();
     recordStory(cwd, entry('x1', 'Add slugify', 1));
     const r = spawnSync(process.execPath, [CLI, 'dashboard', '--no-open'], { cwd, encoding: 'utf8', env: process.env });

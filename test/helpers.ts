@@ -22,24 +22,24 @@ afterAll(() => {
   }
 });
 
-export function tmpDir(prefix = 'tally-test-'): string {
+export function tmpDir(prefix = 'sigil-test-'): string {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   created.push(d);
   return d;
 }
 
 export function isolate(): { home: string; claude: string; restore: () => void } {
-  const home = tmpDir('tally-home-');
-  const claude = tmpDir('tally-claude-');
-  const prev = { TALLY_HOME: process.env.TALLY_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
-  process.env.TALLY_HOME = home;
+  const home = tmpDir('sigil-home-');
+  const claude = tmpDir('sigil-claude-');
+  const prev = { SIGIL_HOME: process.env.SIGIL_HOME, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR };
+  process.env.SIGIL_HOME = home;
   process.env.CLAUDE_CONFIG_DIR = claude;
   return {
     home,
     claude,
     restore: () => {
-      if (prev.TALLY_HOME === undefined) delete process.env.TALLY_HOME;
-      else process.env.TALLY_HOME = prev.TALLY_HOME;
+      if (prev.SIGIL_HOME === undefined) delete process.env.SIGIL_HOME;
+      else process.env.SIGIL_HOME = prev.SIGIL_HOME;
       if (prev.CLAUDE_CONFIG_DIR === undefined) delete process.env.CLAUDE_CONFIG_DIR;
       else process.env.CLAUDE_CONFIG_DIR = prev.CLAUDE_CONFIG_DIR;
       /* macOS occasionally reports ENOTEMPTY while a just-exited child still holds a file; retry instead of failing the test */

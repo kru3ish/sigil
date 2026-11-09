@@ -22,7 +22,7 @@ const noFetch: FetchDeps = { exec: () => ({ ok: false, stdout: '', stderr: '' })
 
 describe('H5 calibrate add/report', () => {
   it('stores human grades against a receipt and reports agreement, confusion, and disagreements', async () => {
-    const cwd = tmpDir('tally-cal-');
+    const cwd = tmpDir('sigil-cal-');
     const git = (...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' });
     git('init', '-q', '-b', 'main');
     git('config', 'user.email', 't@t');
@@ -73,7 +73,7 @@ describe('H5 fixture eval', () => {
     for (const c of cases) {
       expect(Object.keys(c.expected.criteria).length).toBe(c.task.criteria.length);
       expect(fs.existsSync(path.join(c.dir, 'transcript.jsonl'))).toBe(true);
-      expect(c.recorded, `${c.name} needs model-output.json (tally calibrate eval --live --record)`).toBeTruthy();
+      expect(c.recorded, `${c.name} needs model-output.json (sigil calibrate eval --live --record)`).toBeTruthy();
     }
   });
 

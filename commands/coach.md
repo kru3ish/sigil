@@ -1,5 +1,5 @@
 ---
-description: What Tally Coach is waiting on you for in this session, numbered; `/tally:coach apply 2` acts on one
+description: What Sigil Coach is waiting on you for in this session, numbered; `/sigil:coach apply 2` acts on one
 argument-hint: [apply <n> | inject <n>]
 allowed-tools: Bash(node *)
 ---

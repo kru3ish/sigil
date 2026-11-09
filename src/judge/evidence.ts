@@ -3,7 +3,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { Transcript } from '../transcript/parse.js';
 import { isTestCommand, isLintCommand } from '../transcript/parse.js';
-import type { TallyEvent } from '../store/events.js';
+import type { SigilEvent } from '../store/events.js';
 import { redact } from '../redact.js';
 import { reconstructChanges, type Reconstruction } from './reconstruct.js';
 
@@ -61,11 +61,11 @@ export function collectGit(cwd: string, baseHead: string | undefined, exec: Exec
   const stat = exec('git', ['diff', '--stat', ...range], cwd);
   out.diff_stat = stat.stdout.trim();
   const names = exec('git', ['diff', '--name-only', ...range], cwd);
-  /* .tally/ holds the team ledger Tally writes itself; it is never part of the work being judged */
-  const notTally = (f: string) => !/^\.tally[\\/]/.test(f);
-  const files = new Set(names.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notTally));
+  /* .sigil/ holds the team ledger Sigil writes itself; it is never part of the work being judged */
+  const notSigil = (f: string) => !/^\.(?:sigil|tally)[\\/]/.test(f);
+  const files = new Set(names.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notSigil));
   const untracked = exec('git', ['ls-files', '--others', '--exclude-standard'], cwd);
-  for (const f of untracked.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notTally)) files.add(f);
+  for (const f of untracked.stdout.split('\n').map((s) => s.trim()).filter(Boolean).filter(notSigil)) files.add(f);
   out.files_changed = [...files].sort();
   const numstat = exec('git', ['diff', '--numstat', ...range], cwd);
   for (const line of numstat.stdout.split('\n')) {
@@ -105,7 +105,7 @@ export function shellWrittenFiles(command: string, cwd: string): string[] {
   return [...out];
 }
 
-export function collectEvidence(opts: { cwd: string; transcript: Transcript; events: TallyEvent[]; exec?: Exec; skipGit?: boolean }): Evidence {
+export function collectEvidence(opts: { cwd: string; transcript: Transcript; events: SigilEvent[]; exec?: Exec; skipGit?: boolean }): Evidence {
   const { transcript: t, events } = opts;
   const startEv = events.find((e) => e.type === 'session_start');
   const baseHead = typeof startEv?.data.git_head === 'string' ? startEv.data.git_head : undefined;

@@ -29,7 +29,7 @@ function git(cwd: string, args: string[]): string {
 /* base: login always returns 200. The agent adds the limit and a test file that names the 429 behaviour. With `vacuous`
    the test only checks that login is a function, so it passes with or without the change. */
 function makeRepo(opts: { vacuous: boolean; commit?: boolean }): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-mut-');
+  const cwd = tmpDir('sigil-mut-');
   git(cwd, ['init', '-q', '-b', 'main']);
   fs.mkdirSync(path.join(cwd, 'src'));
   fs.mkdirSync(path.join(cwd, 'test'));

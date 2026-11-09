@@ -1,5 +1,5 @@
 ---
-description: Show Tally trends across tasks: cost per task, completion, rework, and which skills and MCP servers pay off
+description: Show Sigil trends across tasks: cost per task, completion, rework, and which skills and MCP servers pay off
 allowed-tools: Bash(node *)
 ---
 

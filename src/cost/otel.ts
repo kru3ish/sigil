@@ -1,12 +1,12 @@
 /* Optional cost cross-check from Claude Code's OpenTelemetry export.
    Claude Code emits `claude_code.cost.usage` (USD) and `claude_code.token.usage` counters with
-   `session.id` and `model` attributes when CLAUDE_CODE_ENABLE_TELEMETRY=1. `tally otel` runs a loopback
-   OTLP/HTTP JSON receiver and appends every data point to ~/.tally/otel/metrics.jsonl; the Judge sums the
+   `session.id` and `model` attributes when CLAUDE_CODE_ENABLE_TELEMETRY=1. `sigil otel` runs a loopback
+   OTLP/HTTP JSON receiver and appends every data point to ~/.sigil/otel/metrics.jsonl; the Judge sums the
    points for its session and shows the delta against the transcript-derived cost. */
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { tallyHome, appendLine, ensureDir } from '../paths.js';
+import { sigilHome, appendLine, ensureDir } from '../paths.js';
 
 export interface OtelPoint {
   ts: string;
@@ -16,7 +16,7 @@ export interface OtelPoint {
 }
 
 export function otelFile(): string {
-  return path.join(tallyHome(), 'otel', 'metrics.jsonl');
+  return path.join(sigilHome(), 'otel', 'metrics.jsonl');
 }
 
 interface AnyValue {

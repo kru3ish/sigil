@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-/* A stand-in for the Claude Code CLI's `claude -p` used by the plugin-only CI check: it answers Tally's intake,
+/* A stand-in for the Claude Code CLI's `claude -p` used by the plugin-only CI check: it answers Sigil's intake,
    judge and coach calls with canned, schema-shaped JSON so the pipeline runs end to end with no login and no spend.
-   Point Tally at it with TALLY_CLAUDE_BIN=scripts/fake-claude.mjs (or put a `claude` shim that execs it on PATH). */
+   Point Sigil at it with SIGIL_CLAUDE_BIN=scripts/fake-claude.mjs (or put a `claude` shim that execs it on PATH). */
 import fs from 'node:fs';
 
 const argv = process.argv.slice(2);
 if (argv[0] === '--version' || argv[0] === '-v') {
-  process.stdout.write('0.0.0 (fake claude for the Tally CI plugin-only check)\n');
+  process.stdout.write('0.0.0 (fake claude for the Sigil CI plugin-only check)\n');
   process.exit(0);
 }
 const get = (flag) => {

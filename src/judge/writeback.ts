@@ -13,7 +13,7 @@ const ICON: Record<string, string> = { met: '✅', partial: '🟡', unmet: '❌'
 export function receiptComment(j: Judge): string {
   const L: string[] = [];
   const st = (c: Judge['criteria'][number]) => c.override?.status ?? c.status;
-  L.push(`**Tally receipt** — ${j.verdict.verdict}${j.followup ? ` → after follow-up: ${j.followup.final_verdict} (${j.followup.final_status})` : ''}`);
+  L.push(`**Sigil receipt** — ${j.verdict.verdict}${j.followup ? ` → after follow-up: ${j.followup.final_verdict} (${j.followup.final_status})` : ''}`);
   L.push('');
   L.push(`${j.completion_pct}% of the ${j.completion_basis && j.completion_basis.verifiable < j.completion_basis.total ? `${j.completion_basis.verifiable} verifiable ` : ''}acceptance criteria met · quality ${j.quality.score}/10 · ${fmtUsd(j.cost.total_usd)} API-equivalent (${j.cost.budget_used_pct}% of budget) · ROI ${j.value.roi_multiple === null ? 'n/a' : j.value.roi_multiple + '×'}`);
   L.push('');
@@ -31,7 +31,7 @@ export function receiptComment(j: Judge): string {
     L.push('');
   }
   if (manual.length) {
-    L.push('**Needs a manual look** (Tally could not verify these)');
+    L.push('**Needs a manual look** (Sigil could not verify these)');
     for (const c of manual) L.push(`- ${ICON.unverifiable} ${c.text} — ${c.evidence.slice(0, 120)}`);
     L.push('');
   }
@@ -49,7 +49,7 @@ export function receiptComment(j: Judge): string {
   }
   L.push(`Independent check: ${j.verification.ran ? `\`${j.verification.command}\` ${j.verification.passed ? 'passed' : 'failed'}` : `not run (${j.verification.reason ?? 'unknown'})`} · waste ${fmtUsd(j.waste.total_usd)}${j.followup?.hours_to_approval !== undefined ? ` · review: ${j.followup.review_rounds} round(s), ${j.followup.hours_to_approval} h to merge` : ''}`);
   L.push('');
-  L.push('<sub>Generated locally by Tally. Contains no code or prompts.</sub>');
+  L.push('<sub>Generated locally by Sigil. Contains no code or prompts.</sub>');
   /* the same redactor the hooks use, in case a criterion text or evidence echoes a secret */
   return redact(L.join('\n'));
 }

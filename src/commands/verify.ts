@@ -1,7 +1,7 @@
-/* `tally verify [session] [--json] [--ci] [--deep] [--fresh] [--no-evidence]`: what can Tally prove about this task?
+/* `sigil verify [session] [--json] [--ci] [--deep] [--fresh] [--no-evidence]`: what can Sigil prove about this task?
 
    Uses the session's receipt (judging first when there is none, or when --deep / --fresh asks), builds the Evidence Map
-   and prints the four statuses with the evidence under each. --json emits the `tally.verify.v1` document; --ci prints
+   and prints the four statuses with the evidence under each. --json emits the `sigil.verify.v1` document; --ci prints
    the compact form and exits 1 when any criterion is UNMET (2 when there is no task contract at all). */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -67,7 +67,7 @@ export async function run(args: Args): Promise<number | void> {
   const arg = args._[0];
   const session = arg ? resolveSessionPrefix(arg) : resolveSession(undefined, process.cwd());
   if (!session) {
-    process.stderr.write('No session found. Pass a session id, or run from a repository with a Tally session.\n');
+    process.stderr.write('No session found. Pass a session id, or run from a repository with a Sigil session.\n');
     return 2;
   }
   const ci = has(args, 'ci');
@@ -76,7 +76,7 @@ export async function run(args: Args): Promise<number | void> {
   if (!has(args, 'json') && path.resolve(cwd) !== path.resolve(process.cwd())) process.stderr.write(`Session ${session.slice(0, 8)} ran in ${cwd}; using that repository.\n`);
   const a = await verifySession(session, { cwd, deep: has(args, 'deep'), fresh: has(args, 'fresh'), quiet: has(args, 'json') });
   if (!a) {
-    process.stderr.write(`Nothing to verify for session ${session.slice(0, 8)}: no receipt and no transcript. Run the task under Tally, or \`tally backfill add ${session.slice(0, 8)}\`.\n`);
+    process.stderr.write(`Nothing to verify for session ${session.slice(0, 8)}: no receipt and no transcript. Run the task under Sigil, or \`sigil backfill add ${session.slice(0, 8)}\`.\n`);
     return 2;
   }
   if (has(args, 'json')) {
@@ -91,11 +91,11 @@ export async function run(args: Args): Promise<number | void> {
   }
   if (ci) {
     if (a.task.status === 'none') {
-      process.stderr.write('tally verify --ci: no task contract for this session.\n');
+      process.stderr.write('sigil verify --ci: no task contract for this session.\n');
       return 2;
     }
     if (a.summary.unmet > 0) {
-      process.stderr.write(`tally verify --ci: ${a.summary.unmet} criterion${a.summary.unmet > 1 ? 'a' : ''} UNMET.\n`);
+      process.stderr.write(`sigil verify --ci: ${a.summary.unmet} criterion${a.summary.unmet > 1 ? 'a' : ''} UNMET.\n`);
       return 1;
     }
   }

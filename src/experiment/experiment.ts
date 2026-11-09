@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { experimentsFile, readJson, writeJson, repoKey, ensureDir, tallyHome } from '../paths.js';
+import { experimentsFile, readJson, writeJson, repoKey, ensureDir, sigilHome } from '../paths.js';
 
 export interface Experiment {
   id: string;
@@ -59,7 +59,7 @@ function localSettingsPath(cwd: string): string {
 }
 
 function backupPath(exp: Experiment): string {
-  return path.join(tallyHome(), 'backups', `experiment-${exp.id}-settings.local.json`);
+  return path.join(sigilHome(), 'backups', `experiment-${exp.id}-settings.local.json`);
 }
 
 /* Applies the next arm to .claude/settings.local.json so the *next* session starts with it.
@@ -86,9 +86,9 @@ export function applyArm(cwd: string, exp: Experiment): void {
         if (!arr.includes(exp.name)) arr.push(exp.name);
       }
     }
-    settings._tally_experiment = { id: exp.id, arm: 'off', note: 'temporary; restored by tally at session end' };
+    settings._sigil_experiment = { id: exp.id, arm: 'off', note: 'temporary; restored by sigil at session end' };
   } else {
-    settings._tally_experiment = { id: exp.id, arm: 'on', note: 'temporary marker; restored by tally at session end' };
+    settings._sigil_experiment = { id: exp.id, arm: 'on', note: 'temporary marker; restored by sigil at session end' };
   }
   ensureDir(path.dirname(file));
   fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');

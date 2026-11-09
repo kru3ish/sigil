@@ -1,9 +1,9 @@
 {
   "id": "logger-vague",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/logger-vague",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/logger-vague",
   "base": "d6bd418affa1ed1c8e9ec4f9d3ce48d734b9394d",
-  "task": "C:/Users/Mehta/dev/tally-eval/logger-vague/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/logger-vague/task.md",
   "setup": [],
   "tags": [
     "javascript",

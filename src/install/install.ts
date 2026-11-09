@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { claudeHome, ensureDir, tallyHome, builtHookPath, builtCliPath, readJson } from '../paths.js';
+import { claudeHome, ensureDir, sigilHome, builtHookPath, builtCliPath, readJson } from '../paths.js';
 
 export const HOOK_EVENTS: Array<{ event: string; matcher?: string; async: boolean }> = [
   { event: 'SessionStart', async: false },
@@ -23,30 +23,30 @@ export function hookCommand(event: string, scriptPath = hookScriptPath()): strin
   return `node "${scriptPath}" ${event}`;
 }
 
-/* Recognises both hook forms: the shell string `tally install` writes and the exec form (`command` + `args`)
+/* Recognises both hook forms: the shell string `sigil install` writes and the exec form (`command` + `args`)
    the plugin's hooks.json uses. */
-export function isTallyHook(h: unknown): boolean {
+export function isSigilHook(h: unknown): boolean {
   if (!h || typeof h !== 'object') return false;
   const o = h as { command?: unknown; args?: unknown };
   const parts = [typeof o.command === 'string' ? o.command : '', ...(Array.isArray(o.args) ? o.args.map(String) : [])];
   const joined = parts.join(' ');
-  return /tally[^\s"']*[\\/](?:dist[\\/])?(?:hooks[\\/])?hook\.js/i.test(joined) || /CLAUDE_PLUGIN_ROOT\}?[\\/]dist[\\/](?:hooks[\\/])?hook\.js/i.test(joined);
+  return /(?:sigil|tally)[^\s"']*[\\/](?:dist[\\/])?(?:hooks[\\/])?hook\.js/i.test(joined) || /CLAUDE_PLUGIN_ROOT\}?[\\/]dist[\\/](?:hooks[\\/])?hook\.js/i.test(joined);
 }
 
-/* The plugin id(s) under which Tally is enabled in the user or project settings (`enabledPlugins`), e.g. `tally@tally`. */
+/* The plugin id(s) under which Sigil is enabled in the user or project settings (`enabledPlugins`), e.g. `sigil@sigil`. */
 export function enabledPluginIds(cwd = process.cwd()): string[] {
   const files = [path.join(claudeHome(), 'settings.json'), path.join(claudeHome(), 'settings.local.json'), path.join(cwd, '.claude', 'settings.json'), path.join(cwd, '.claude', 'settings.local.json')];
   const ids = new Set<string>();
   for (const f of files) {
     const s = readJson<{ enabledPlugins?: Record<string, boolean> }>(f, {});
-    for (const [k, v] of Object.entries(s.enabledPlugins ?? {})) if (v && /^tally@/i.test(k)) ids.add(k);
+    for (const [k, v] of Object.entries(s.enabledPlugins ?? {})) if (v && /^(?:sigil|tally)@/i.test(k)) ids.add(k);
   }
   return [...ids];
 }
 
 export class PluginConflictError extends Error {
   constructor(public readonly ids: string[]) {
-    super(`Tally is already enabled as a Claude Code plugin (${ids.join(', ')}), which installs these hooks itself. Installing again would record every event twice. Run /plugin uninstall tally first, or pass --force to install anyway.`);
+    super(`Sigil is already enabled as a Claude Code plugin (${ids.join(', ')}), which installs these hooks itself. Installing again would record every event twice. Run /plugin uninstall sigil first, or pass --force to install anyway.`);
   }
 }
 
@@ -54,19 +54,19 @@ export function statusLineCommand(cliPath = builtCliPath()): string {
   return `node "${cliPath.replace(/\\/g, '/')}" statusline`;
 }
 
-export function isTallyStatusLine(v: unknown): boolean {
-  return !!v && typeof v === 'object' && typeof (v as { command?: unknown }).command === 'string' && /tally[^\s"']*[\\/]dist[\\/]cli\.js"?\s+statusline/i.test((v as { command: string }).command);
+export function isSigilStatusLine(v: unknown): boolean {
+  return !!v && typeof v === 'object' && typeof (v as { command?: unknown }).command === 'string' && /(?:sigil|tally)[^\s"']*[\\/]dist[\\/]cli\.js"?\s+statusline/i.test((v as { command: string }).command);
 }
 
-/* Adds Tally's status line to the user settings unless another one is configured (or `force`). */
+/* Adds Sigil's status line to the user settings unless another one is configured (or `force`). */
 export function installStatusLine(opts: { force?: boolean; cliPath?: string } = {}): { installed: boolean; file: string; command: string; reason?: string } {
   const file = settingsPath('user');
   const command = statusLineCommand(opts.cliPath);
   const raw = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   const settings = raw.trim() ? (JSON.parse(raw) as Settings) : {};
   const current = settings.statusLine as { command?: string } | undefined;
-  if (current && !isTallyStatusLine(current) && !opts.force) return { installed: false, file, command, reason: `A status line is already configured in ${file} (${String(current.command ?? current).slice(0, 80)}). Pass --force to replace it with Tally's.` };
-  if (current && isTallyStatusLine(current) && current.command === command) return { installed: false, file, command, reason: `Tally's status line is already installed in ${file}.` };
+  if (current && !isSigilStatusLine(current) && !opts.force) return { installed: false, file, command, reason: `A status line is already configured in ${file} (${String(current.command ?? current).slice(0, 80)}). Pass --force to replace it with Sigil's.` };
+  if (current && isSigilStatusLine(current) && current.command === command) return { installed: false, file, command, reason: `Sigil's status line is already installed in ${file}.` };
   settings.statusLine = { type: 'command', command, padding: 0 };
   ensureDir(path.dirname(file));
   const indent = raw.trim() ? detectIndent(raw) : 2;
@@ -79,7 +79,7 @@ export function uninstallStatusLine(): { removed: boolean } {
   if (!fs.existsSync(file)) return { removed: false };
   const raw = fs.readFileSync(file, 'utf8');
   const settings = JSON.parse(raw) as Settings;
-  if (!isTallyStatusLine(settings.statusLine)) return { removed: false };
+  if (!isSigilStatusLine(settings.statusLine)) return { removed: false };
   delete settings.statusLine;
   fs.writeFileSync(file, JSON.stringify(settings, null, detectIndent(raw)) + (raw.endsWith('\n') ? '\n' : ''));
   return { removed: true };
@@ -88,9 +88,9 @@ export function uninstallStatusLine(): { removed: boolean } {
 export type Scope = 'user' | 'project' | 'managed';
 
 /* Claude Code's managed settings: written by an administrator, read before user and project settings, and not
-   something a person or an agent can edit away. TALLY_MANAGED_SETTINGS overrides the path (tests, unusual installs). */
+   something a person or an agent can edit away. SIGIL_MANAGED_SETTINGS overrides the path (tests, unusual installs). */
 export function managedSettingsPath(platform = process.platform, env: NodeJS.ProcessEnv = process.env): string {
-  if (env.TALLY_MANAGED_SETTINGS) return env.TALLY_MANAGED_SETTINGS;
+  if (env.SIGIL_MANAGED_SETTINGS) return env.SIGIL_MANAGED_SETTINGS;
   if (platform === 'win32') return path.join(env.ProgramData ?? env.PROGRAMDATA ?? 'C:\\ProgramData', 'ClaudeCode', 'managed-settings.json');
   if (platform === 'darwin') return '/Library/Application Support/ClaudeCode/managed-settings.json';
   return '/etc/claude-code/managed-settings.json';
@@ -113,7 +113,7 @@ function detectIndent(raw: string): string | number {
 }
 
 function backupDir(): string {
-  return path.join(tallyHome(), 'backups');
+  return path.join(sigilHome(), 'backups');
 }
 
 export function backup(file: string, scope: string): string | null {
@@ -150,10 +150,10 @@ export function install(opts: { scope: Scope; cwd?: string; scriptPath?: string;
   let added = 0;
   for (const { event, matcher, async } of HOOK_EVENTS) {
     const groups = (settings.hooks[event] ??= []);
-    /* a Tally hook that points at a script which no longer exists is replaced, not kept */
+    /* a Sigil hook that points at a script which no longer exists is replaced, not kept */
     const wanted = hookCommand(event, opts.scriptPath);
-    for (const g of groups) g.hooks = (g.hooks ?? []).filter((h) => !(isTallyHook(h) && typeof h.command === 'string' && h.command !== wanted && !fs.existsSync(/"([^"]+hook\.js)"/.exec(h.command)?.[1] ?? '')));
-    const already = groups.some((g) => (g.hooks ?? []).some(isTallyHook));
+    for (const g of groups) g.hooks = (g.hooks ?? []).filter((h) => !(isSigilHook(h) && typeof h.command === 'string' && h.command !== wanted && !fs.existsSync(/"([^"]+hook\.js)"/.exec(h.command)?.[1] ?? '')));
+    const already = groups.some((g) => (g.hooks ?? []).some(isSigilHook));
     if (already) continue;
     const hook: Record<string, unknown> = { type: 'command', command: hookCommand(event, opts.scriptPath), timeout: 5 };
     if (async) hook.async = true;
@@ -164,7 +164,7 @@ export function install(opts: { scope: Scope; cwd?: string; scriptPath?: string;
   }
   /* user scope also gets the status line, unless another one is configured */
   let statusline = false;
-  if (opts.scope === 'user' && opts.statusline !== false && (!settings.statusLine || isTallyStatusLine(settings.statusLine))) {
+  if (opts.scope === 'user' && opts.statusline !== false && (!settings.statusLine || isSigilStatusLine(settings.statusLine))) {
     settings.statusLine = { type: 'command', command: statusLineCommand(opts.scriptPath ? path.join(path.dirname(opts.scriptPath), 'cli.js') : undefined), padding: 0 };
     statusline = true;
   }
@@ -191,7 +191,7 @@ export function uninstall(opts: { scope: Scope; cwd?: string }): { file: string;
       const kept: HookGroup[] = [];
       for (const g of groups) {
         const before = (g.hooks ?? []).length;
-        g.hooks = (g.hooks ?? []).filter((h) => !isTallyHook(h));
+        g.hooks = (g.hooks ?? []).filter((h) => !isSigilHook(h));
         removed += before - g.hooks.length;
         if (g.hooks.length) kept.push(g);
       }
@@ -200,7 +200,7 @@ export function uninstall(opts: { scope: Scope; cwd?: string }): { file: string;
     }
     if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
   }
-  if (isTallyStatusLine(settings.statusLine)) delete settings.statusLine;
+  if (isSigilStatusLine(settings.statusLine)) delete settings.statusLine;
   const hadOriginal = fs.existsSync(marker);
   const originalMissing = fs.existsSync(marker + '.missing');
   if (originalMissing) {
@@ -236,7 +236,7 @@ export function isInstalled(scope: Scope, cwd?: string): boolean {
   if (!fs.existsSync(file)) return false;
   try {
     const s = JSON.parse(fs.readFileSync(file, 'utf8')) as Settings;
-    return Object.values(s.hooks ?? {}).some((groups) => groups.some((g) => (g.hooks ?? []).some(isTallyHook)));
+    return Object.values(s.hooks ?? {}).some((groups) => groups.some((g) => (g.hooks ?? []).some(isSigilHook)));
   } catch {
     return false;
   }

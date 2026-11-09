@@ -18,7 +18,7 @@ const shared = {
   outdir: dist,
   legalComments: 'none',
   logLevel: 'warning',
-  banner: { js: '#!/usr/bin/env node\nimport { createRequire as __tallyCreateRequire } from "node:module";\nconst require = __tallyCreateRequire(import.meta.url);' },
+  banner: { js: '#!/usr/bin/env node\nimport { createRequire as __sigilCreateRequire } from "node:module";\nconst require = __sigilCreateRequire(import.meta.url);' },
 };
 
 await build({ ...shared, entryPoints: { cli: path.join(root, 'src', 'cli.ts') } });

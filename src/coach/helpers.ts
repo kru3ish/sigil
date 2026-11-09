@@ -1,4 +1,4 @@
-import type { TallyEvent } from '../store/events.js';
+import type { SigilEvent } from '../store/events.js';
 import type { RuleContext } from './types.js';
 
 export function norm(cmd: unknown): string {
@@ -9,15 +9,15 @@ export function normPath(p: unknown): string {
   return typeof p === 'string' ? p.replace(/\\/g, '/').toLowerCase() : '';
 }
 
-export function postTools(ctx: RuleContext): TallyEvent[] {
+export function postTools(ctx: RuleContext): SigilEvent[] {
   return ctx.events.filter((e) => e.type === 'post_tool' && !e.data.agent);
 }
 
-export function toolName(e: TallyEvent): string {
+export function toolName(e: SigilEvent): string {
   return String(e.data.tool_name ?? '');
 }
 
-export function toolInput(e: TallyEvent): Record<string, unknown> {
+export function toolInput(e: SigilEvent): Record<string, unknown> {
   return (e.data.tool_input ?? {}) as Record<string, unknown>;
 }
 

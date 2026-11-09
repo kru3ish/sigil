@@ -1,10 +1,10 @@
 {
   "id": "qs-262",
   "class": "real",
-  "repo": "C:/Users/Mehta/dev/tally-eval-gh/qs-262",
+  "repo": "C:/Users/Mehta/dev/sigil-eval-gh/qs-262",
   "base": "1a4bff09901f435be5c8e0e93137e6c4899bffb0",
   "issue": "https://github.com/ljharb/qs/issues/262",
-  "task": "C:/Users/Mehta/dev/tally-eval-gh/qs-262/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval-gh/qs-262/task.md",
   "test_command": "npx tape \"test/**/*.js\"",
   "setup": [],
   "tags": [

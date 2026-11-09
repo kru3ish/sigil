@@ -1,9 +1,9 @@
 {
   "id": "wordcount-cli",
   "class": "fixture",
-  "repo": "C:/Users/Mehta/dev/tally-eval/wordcount-cli",
+  "repo": "C:/Users/Mehta/dev/sigil-eval/wordcount-cli",
   "base": "f883d9b8e561fee01678c5825f3f557dd3e4ad33",
-  "task": "C:/Users/Mehta/dev/tally-eval/wordcount-cli/task.md",
+  "task": "C:/Users/Mehta/dev/sigil-eval/wordcount-cli/task.md",
   "setup": [],
   "tags": [
     "javascript",

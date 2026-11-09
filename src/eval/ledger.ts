@@ -10,7 +10,7 @@ export type GradeStatus = 'met' | 'partial' | 'unmet' | 'unverifiable';
 export interface CriterionResult {
   id: string;
   text: string;
-  tally: { status: GradeStatus; assurance: AssuranceStatus; resolved_by: string; evidence: string[] };
+  sigil: { status: GradeStatus; assurance: AssuranceStatus; resolved_by: string; evidence: string[] };
   grader: { status: GradeStatus; evidence: string };
   agree: boolean;
   /* the two errors the project treats as bugs */
@@ -19,10 +19,10 @@ export interface CriterionResult {
 }
 
 export interface EvalRunResult {
-  schema: 'tally.eval.v1';
+  schema: 'sigil.eval.v1';
   run_id: string;
   date: string;
-  tally: { version: string; commit?: string };
+  sigil: { version: string; commit?: string };
   task: { id: string; class: 'fixture' | 'real' | 'historical'; repo: string; base: string; head: string; issue?: string; tags: string[]; contamination: string; human_fix?: string };
   agent: { product: string; model?: string; turns?: number; duration_s?: number; cost_usd?: number | null };
   /* how the agent was run: enough to reproduce the session shape without the transcript */
@@ -31,7 +31,7 @@ export interface EvalRunResult {
   work?: { commits: string[]; files: Array<{ file: string; added: number; deleted: number }>; patch_file?: string; patch_bytes: number };
   grader: { product: string; model?: string; cost_usd?: number | null; blind: true };
   session: string;
-  tally_summary: { verified: number; supported: number; unverified: number; unmet: number; total: number; verdict: string; completion_pct: number };
+  sigil_summary: { verified: number; supported: number; unverified: number; unmet: number; total: number; verdict: string; completion_pct: number };
   grader_verdict?: string;
   tests: { independent_ran: boolean; independent_passed?: boolean; total_passed: number | null; preexisting_files: number | null; agent_added_files: number; agent_cases_added: number };
   criteria: CriterionResult[];
@@ -53,7 +53,7 @@ export function writeResult(r: EvalRunResult, root = process.cwd()): string {
     r.work.patch_file = path.basename(r.work.patch_file);
   }
   fs.writeFileSync(file, JSON.stringify(r, null, 2) + '\n');
-  const line = { run_id: r.run_id, date: r.date, tally: r.tally, task: { id: r.task.id, class: r.task.class }, agent: r.agent, grader: { model: r.grader.model }, agreement: r.agreement, tally_summary: r.tally_summary, grader_verdict: r.grader_verdict, cost_usd: r.agent.cost_usd, file: path.relative(root, file).replace(/\\/g, '/') };
+  const line = { run_id: r.run_id, date: r.date, sigil: r.sigil, task: { id: r.task.id, class: r.task.class }, agent: r.agent, grader: { model: r.grader.model }, agreement: r.agreement, sigil_summary: r.sigil_summary, grader_verdict: r.grader_verdict, cost_usd: r.agent.cost_usd, file: path.relative(root, file).replace(/\\/g, '/') };
   fs.appendFileSync(path.join(resultsRoot(root), 'ledger.jsonl'), JSON.stringify(line) + '\n');
   return file;
 }
@@ -61,11 +61,11 @@ export function writeResult(r: EvalRunResult, root = process.cwd()): string {
 export interface LedgerLine {
   run_id: string;
   date: string;
-  tally: { version: string; commit?: string };
+  sigil: { version: string; commit?: string };
   task: { id: string; class: 'fixture' | 'real' | 'historical' };
   agent: { product: string; model?: string; cost_usd?: number | null };
   agreement: EvalRunResult['agreement'];
-  tally_summary: EvalRunResult['tally_summary'];
+  sigil_summary: EvalRunResult['sigil_summary'];
   grader_verdict?: string;
   file: string;
 }
@@ -80,11 +80,11 @@ export function readLedger(root = process.cwd()): LedgerLine[] {
     .map((l) => JSON.parse(l) as LedgerLine);
 }
 
-/* Aggregate by class and Tally version; never one headline number. */
+/* Aggregate by class and Sigil version; never one headline number. */
 export function aggregate(lines: LedgerLine[]): Array<{ class: string; version: string; runs: number; criteria: number; exact: number; false_verified: number; false_unmet: number; verified_vs_supported: number; verdict_agreement: number; verdict_n: number; cost_usd: number }> {
   const groups = new Map<string, LedgerLine[]>();
   for (const l of lines) {
-    const k = `${l.task.class}|${l.tally.version}`;
+    const k = `${l.task.class}|${l.sigil.version}`;
     groups.set(k, [...(groups.get(k) ?? []), l]);
   }
   return [...groups.entries()]
@@ -101,7 +101,7 @@ export function aggregate(lines: LedgerLine[]): Array<{ class: string; version: 
         false_verified: sum((l) => l.agreement.false_verified),
         false_unmet: sum((l) => l.agreement.false_unmet),
         verified_vs_supported: sum((l) => l.agreement.verified_vs_supported),
-        verdict_agreement: withVerdict.filter((l) => l.grader_verdict === l.tally_summary.verdict).length,
+        verdict_agreement: withVerdict.filter((l) => l.grader_verdict === l.sigil_summary.verdict).length,
         verdict_n: withVerdict.length,
         cost_usd: sum((l) => l.agent.cost_usd ?? 0),
       };

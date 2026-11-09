@@ -28,7 +28,7 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 function makeRepo(opts: { testPasses: boolean }): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-judge-repo-');
+  const cwd = tmpDir('sigil-judge-repo-');
   git(cwd, 'init', '-q', '-b', 'main');
   git(cwd, 'config', 'user.email', 't@t');
   git(cwd, 'config', 'user.name', 't');
@@ -81,7 +81,7 @@ describe('verification', () => {
     expect(r2.exit_code).toBe(1);
   });
   it('times out a hanging command', async () => {
-    const cwd = tmpDir('tally-hang-');
+    const cwd = tmpDir('sigil-hang-');
     fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "setTimeout(()=>{},60000)"' } }));
     const r = await runVerification(cwd, { timeoutMs: 800, consent: true });
     expect(r.ran).toBe(true);
@@ -89,7 +89,7 @@ describe('verification', () => {
     expect(r.passed).toBe(false);
   });
   it('reports when nothing is detectable', async () => {
-    const cwd = tmpDir('tally-empty-');
+    const cwd = tmpDir('sigil-empty-');
     expect((await runVerification(cwd, { timeoutMs: 1000, consent: true })).ran).toBe(false);
     expect(detectTestCommand(cwd)).toBeNull();
   });
@@ -124,7 +124,7 @@ describe('judge', () => {
     expect(j.cost.by_subagent['agent-explore-01']).toBeTruthy();
     expect(j.cost.by_phase.build!.usd).toBeGreaterThan(0);
     expect(j.cost.per_completed_criterion_usd).toBeCloseTo(j.cost.total_usd / 2, 1);
-    expect(j.cost.tally_own_usd).toBeGreaterThan(0);
+    expect(j.cost.sigil_own_usd).toBeGreaterThan(0);
     expect(j.waste.failed_loops[0]!.repeats).toBe(3);
     expect(j.value.human_value_usd).toBe(225);
     expect(j.value.roi_multiple).toBeGreaterThan(1);
@@ -148,7 +148,7 @@ describe('judge', () => {
     const report = renderReport(j);
     expect(report).toContain('## Verdict');
     expect(report).toContain('correlational');
-    expect(renderSummary(j, false)).toContain('Tally receipt');
+    expect(renderSummary(j, false)).toContain('Sigil receipt');
   });
 
   it('marks unknown criteria unverifiable and downgrades when independent tests fail', async () => {
@@ -191,7 +191,7 @@ describe('write-back', () => {
     await intake({ session: 'wb', cwd, ref: 'https://github.com/acme/app/issues/42', cfg, llm, deps });
     const j = await judgeSession({ session: 'wb', cwd, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), cfg, llm, reason: 'pr', events: fixtureEvents(cwd, base), consent: true });
     const comment = receiptComment(j);
-    expect(comment).toContain('Tally receipt');
+    expect(comment).toContain('Sigil receipt');
     expect(comment).not.toContain('rateLimit(');
     expect(comment).not.toContain('Implement https://github.com');
     const calls: string[][] = [];

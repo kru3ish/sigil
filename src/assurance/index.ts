@@ -1,4 +1,4 @@
-/* The Assurance Engine: what can Tally prove about this task?
+/* The Assurance Engine: what can Sigil prove about this task?
 
    For every criterion of the Task Contract it builds an Evidence Map: traceable items (a changed file, a diff hunk, a
    test the agent added, an independent run, a command result, a git ref, a model's judgment) and the status they
@@ -31,7 +31,7 @@ export type EvidenceKind = 'file_check' | 'file_changed' | 'diff_hunk' | 'test_a
 
 export interface EvidenceItem {
   kind: EvidenceKind;
-  /* deterministic: a fact Tally observed or produced; interpreted: a model's reading of the evidence */
+  /* deterministic: a fact Sigil observed or produced; interpreted: a model's reading of the evidence */
   strength: 'deterministic' | 'interpreted';
   summary: string;
   /* what to open: a file path, a hunk header, a command, a test file */
@@ -59,7 +59,7 @@ export interface TestProvenance {
   preexisting_files: number | null;
   /* test files the agent added or modified (git diff base..HEAD), and test cases it added (added `it(`/`test(`/`def test_` lines) */
   agent_created: { added_files: string[]; modified_files: string[]; cases_added: number };
-  /* the run Tally made itself */
+  /* the run Sigil made itself */
   independent: { ran: boolean; command?: string; passed?: boolean; total_passed: number | null; reason?: string; tests_green?: boolean; fails_at_base?: boolean; attributable?: boolean; /* true: the agent's tests fail without the change; false: they pass without it; undefined: not checked */ discriminating?: boolean };
   /* test commands the agent ran during the session, from the event stream */
   agent_runs: Array<{ command: string; passed: boolean }>;
@@ -67,7 +67,7 @@ export interface TestProvenance {
 }
 
 export interface Assurance {
-  schema: 'tally.verify.v1';
+  schema: 'sigil.verify.v1';
   session: string;
   generated_at: string;
   task: { goal: string; source: string; url?: string; status: 'needs_confirmation' | 'linked' | 'confirmed' | 'none'; frozen_after_work?: { frozen_at: string; last_edit_at: string } };
@@ -254,7 +254,7 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
   const testCache = new Map<string, string>();
   const baseHead = j.evidence.base_head;
   const diff = opts.diff ?? (baseHead ? git(cwd, ['diff', baseHead, '--']) ?? '' : '');
-  /* the tree under cwd is only evidence if it is the repository the receipt describes: `tally verify` run from another
+  /* the tree under cwd is only evidence if it is the repository the receipt describes: `sigil verify` run from another
      directory, or after an evaluation worktree was removed, must not scan whatever repository happens to be there */
   const treeIsRepo = !!baseHead && git(cwd, ['cat-file', '-e', `${baseHead}^{commit}`]) !== null;
   const provenance = testProvenance({ cwd, baseHead, judge: j, diff });
@@ -386,7 +386,7 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
 
   const agent: AgentIdentity = opts.agent ?? { product: 'claude-code' };
   return {
-    schema: 'tally.verify.v1',
+    schema: 'sigil.verify.v1',
     session: j.session,
     generated_at: new Date().toISOString(),
     /* the one confirmation rule (core/contract.ts): confirmed by a person, linked from a source, or needs confirmation */
@@ -403,12 +403,12 @@ export function buildAssurance(opts: { judge: Judge; task: Task | null; cwd: str
 
 /* The pull-request comment and the CI step summary: the same four statuses as a Markdown table, the evidence one line
    each, no code and no prompts. `range` names the commits the check ran against. */
-export const MARKDOWN_MARKER = '<!-- tally-check -->';
+export const MARKDOWN_MARKER = '<!-- sigil-check -->';
 export function renderVerifyMarkdown(a: Assurance, opts: { range?: string; required?: string; passed?: boolean; noModel?: boolean } = {}): string {
   const icon: Record<AssuranceStatus, string> = { VERIFIED: '✅', SUPPORTED: '🟡', UNVERIFIED: '❔', UNMET: '❌' };
   const s = a.summary;
   const L: string[] = [MARKDOWN_MARKER];
-  L.push(`### Tally check ${opts.passed === undefined ? '' : opts.passed ? '— passed' : '— failed'}`);
+  L.push(`### Sigil check ${opts.passed === undefined ? '' : opts.passed ? '— passed' : '— failed'}`);
   L.push('');
   L.push(`**${a.task.goal}**${a.task.status === 'needs_confirmation' ? ' _(contract inferred, not confirmed)_' : a.task.status === 'linked' ? ` _(contract from ${a.task.source}${a.task.url ? `: ${a.task.url}` : ''})_` : ''}`);
   L.push('');
@@ -431,8 +431,8 @@ export function renderVerifyMarkdown(a: Assurance, opts: { range?: string; requi
   L.push(`${v.agent_created.added_files.length} test file(s) added, ${v.agent_created.modified_files.length} modified, ${v.agent_created.cases_added} case(s) added${v.preexisting_files !== null ? `; ${v.preexisting_files} pre-existing` : ''}`);
   if (a.scope.unnamed_areas.length) L.push(`🟡 Changed areas no criterion names: ${a.scope.unnamed_areas.join(', ')}`);
   L.push('');
-  if (opts.noModel) L.push('_No model in this run: mechanical checks and tests only; criteria that need a reading are unverified. Set `TALLY_LLM_API_KEY` to judge them._');
-  L.push(`<sub>Generated by Tally${opts.range ? ` for ${opts.range}` : ''}. Contains no code or prompts. Evidence first; the model-assisted verdict (${a.experimental.verdict}) is experimental.</sub>`);
+  if (opts.noModel) L.push('_No model in this run: mechanical checks and tests only; criteria that need a reading are unverified. Set `SIGIL_LLM_API_KEY` to judge them._');
+  L.push(`<sub>Generated by Sigil${opts.range ? ` for ${opts.range}` : ''}. Contains no code or prompts. Evidence first; the model-assisted verdict (${a.experimental.verdict}) is experimental.</sub>`);
   return L.join('\n');
 }
 
@@ -452,7 +452,7 @@ export function renderVerify(a: Assurance, opts: { color?: boolean; evidence?: b
   const color = opts.color !== false;
   const c = (code: string, s: string) => (color ? `[${code}m${s}[0m` : s);
   const L: string[] = [];
-  L.push(c('1', 'Tally Verify'));
+  L.push(c('1', 'Sigil Verify'));
   L.push('');
   L.push(`Task: ${a.task.goal}${a.task.status === 'needs_confirmation' ? c('33', '  (contract not confirmed)') : a.task.status === 'linked' ? c('90', '  (contract linked from its source, not confirmed by a person)') : ''}`);
   if (a.task.frozen_after_work) L.push(c('33', `Contract frozen at ${a.task.frozen_after_work.frozen_at.slice(11, 16)} UTC, after the session's last edit at ${a.task.frozen_after_work.last_edit_at.slice(11, 16)} UTC: the criteria were written with the work in view.`));

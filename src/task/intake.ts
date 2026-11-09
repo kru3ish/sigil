@@ -5,7 +5,7 @@ import { z } from 'zod';
 import type { Config } from '../config.js';
 import type { LlmClient } from '../llm/client.js';
 import crypto from 'node:crypto';
-import { sessionDir, ensureDir, writeJson, readJson, tallyHome } from '../paths.js';
+import { sessionDir, ensureDir, writeJson, readJson, sigilHome } from '../paths.js';
 import { fetchTask, type FetchDeps, type FetchedTask, type TaskSource } from './fetchers.js';
 import { appendEvent } from '../store/events.js';
 import { CheckSpecSchema, CHECK_JSON_SCHEMA, parseCheck } from '../judge/checks.js';
@@ -54,7 +54,7 @@ export const TaskSchema = z.object({
      nothing (no number was invented) */
   budget_basis: z.enum(['cap', 'policy', 'history', 'hours', 'none']).optional(),
   hourly_rate: z.number(),
-  tally_cost_usd: z.number(),
+  sigil_cost_usd: z.number(),
   model: z.string(),
   cache_key: z.string().optional(),
   cached: z.boolean().optional(),
@@ -192,7 +192,7 @@ export function intakeCacheKey(fetched: FetchedTask, model: string): string {
 }
 
 export function intakeCacheFile(key: string): string {
-  return path.join(tallyHome(), 'cache', 'intake', `${key}.json`);
+  return path.join(sigilHome(), 'cache', 'intake', `${key}.json`);
 }
 
 export function loadTask(session: string): Task | null {
@@ -332,7 +332,7 @@ export async function intake(opts: {
     budget_usd: budget.usd,
     budget_basis: budget.basis,
     hourly_rate: rate,
-    tally_cost_usd: r.cost_usd,
+    sigil_cost_usd: r.cost_usd,
     model: r.model,
     cache_key: cacheKey,
     cached,

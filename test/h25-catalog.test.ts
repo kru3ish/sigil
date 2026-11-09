@@ -87,7 +87,7 @@ describe('catalog of existing plugins, skills and MCP servers', () => {
   });
 
   it('reads the stack from the repo and from app folders one level down', () => {
-    const root = tmpDir('tally-stack-');
+    const root = tmpDir('sigil-stack-');
     fs.mkdirSync(path.join(root, 'app'));
     fs.writeFileSync(path.join(root, 'app', 'package.json'), JSON.stringify({ dependencies: { '@supabase/supabase-js': '1', react: '1' } }));
     fs.writeFileSync(path.join(root, 'app', 'tsconfig.json'), '{}');
@@ -107,13 +107,13 @@ describe('catalog of existing plugins, skills and MCP servers', () => {
     expect(docs.alternatives![0]!.name).toBe('context7');
     expect(docs.fix!.apply).toEqual({ kind: 'command', commands: ['claude plugin install context7@claude-plugins-official'] });
     expect(renderCheck(c)).toContain('Install context7');
-    expect(renderCheck(c)).toContain('→ tally fix context7');
+    expect(renderCheck(c)).toContain('→ sigil fix context7');
     expect(c.catalog!.entries).toBeGreaterThan(3);
   });
 
   it('without a catalog the check says how to get one', () => {
     const t = parseTranscriptFile(path.join(basicFixture, 'transcript.jsonl'));
-    expect(renderCheck(computeCheck('cat-2', { transcript: t, estimate: null }))).toContain('tally catalog update');
+    expect(renderCheck(computeCheck('cat-2', { transcript: t, estimate: null }))).toContain('sigil catalog update');
   });
 
   it('the source list names only official marketplaces and curated lists', () => {

@@ -32,19 +32,19 @@ const sug = (over: Partial<Suggestion> = {}): Suggestion => ({
 });
 
 describe('actions', () => {
-  it('inject queues a note that the hook delivers with the [Tally] prefix', () => {
+  it('inject queues a note that the hook delivers with the [Sigil] prefix', () => {
     const r = injectSuggestion(sug(), { session: 's', cwd: 'C:/x' });
     expect(r.injected).toBe(true);
     expect(pendingInjects('s')[0]!.note).toBe('Stop re-reading.');
-    const hook = spawnSync(process.execPath, [path.join(root, 'dist', 'hook.js'), 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 's', prompt: 'x' }), encoding: 'utf8', env: { ...process.env, TALLY_NO_SPAWN: '1' } });
-    expect(hook.stdout).toContain('Tally: Stop re-reading.');
+    const hook = spawnSync(process.execPath, [path.join(root, 'dist', 'hook.js'), 'UserPromptSubmit'], { input: JSON.stringify({ session_id: 's', prompt: 'x' }), encoding: 'utf8', env: { ...process.env, SIGIL_NO_SPAWN: '1' } });
+    expect(hook.stdout).toContain('Sigil: Stop re-reading.');
     expect(pendingInjects('s').length).toBe(0);
     expect(readInjects('s')[0]!.delivered).toBe(true);
     expect(readEvents('s').some((e) => e.type === 'inject')).toBe(true);
   });
 
   it('write_md create/append/replace with undo, and refuses non-md files', () => {
-    const cwd = tmpDir('tally-md-');
+    const cwd = tmpDir('sigil-md-');
     const file = path.join(cwd, 'CLAUDE.md');
     const cfg = loadConfig();
     const create = applySuggestion(sug({ rule: 'claude-md', action: { kind: 'write_md', label: 'c', file, content: '# repo\n', mode: 'create' } }), { session: 's', cwd, cfg, mode: 'ask' });
@@ -73,7 +73,7 @@ describe('actions', () => {
   });
 
   it('settings changes need ask mode, merge arrays, and are undoable', () => {
-    const cwd = tmpDir('tally-set-');
+    const cwd = tmpDir('sigil-set-');
     const file = path.join(cwd, '.claude', 'settings.local.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, JSON.stringify({ permissions: { allow: ['Bash(ls:*)'] }, model: 'opus' }, null, 2) + '\n');
@@ -91,7 +91,7 @@ describe('actions', () => {
   });
 
   it('snippet actions never touch settings', () => {
-    const cwd = tmpDir('tally-snip-');
+    const cwd = tmpDir('sigil-snip-');
     const r = applySuggestion(sug({ rule: 'mcp-opportunity', action: { kind: 'snippet', label: 's', snippet: 'claude mcp add github -- npx x', where: 'here' } }), { session: 's', cwd, cfg: loadConfig(), mode: 'ask' });
     expect(r.ok).toBe(true);
     expect(fs.readFileSync(r.file!, 'utf8')).toContain('claude mcp add github');
@@ -109,7 +109,7 @@ describe('ui', () => {
     const events = readEventsFile(path.join(basicFixture, 'events.jsonl'));
     const ctx = buildContext({ session: 'fx', cwd: 'C:/x', cfg: loadConfig(), events, transcriptPath: path.join(basicFixture, 'transcript.jsonl'), history: [] });
     const h = renderHeader(ctx, false);
-    expect(h).toContain('Tally Coach');
+    expect(h).toContain('Sigil Coach');
     expect(h).toContain('none linked');
     expect(h).toContain('context');
     const s = renderSuggestion(sug({ severity: 'critical' }), false, 1);
@@ -120,7 +120,7 @@ describe('ui', () => {
   it('watch streams suggestions from a growing event log, respects noise limits, and auto-applies md writes in auto mode', async () => {
     const events = readEventsFile(path.join(basicFixture, 'events.jsonl'));
     const session = 'live';
-    const cwd = tmpDir('tally-live-');
+    const cwd = tmpDir('sigil-live-');
     for (const e of events.slice(0, 10)) appendEvent({ ...e, session, cwd });
     fs.copyFileSync(path.join(basicFixture, 'transcript.jsonl'), path.join(iso.home, 'sessions', session, 'transcript.jsonl'));
     const out = new PassThrough();
@@ -134,7 +134,7 @@ describe('ui', () => {
     await new Promise((r) => setTimeout(r, 40));
     for (const e of events.slice(10)) appendEvent({ ...e, session, cwd });
     await p;
-    expect(text).toContain('Tally Coach');
+    expect(text).toContain('Sigil Coach');
     expect(text).toContain('Same command failed 3');
     expect(text).toContain('auto-applied');
     expect(text).toContain('Scope creep');
@@ -155,7 +155,7 @@ describe('cli smoke', () => {
     expect(r.stdout).toContain('hourly_rate = 120');
     expect(loadConfig().hourly_rate).toBe(120);
     const s = spawnSync(process.execPath, [cli, 'start'], { encoding: 'utf8', env: { ...process.env, TMUX: '', WT_SESSION: '', PATH: path.dirname(process.execPath) } });
-    expect(s.stdout).toContain('tally watch');
+    expect(s.stdout).toContain('sigil watch');
     enqueueInject('x', 'n', 'test');
     expect(fs.existsSync(path.join(iso.home, 'sessions', 'x', 'inject.jsonl'))).toBe(true);
   });

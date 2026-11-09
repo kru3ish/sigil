@@ -31,7 +31,7 @@ const SECRET_DIFF = 'sk-ant-api03-DIFFSECRETDIFFSECRETDIFFSECRET';
 const SECRET_MSG = 'ghp_MSGSECRETMSGSECRETMSGSECRET1234';
 
 function repo(): { cwd: string; base: string } {
-  const cwd = tmpDir('tally-h2-');
+  const cwd = tmpDir('sigil-h2-');
   git(cwd, 'init', '-q', '-b', 'main');
   git(cwd, 'config', 'user.email', 't@t');
   git(cwd, 'config', 'user.name', 't');
@@ -92,19 +92,19 @@ describe('H2 consent', () => {
     expect(testRerunConsent(loadConfig(), cwd)).toBe(true);
     process.env.MY_API_TOKEN = 'supersecret';
     process.env.ANTHROPIC_API_KEY = 'sk-ant-xyz';
-    process.env.TALLY_FRIENDLY = 'x';
+    process.env.SIGIL_FRIENDLY = 'x';
     const r = await runVerification(cwd, { timeoutMs: 30000, consent: true });
     delete process.env.MY_API_TOKEN;
     delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.TALLY_FRIENDLY;
+    delete process.env.SIGIL_FRIENDLY;
     expect(r.ran).toBe(true);
     expect(r.env_scrubbed).toBe(true);
     expect(r.command).toBe('npm test');
     expect(r.output_tail).toContain('SECRET_SEEN=none');
     expect(r.output_tail).toContain('HOME_OK=true');
     expect(r.output_tail).toContain('PATH_OK=true');
-    const env = scrubEnv({ PATH: '/bin', HOME: '/h', MY_SECRET: 'x', GITHUB_TOKEN: 'y', DATABASE_URL: 'z', EDITOR: 'vim', LONG: 'a'.repeat(300), JWT: 'eyJabc', TALLY_HOME: '/t' });
-    expect(Object.keys(env).sort()).toEqual(['EDITOR', 'HOME', 'PATH', 'TALLY_INTERNAL', 'TALLY_TEST_RERUN']);
+    const env = scrubEnv({ PATH: '/bin', HOME: '/h', MY_SECRET: 'x', GITHUB_TOKEN: 'y', DATABASE_URL: 'z', EDITOR: 'vim', LONG: 'a'.repeat(300), JWT: 'eyJabc', SIGIL_HOME: '/t' });
+    expect(Object.keys(env).sort()).toEqual(['EDITOR', 'HOME', 'PATH', 'SIGIL_INTERNAL', 'SIGIL_TEST_RERUN']);
     const denied = await runVerification(cwd, { timeoutMs: 1000, consent: false });
     expect(denied.ran).toBe(false);
     expect(denied.reason).toBe(NO_CONSENT_REASON);

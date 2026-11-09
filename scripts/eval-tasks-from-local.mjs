@@ -1,7 +1,7 @@
 // Writes eval/tasks/*.json specs for the local evaluation repositories built this week:
-//   ~/dev/tally-eval/<task>      eight constructed tasks (class fixture)
-//   ~/dev/tally-eval-gh/<task>   six public issues cloned locally (class real)
-// Each spec points at the local clone and at the commit that holds task.md as the base, so `tally eval run` copies
+//   ~/dev/sigil-eval/<task>      eight constructed tasks (class fixture)
+//   ~/dev/sigil-eval-gh/<task>   six public issues cloned locally (class real)
+// Each spec points at the local clone and at the commit that holds task.md as the base, so `sigil eval run` copies
 // the repo, checks out that base and lets a fresh agent redo the work. Usage: node scripts/eval-tasks-from-local.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,8 +32,8 @@ const GH = {
 
 let n = 0;
 for (const [root, cls] of [
-  [path.join(home, 'dev', 'tally-eval'), 'fixture'],
-  [path.join(home, 'dev', 'tally-eval-gh'), 'real'],
+  [path.join(home, 'dev', 'sigil-eval'), 'fixture'],
+  [path.join(home, 'dev', 'sigil-eval-gh'), 'real'],
 ]) {
   if (!fs.existsSync(root)) continue;
   for (const name of fs.readdirSync(root)) {

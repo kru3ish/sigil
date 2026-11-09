@@ -1,4 +1,4 @@
-/* `tally export [--since 30d] [--repo key] [--out file.jsonl] [--titles]`: one JSON line per receipt with numbers,
+/* `sigil export [--since 30d] [--repo key] [--out file.jsonl] [--titles]`: one JSON line per receipt with numbers,
    statuses and outcomes only. No prompts, no code, no criterion text, and no task titles unless --titles. This is the
    record a team can collect centrally without collecting anyone's work. */
 import fs from 'node:fs';
@@ -9,14 +9,14 @@ import { parseSince } from '../backfill/scan.js';
 import type { HistoryEntry } from '../coach/types.js';
 
 export interface ExportRow {
-  schema: 'tally.receipt.v1';
+  schema: 'sigil.receipt.v1';
   session: string;
   ts?: string;
   repo?: string;
   task_source?: string;
   task_title?: string;
   cost_usd?: number;
-  tally_own_usd?: number;
+  sigil_own_usd?: number;
   waste_usd?: number;
   completion_pct?: number;
   completion_basis?: { verifiable: number; total: number };
@@ -38,13 +38,13 @@ export interface ExportRow {
 export function exportRow(h: HistoryEntry, titles: boolean): ExportRow {
   const j = h.session ? loadJudge(h.session) : null;
   const row: ExportRow = {
-    schema: 'tally.receipt.v1',
+    schema: 'sigil.receipt.v1',
     session: h.session ?? '',
     ts: h.ts,
     repo: h.repo,
     task_source: h.task_source,
     cost_usd: h.cost_usd,
-    tally_own_usd: h.tally_own_usd,
+    sigil_own_usd: h.sigil_own_usd,
     waste_usd: h.waste_usd,
     completion_pct: h.completion_pct,
     quality: j?.quality.score,
@@ -90,7 +90,7 @@ export function renderInvoice(rows: Array<Record<string, string | number>>, form
   const cols = ['date', 'task', 'criteria_met', 'independent_test', 'estimate_hours', 'ai_cost_usd', 'verdict', 'session'];
   if (format === 'csv') return [cols.join(','), ...rows.map((r) => cols.map((c) => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n') + '\n';
   const total = rows.reduce((s, r) => s + (Number(r.ai_cost_usd) || 0), 0);
-  return [`| ${cols.join(' | ')} |`, `| ${cols.map(() => '---').join(' | ')} |`, ...rows.map((r) => `| ${cols.map((c) => String(r[c] ?? '').replace(/\|/g, '\\|')).join(' | ')} |`), '', `Total AI cost (API-equivalent): $${total.toFixed(2)} across ${rows.length} task(s). Generated locally by Tally; each line links to a receipt with the evidence.`].join('\n') + '\n';
+  return [`| ${cols.join(' | ')} |`, `| ${cols.map(() => '---').join(' | ')} |`, ...rows.map((r) => `| ${cols.map((c) => String(r[c] ?? '').replace(/\|/g, '\\|')).join(' | ')} |`), '', `Total AI cost (API-equivalent): $${total.toFixed(2)} across ${rows.length} task(s). Generated locally by Sigil; each line links to a receipt with the evidence.`].join('\n') + '\n';
 }
 
 export async function run(args: Args): Promise<number | void> {

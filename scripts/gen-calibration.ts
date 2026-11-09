@@ -1,6 +1,6 @@
 /* Five calibration sessions with known answers. Each dir holds: transcript.jsonl, events.jsonl, task.json,
    repo.json (base + after file trees; the eval builds a real git repo and runs the tests), expected.json
-   (human grades, by construction), and model-output.json (recorded judge-model output, see `tally calibrate eval --live --record`).
+   (human grades, by construction), and model-output.json (recorded judge-model output, see `sigil calibrate eval --live --record`).
    Run: npx tsx scripts/gen-calibration.ts */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,7 +40,7 @@ function taskJson(s: Scenario) {
     estimate: { hours, basis: 'llm' },
     budget_usd: Math.max(2, Math.round(hours * 75 * 0.25 * 100) / 100),
     hourly_rate: 75,
-    tally_cost_usd: 0.004,
+    sigil_cost_usd: 0.004,
     model: 'fixture',
   };
 }

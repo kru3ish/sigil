@@ -1,13 +1,13 @@
 /* Blind grading without the interactive prompts.
-     npx tsx scripts/grading-sheet.ts            writes ~/.tally/grading-sheet.md: one section per receipt (criteria,
+     npx tsx scripts/grading-sheet.ts            writes ~/.sigil/grading-sheet.md: one section per receipt (criteria,
                                                  evidence, replayed Coach suggestions) and an ANSWERS line to fill in
      npx tsx scripts/grading-sheet.ts --import   reads the filled ANSWERS lines and records them exactly as
-                                                 `tally calibrate grade` would; Tally's side-by-side reveal goes to
-                                                 ~/.tally/grading-reveal.md instead of the screen
-   Sessions already graded by the same grader are skipped. Nothing here prints Tally's statuses or verdicts. */
+                                                 `sigil calibrate grade` would; Sigil's side-by-side reveal goes to
+                                                 ~/.sigil/grading-reveal.md instead of the screen
+   Sessions already graded by the same grader are skipped. Nothing here prints Sigil's statuses or verdicts. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { tallyHome, sessionDir } from '../src/paths.js';
+import { sigilHome, sessionDir } from '../src/paths.js';
 import { loadJudge } from '../src/judge/judge.js';
 import { loadTask } from '../src/task/intake.js';
 import { evidenceSummary, gradeSession } from '../src/calibrate/grade.js';
@@ -17,11 +17,11 @@ import type { CoachReplay } from '../src/backfill/events.js';
 const grader = process.argv.find((a, i) => process.argv[i - 1] === '--grader') ?? 'krish';
 /* --sessions a1b2c3d4,e5f6... limits the sheet to those session prefixes */
 const onlyPrefixes = (process.argv.find((a, i) => process.argv[i - 1] === '--sessions') ?? '').split(',').filter(Boolean);
-const sheet = path.join(tallyHome(), 'grading-sheet.md');
-const revealFile = path.join(tallyHome(), 'grading-reveal.md');
+const sheet = path.join(sigilHome(), 'grading-sheet.md');
+const revealFile = path.join(sigilHome(), 'grading-reveal.md');
 const graded = new Set(readCalibration().filter((e) => e.source === 'backfill' && (e.grader ?? '') === grader).map((e) => e.session));
 const sessions = fs
-  .readdirSync(path.join(tallyHome(), 'sessions'))
+  .readdirSync(path.join(sigilHome(), 'sessions'))
   .filter((s) => fs.existsSync(path.join(sessionDir(s), 'judge.json')) && loadJudge(s) && loadTask(s) && !graded.has(s) && (!onlyPrefixes.length || onlyPrefixes.some((p) => s.startsWith(p))))
   .sort();
 
@@ -32,7 +32,7 @@ function replayOf(session: string): CoachReplay | null {
 
 if (!process.argv.includes('--import')) {
   const L: string[] = [];
-  L.push(`# Tally blind grading sheet · grader ${grader}`);
+  L.push(`# Sigil blind grading sheet · grader ${grader}`);
   L.push('');
   L.push('For each session fill the ANSWERS line and leave everything else alone. Letters, separated by spaces:');
   L.push('  criteria: one per criterion in order   m = met   p = partial   u = unmet   x = cannot tell');
@@ -68,14 +68,14 @@ if (!process.argv.includes('--import')) {
     if (crit.length && /^[wbn]$/i.test(verdict)) answers.set(m[1]!, { criteria: crit, verdict, coach });
   }
   let done = 0;
-  const reveal: string[] = [`# Tally's answers next to yours · grader ${grader} · ${new Date().toISOString()}`, ''];
+  const reveal: string[] = [`# Sigil's answers next to yours · grader ${grader} · ${new Date().toISOString()}`, ''];
   for (const s of sessions) {
     const a = answers.get(s.slice(0, 8));
     if (!a) continue;
     const task = loadTask(s)!;
     const judge = loadJudge(s)!;
     if (judge.criteria.length !== task.criteria.length) {
-      process.stdout.write(`${s.slice(0, 8)}: skipped, the receipt has ${judge.criteria.length} criteria but the task now has ${task.criteria.length} (re-run tally judge first)
+      process.stdout.write(`${s.slice(0, 8)}: skipped, the receipt has ${judge.criteria.length} criteria but the task now has ${task.criteria.length} (re-run sigil judge first)
 `);
       continue;
     }
@@ -97,5 +97,5 @@ if (!process.argv.includes('--import')) {
     process.stdout.write(`${s.slice(0, 8)}: recorded\n`);
   }
   fs.writeFileSync(revealFile, reveal.join('\n'));
-  process.stdout.write(`${done} session(s) recorded. Tally's answers next to yours: ${revealFile}\n`);
+  process.stdout.write(`${done} session(s) recorded. Sigil's answers next to yours: ${revealFile}\n`);
 }

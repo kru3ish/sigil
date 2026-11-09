@@ -1,12 +1,12 @@
-/* `tally dispute <session> <criterion> --status met|partial|unmet|unverifiable --reason "..." [--by name]`
+/* `sigil dispute <session> <criterion> --status met|partial|unmet|unverifiable --reason "..." [--by name]`
    A developer contests a criterion; the receipt keeps the original status next to the override and is re-scored;
-   the dispute is appended to ~/.tally/calibration.jsonl (source "dispute") so it feeds calibration as a labelled
+   the dispute is appended to ~/.sigil/calibration.jsonl (source "dispute") so it feeds calibration as a labelled
    disagreement with a stated reason. */
 import os from 'node:os';
 import { type Args, flag } from '../cli.js';
 import { loadJudge, rescoreJudge, persistJudge, renderSummary } from '../judge/judge.js';
 import { loadTask } from '../task/intake.js';
-import { appendLine, ensureDir, tallyHome, sessionDir } from '../paths.js';
+import { appendLine, ensureDir, sigilHome, sessionDir } from '../paths.js';
 import { resolveSession, resolveSessionId } from '../session.js';
 import fs from 'node:fs';
 import { calibrationFile, type CalibrationEntry } from '../calibrate/calibrate.js';
@@ -39,7 +39,7 @@ export function disputeCriterion(session: string, id: string, status: Status, re
     judge_verdict: j.verdict.verdict,
     task_source: j.task.task_source,
   };
-  ensureDir(tallyHome());
+  ensureDir(sigilHome());
   appendLine(calibrationFile(), JSON.stringify(entry));
   return { judge: next, entry };
 }
@@ -49,7 +49,7 @@ export function resolveSessionPrefix(p: string): string {
   return resolveSessionId(p);
 }
 
-/* the plugin's /tally:dispute passes one string: "<criterion> <status> <reason…>" */
+/* the plugin's /sigil:dispute passes one string: "<criterion> <status> <reason…>" */
 export function parseDisputeArgs(text: string): { id: string; status: Status; reason: string } | null {
   const m = /^\s*(c\d+)\s+(met|partial|unmet|unverifiable)\s+(.+)$/i.exec(text);
   if (!m) return null;
@@ -65,7 +65,7 @@ export async function run(args: Args): Promise<number | void> {
   if (fromArgs !== undefined) {
     const parsed = parseDisputeArgs(fromArgs);
     if (!parsed) {
-      process.stderr.write('Usage: /tally:dispute <c2> <met|partial|unmet|unverifiable> <reason>\n');
+      process.stderr.write('Usage: /sigil:dispute <c2> <met|partial|unmet|unverifiable> <reason>\n');
       return 1;
     }
     ({ id, status, reason } = parsed);
@@ -76,7 +76,7 @@ export async function run(args: Args): Promise<number | void> {
     reason = flag(args, 'reason');
   }
   if (!session || !id || !status || !STATUSES.includes(status) || !reason) {
-    process.stderr.write('Usage: tally dispute <session> <criterion> --status met|partial|unmet|unverifiable --reason "<why>" [--by name]\n');
+    process.stderr.write('Usage: sigil dispute <session> <criterion> --status met|partial|unmet|unverifiable --reason "<why>" [--by name]\n');
     return 1;
   }
   const full = resolveSessionPrefix(session);
